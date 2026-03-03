@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { requireRole } from '@/lib/auth';
 import { successResponse, errorResponse, validateRequiredFields } from '@/lib/api-helpers';
+import { checkShiftConflictWithLeave } from '@/lib/leave-logic';
 
 /**
  * GET /api/shift
@@ -52,9 +53,9 @@ export async function GET(request: NextRequest) {
  * 
  * Body:
  * {
- *   "employee_id": "uuid",
- *   "roster_id": "uuid",
- *   "shift_date": "YYYY-MM-DD",
+ *   "employee_id": "uuid" (optional),
+ *   "roster_id": "uuid" (optional),
+ *   "shift_date": "2026-03-10",
  *   "start_time": "ISO_TIMESTAMP",
  *   "end_time": "ISO_TIMESTAMP",
  *   "shift_type": "morning" | "afternoon" | etc
@@ -88,6 +89,7 @@ export async function POST(request: NextRequest) {
 
         // If an employee is assigned, check for overlapping shifts for that employee
         if (employee_id) {
+            // 1. Check for overlapping shifts
             const { data: overlapping } = await supabase
                 .from('Shift')
                 .select('shift_id')
@@ -100,6 +102,12 @@ export async function POST(request: NextRequest) {
 
             if (overlapping) {
                 return errorResponse('This employee already has an overlapping shift.', 409);
+            }
+
+            // 2. Check for approved leave
+            const leaveConflicts = await checkShiftConflictWithLeave(authUser.business_id, employee_id, shift_date);
+            if (leaveConflicts.length > 0) {
+                return errorResponse(`This employee has approved leave (${leaveConflicts[0].leave_type}) on this date.`, 409);
             }
         }
 

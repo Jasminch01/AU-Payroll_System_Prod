@@ -11,7 +11,7 @@ interface RouteParams {
  * GET /api/employees/[id]/rates
  * 
  * Get pay rate history for an employee
- * Access: Owner only
+ * Access: Owner
  */
 export async function GET(request: NextRequest, { params }: RouteParams) {
     try {
@@ -45,8 +45,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
  * POST /api/employees/[id]/rates
  * 
  * Add a new pay rate for an employee (effective from a date)
- * The previous rate's effective_to will be set automatically
- * Access: Owner only
+ * Access: Owner
  * 
  * Body:
  * {

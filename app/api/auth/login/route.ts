@@ -6,7 +6,7 @@ import { successResponse, errorResponse, validateRequiredFields } from '@/lib/ap
  * POST /api/auth/login
  * 
  * Login for Owner, Manager, or Employee
- * Returns user info + role + session
+ * Access: Public
  * 
  * Body:
  * {

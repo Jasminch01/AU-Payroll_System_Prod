@@ -5,14 +5,14 @@ import { successResponse, errorResponse, validateRequiredFields } from '@/lib/ap
 
 /**
  * GET /api/rosters
- *
+ * 
  * List all rosters for the business
  * Access: Owner, Manager
- *
+ * 
  * Query params:
- *   ?status=draft|published        (optional)
- *   ?from=YYYY-MM-DD               (optional - filter by start_date >=)
- *   ?to=YYYY-MM-DD                 (optional - filter by end_date <=)
+ *   ?status=draft|published (optional)
+ *   ?from=YYYY-MM-DD (optional)
+ *   ?to=YYYY-MM-DD (optional)
  */
 export async function GET(request: NextRequest) {
     try {
@@ -51,14 +51,14 @@ export async function GET(request: NextRequest) {
 
 /**
  * POST /api/rosters
- *
+ * 
  * Create a new roster (week block)
  * Access: Owner, Manager
- *
+ * 
  * Body:
  * {
  *   "start_date": "2026-03-03",
- *   "end_date":   "2026-03-09"
+ *   "end_date": "2026-03-09"
  * }
  */
 export async function POST(request: NextRequest) {

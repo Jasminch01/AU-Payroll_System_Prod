@@ -5,7 +5,7 @@ import { successResponse, errorResponse } from '@/lib/api-helpers';
  * GET /api/auth/me
  * 
  * Get current authenticated user's profile and role
- * Returns user info, role, and business details
+ * Access: Authenticated
  */
 export async function GET() {
     try {

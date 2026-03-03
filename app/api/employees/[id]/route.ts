@@ -13,8 +13,6 @@ interface RouteParams {
  * 
  * Get a specific employee by employee_id
  * Access: Owner, Manager
- * 
- * Also returns the current pay rate from EmployeeRateHistory
  */
 export async function GET(request: NextRequest, { params }: RouteParams) {
     try {
@@ -70,9 +68,9 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
  * PUT /api/employees/[id]
  * 
  * Update an employee's details
- * Access: Owner and manager
+ * Access: Owner, Manager
  * 
- * Body (all optional):
+ * Body:
  * {
  *   "first_name": "Mike",
  *   "last_name": "Johnson",
@@ -152,9 +150,11 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 /**
  * DELETE /api/employees/[id]
  * 
- * Deactivate an employee (soft delete — sets status to 'inactive')
- * To hard delete, pass ?hard=true (also removes auth account)
- * Access: Owner and manager
+ * Deactivate an employee (soft delete)
+ * Access: Owner, Manager
+ * 
+ * Query params:
+ *   ?hard=true (permanent delete)
  */
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
     try {

@@ -7,8 +7,8 @@ import { successResponse, errorResponse, validateRequiredFields } from '@/lib/ap
 /**
  * GET /api/managers
  * 
- * List all managers for the authenticated owner's business
- * Access: Owner only
+ * List all managers for the business
+ * Access: Owner
  */
 export async function GET() {
     try {
@@ -40,8 +40,8 @@ export async function GET() {
 /**
  * POST /api/managers
  * 
- * Create/invite a new manager (Dual Record: User + Employee)
- * Access: Owner only
+ * Create/invite a new manager
+ * Access: Owner
  * 
  * Body:
  * {
@@ -49,14 +49,11 @@ export async function GET() {
  *   "password": "tempPassword123",
  *   "first_name": "Jane",
  *   "last_name": "Smith",
- *   "phone": "0412345678",
  *   "dob": "1990-01-15",
- *   "bank_details": "BSB: 062000, Acc: 12345678",
+ *   "bank_details": "BSB: 062..., Acc: 123...",
  *   "emergency_contact_name": "John Smith",
  *   "emergency_contact_phone": "0498765432",
- *   "employment_type": "full_time",
  *   "role_title": "Shift Manager",
- *   "pay_cycle": "fortnightly",
  *   "kiosk_pin": "5678",
  *   "start_date": "2026-03-01",
  *   "employee_id": "MGR001",

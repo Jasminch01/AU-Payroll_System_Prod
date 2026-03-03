@@ -8,6 +8,7 @@ import { getNextAttendanceEvent, validateAttendanceTransition } from '@/lib/atte
  * POST /api/attendance/kiosk
  * 
  * Handle PIN-based clock in/out from a common device (Kiosk)
+ * Access: Public (PIN Auth)
  * 
  * Body:
  * {

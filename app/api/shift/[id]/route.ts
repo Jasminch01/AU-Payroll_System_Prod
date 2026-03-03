@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { requireRole } from '@/lib/auth';
 import { successResponse, errorResponse } from '@/lib/api-helpers';
+import { checkShiftConflictWithLeave } from '@/lib/leave-logic';
 
 interface RouteParams {
     params: Promise<{ id: string }>;
@@ -9,7 +10,7 @@ interface RouteParams {
 
 /**
  * GET /api/shift/[id]
- *
+ * 
  * Get a specific shift
  * Access: Owner, Manager
  */
@@ -39,9 +40,17 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
 /**
  * PUT /api/shift/[id]
- *
+ * 
  * Update a shift
  * Access: Owner, Manager
+ * 
+ * Body:
+ * {
+ *   "employee_id": "uuid",
+ *   "start_time": "ISO_TIMESTAMP",
+ *   "end_time": "ISO_TIMESTAMP",
+ *   "shift_type": "morning"
+ * }
  */
 export async function PUT(request: NextRequest, { params }: RouteParams) {
     try {
@@ -88,6 +97,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
         const newEmployee = updateData.employee_id || existing.employee_id;
 
         if (newEmployee) {
+            // 1. Check for overlapping shifts
             const { data: overlapping } = await supabase
                 .from('Shift')
                 .select('shift_id')
@@ -101,6 +111,13 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 
             if (overlapping) {
                 return errorResponse('This update creates an overlapping shift for the employee.', 409);
+            }
+
+            // 2. Check for approved leave
+            const newShiftDate = updateData.shift_date as string || (existing.shift_date as string);
+            const leaveConflicts = await checkShiftConflictWithLeave(authUser.business_id, newEmployee, newShiftDate);
+            if (leaveConflicts.length > 0) {
+                return errorResponse(`This employee has approved leave (${leaveConflicts[0].leave_type}) on this date.`, 409);
             }
         }
 
@@ -124,7 +141,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 
 /**
  * DELETE /api/shift/[id]
- *
+ * 
  * Delete a shift
  * Access: Owner, Manager
  */

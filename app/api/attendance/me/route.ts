@@ -7,7 +7,7 @@ import { successResponse, errorResponse } from '@/lib/api-helpers';
  * GET /api/attendance/me
  * 
  * Get today's logs for the authenticated employee
- * Access: Employee, Manager (as employee)
+ * Access: Employee, Manager, Owner
  */
 export async function GET(request: NextRequest) {
     try {

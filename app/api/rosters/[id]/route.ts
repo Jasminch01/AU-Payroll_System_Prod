@@ -9,8 +9,8 @@ interface RouteParams {
 
 /**
  * GET /api/rosters/[id]
- *
- * Get a specific roster with all its shifts + employee names
+ * 
+ * Get a specific roster with shifts
  * Access: Owner, Manager
  */
 export async function GET(request: NextRequest, { params }: RouteParams) {
@@ -45,15 +45,15 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
 /**
  * PUT /api/rosters/[id]
- *
+ * 
  * Update roster dates or publish it
  * Access: Owner, Manager
- *
- * Body (all optional):
+ * 
+ * Body:
  * {
  *   "start_date": "2026-03-03",
  *   "end_date": "2026-03-09",
- *   "status": "published"          ← set to 'published' to lock roster
+ *   "status": "published"
  * }
  */
 export async function PUT(request: NextRequest, { params }: RouteParams) {
@@ -110,8 +110,8 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 
 /**
  * DELETE /api/rosters/[id]
- *
- * Delete a roster and all its shifts (only if still in 'draft' status)
+ * 
+ * Delete a roster (draft only)
  * Access: Owner, Manager
  */
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
