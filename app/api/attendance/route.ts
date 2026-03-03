@@ -10,12 +10,6 @@ import { validateAttendanceTransition } from '@/lib/attendance-logic';
  * 
  * List attendance logs for the business
  * Access: Owner, Manager
- * 
- * Query params:
- *   ?employee_id=uuid (optional)
- *   ?from=YYYY-MM-DD  (optional)
- *   ?to=YYYY-MM-DD    (optional)
- *   ?event_type=CLOCK_IN|CLOCK_OUT... (optional)
  */
 export async function GET(request: NextRequest) {
     try {
@@ -63,6 +57,14 @@ export async function GET(request: NextRequest) {
  * 
  * Manual entry/Correction by Manager
  * Access: Owner, Manager
+ * 
+ * Body:
+ * {
+ *   "employee_id": "uuid",
+ *   "event_type": "CLOCK_IN" | "CLOCK_OUT" | "BREAK_START" | "BREAK_END",
+ *   "timestamp": "ISO_STRING",
+ *   "coordinates": { "lat": 0, "lng": 0 } (optional)
+ * }
  */
 export async function POST(request: NextRequest) {
     try {

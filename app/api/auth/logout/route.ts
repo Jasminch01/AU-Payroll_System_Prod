@@ -5,6 +5,7 @@ import { successResponse, errorResponse } from '@/lib/api-helpers';
  * POST /api/auth/logout
  * 
  * Sign out the current user
+ * Access: Authenticated
  */
 export async function POST() {
     try {

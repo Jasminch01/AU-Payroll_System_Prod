@@ -11,8 +11,8 @@ interface RouteParams {
 /**
  * GET /api/managers/[id]
  * 
- * Get a specific manager by user_id
- * Access: Owner only
+ * Get a specific manager profile
+ * Access: Owner
  */
 export async function GET(request: NextRequest, { params }: RouteParams) {
     try {
@@ -46,8 +46,17 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 /**
  * PUT /api/managers/[id]
  * 
- * Update a manager's profile (Both User and Employee records)
- * Access: Owner only
+ * Update a manager's profile
+ * Access: Owner
+ * 
+ * Body:
+ * {
+ *   "first_name": "Jane",
+ *   "last_name": "Smith",
+ *   "phone": "0412345678",
+ *   "status": "active",
+ *   ...
+ * }
  */
 export async function PUT(request: NextRequest, { params }: RouteParams) {
     try {
@@ -110,8 +119,8 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 /**
  * DELETE /api/managers/[id]
  * 
- * Delete a manager (removes User record + Employee record + Auth account)
- * Access: Owner only
+ * Delete a manager profile and account
+ * Access: Owner
  */
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
     try {

@@ -148,10 +148,10 @@ export interface TimeSheet {
   created_at: string;
   employee_id: string;
   business_id: string;
-  aproved_by: string | null;
+  approved_by: string | null;
   gross_pay: number;
   status: TimesheetStatus | null;
-  approve_at: string | null;
+  approved_at: string | null;
   flags: string | null;
   notes: string | null;
   updated_at: string | null;
@@ -187,11 +187,12 @@ export interface PayrollLine {
   additions: number;
   deductions: number;
   net_pay: number | null;
-  hours_breakdown: Record<string, unknown> | null;
+  hours_breakdown: any | null;
   payment_date: string | null;
   created_at: string;
   payment_status: PaymentStatus | null;
   payroll_id: string;
+  updated_at: string | null;
 }
 
 export interface AuditLog {
@@ -202,20 +203,20 @@ export interface AuditLog {
   action: AuditAction | null;
   changed_by: string | null;
   changed_at: string;
-  before_value: Record<string, unknown> | null;
-  after_value: Record<string, unknown> | null;
-  resone: string | null;
+  before_value: any | null;
+  after_value: any | null;
+  reason: string | null;
   created_at: string;
 }
 
 export interface SalesData {
   Sales_id: string;
-  buniness_id: string;
+  business_id: string;
   sales_date: string;
   total_sales: number;
   cogs: number;
   gross_profit: number | null;
-  top_skus: Record<string, unknown> | null;
+  top_skus: any | null;
   created_at: string;
 }
 
@@ -231,6 +232,62 @@ export interface ShiftSwapRequest {
   manager_note: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface LeaveType {
+  leave_type_id: string;
+  business_id: string;
+  name: string;
+  is_paid: boolean;
+  accrual_rate: number | null;
+  max_carry_over: number | null;
+  requires_doc: boolean;
+  created_at: string;
+  updated_at: string | null;
+}
+
+export interface LeaveBalance {
+  balance_id: string;
+  employee_id: string;
+  leave_type_id: string;
+  business_id: string;
+  accrued_hours: number;
+  taken_hours: number;
+  pending_hours: number;
+  year: number;
+  last_accrual_at: string | null;
+  created_at: string;
+  updated_at: string | null;
+}
+
+export interface LeaveRequest {
+  request_id: string;
+  employee_id: string;
+  leave_type_id: string;
+  business_id: string;
+  start_date: string;
+  end_date: string;
+  total_hours: number;
+  reason: string | null;
+  status: 'pending' | 'approved' | 'rejected' | 'cancelled';
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  rejection_reason: string | null;
+  document_url: string | null;
+  created_at: string;
+  updated_at: string | null;
+}
+
+export interface PublicHoliday {
+  holiday_id: string;
+  business_id: string;
+  name: string;
+  date: string;
+  state: string;
+  is_national: boolean;
+  year: number;
+  source: string | null;
+  created_at: string;
 }
 
 // ==================== INSERT TYPES (for creating new records) ====================
@@ -268,10 +325,14 @@ export type TimeSheetInsert = Omit<TimeSheet, 'timesheet_id' | 'created_at' | 'u
   timesheet_id?: string;
 };
 
-export type PayrollInsert = Omit<Payroll, 'created_at' | 'updated_at'>;
+export type PayrollInsert = Omit<Payroll, 'payroll_id' | 'created_at' | 'updated_at'> & {
+  payroll_id?: string;
+  updated_at?: string;
+};
 
-export type PayrollLineInsert = Omit<PayrollLine, 'PayrollLine_id' | 'created_at'> & {
+export type PayrollLineInsert = Omit<PayrollLine, 'PayrollLine_id' | 'created_at' | 'updated_at'> & {
   PayrollLine_id?: string;
+  updated_at?: string;
 };
 
 export type SalesDataInsert = Omit<SalesData, 'Sales_id' | 'created_at'> & {
@@ -280,6 +341,22 @@ export type SalesDataInsert = Omit<SalesData, 'Sales_id' | 'created_at'> & {
 
 export type ShiftSwapRequestInsert = Omit<ShiftSwapRequest, 'request_id' | 'created_at' | 'updated_at'> & {
   request_id?: string;
+};
+
+export type LeaveTypeInsert = Omit<LeaveType, 'leave_type_id' | 'created_at' | 'updated_at'> & {
+  leave_type_id?: string;
+};
+
+export type LeaveBalanceInsert = Omit<LeaveBalance, 'balance_id' | 'created_at' | 'updated_at'> & {
+  balance_id?: string;
+};
+
+export type LeaveRequestInsert = Omit<LeaveRequest, 'request_id' | 'created_at' | 'updated_at'> & {
+  request_id?: string;
+};
+
+export type PublicHolidayInsert = Omit<PublicHoliday, 'holiday_id' | 'created_at'> & {
+  holiday_id?: string;
 };
 
 // ==================== API RESPONSE TYPES ====================

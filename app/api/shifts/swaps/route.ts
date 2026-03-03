@@ -7,8 +7,7 @@ import { successResponse, errorResponse, validateRequiredFields } from '@/lib/ap
  * GET /api/shifts/swaps
  * 
  * List swap requests
- * For Managers: All pending requests in the business
- * For Employees: Their own requests (outgoing and incoming invitations)
+ * Access: Owner, Manager, Employee (own)
  */
 export async function GET(request: NextRequest) {
     try {
@@ -57,7 +56,14 @@ export async function GET(request: NextRequest) {
  * POST /api/shifts/swaps
  * 
  * Initiate a shift swap or drop
- * Access: Employee (must own the shift)
+ * Access: Employee, Manager, Owner
+ * 
+ * Body:
+ * {
+ *   "shift_id": "uuid",
+ *   "target_employee_id": "uuid" (optional, for direct swap/invite),
+ *   "target_shift_id": "uuid" (optional, for 1-for-1 swap)
+ * }
  */
 export async function POST(request: NextRequest) {
     try {

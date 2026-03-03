@@ -7,11 +7,8 @@ import { successResponse, errorResponse, validateRequiredFields } from '@/lib/ap
 /**
  * GET /api/employees
  * 
- * List all employees for the authenticated user's business
+ * List all employees for the business
  * Access: Owner, Manager
- * 
- * Query params:
- *   ?status=active|inactive  (optional filter)
  */
 export async function GET(request: NextRequest) {
     try {
@@ -50,15 +47,13 @@ export async function GET(request: NextRequest) {
 /**
  * POST /api/employees
  * 
- * Create a new employee
- * Access: Owner only
- * 
- * Creates: auth.users account → Employee record → EmployeeRateHistory (initial rates)
+ * Create a new employee and auth account
+ * Access: Owner, Manager
  * 
  * Body:
  * {
  *   "email": "employee@example.com",
- *   "password": "tempPassword123",
+ *   "password": "securepassword",
  *   "first_name": "Mike",
  *   "last_name": "Johnson",
  *   "phone": "0412345678",
@@ -73,12 +68,7 @@ export async function GET(request: NextRequest) {
  *   "start_date": "2026-03-01",
  *   "employee_id": "EMP001",
  *   "weekday_rate": 28.50,
- *   "saturday_multiplier": 1.25,
- *   "sunday_multiplier": 1.50,
- *   "public_holiday_multiplier": 2.50,
- *   "evening_rate": 32.00,
- *   "evening_start_time": 18,
- *   "evening_end_time": 23
+ *   "opening_balances": { "LT_ID": 10.5 } (optional)
  * }
  */
 export async function POST(request: NextRequest) {
@@ -135,6 +125,7 @@ export async function POST(request: NextRequest) {
             evening_rate,
             evening_start_time,
             evening_end_time,
+            opening_balances, // Optional: { [leave_type_id]: hours }
         } = body;
 
         if (password.length < 6) {
@@ -215,6 +206,29 @@ export async function POST(request: NextRequest) {
         if (rateError) {
             console.error('Rate history creation failed:', rateError.message);
             // Don't fail the whole request — employee is created, rate can be added later
+        }
+
+        // Step 4: Initialize Leave Balances for all active leave types
+        const { data: leaveTypes } = await supabase
+            .from('LeaveType')
+            .select('leave_type_id')
+            .eq('business_id', authUser.business_id);
+
+        if (leaveTypes && leaveTypes.length > 0) {
+            const currentYear = new Date().getFullYear();
+            const balanceData = leaveTypes.map(lt => ({
+                employee_id: employee_id,
+                leave_type_id: lt.leave_type_id,
+                business_id: authUser.business_id,
+                accrued_hours: opening_balances?.[lt.leave_type_id] || 0,
+                taken_hours: 0,
+                pending_hours: 0,
+                year: currentYear,
+                updated_at: new Date().toISOString()
+            }));
+
+            const { error: balanceErr } = await supabase.from('LeaveBalance').insert(balanceData);
+            if (balanceErr) console.error('Leave balance initialization failed:', balanceErr.message);
         }
 
         return successResponse(

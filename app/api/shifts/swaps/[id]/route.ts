@@ -10,10 +10,14 @@ interface RouteParams {
 /**
  * PUT /api/shifts/swaps/[id]
  * 
- * Handle multi-stage swap actions:
- * 1. Employee Accepts/Declines a swap invitation
- * 2. Manager Approves/Rejects a request
- * 3. Requester Cancels a request
+ * Handle multi-stage swap actions
+ * Access: Owner, Manager, Employee (involved)
+ * 
+ * Body:
+ * {
+ *   "action": "accept" | "decline" | "approve" | "reject" | "cancel",
+ *   "manager_note": "string" (optional)
+ * }
  */
 export async function PUT(request: NextRequest, { params }: RouteParams) {
     try {

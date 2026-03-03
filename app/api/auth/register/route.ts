@@ -6,7 +6,7 @@ import { successResponse, errorResponse, validateRequiredFields } from '@/lib/ap
  * POST /api/auth/register
  * 
  * Register a new Owner + Business
- * Creates: auth.users → Business → User (role=owner)
+ * Access: Public
  * 
  * Body:
  * {
