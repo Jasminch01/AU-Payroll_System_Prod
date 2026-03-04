@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 import { requireRole } from '@/lib/auth';
 import { successResponse, errorResponse } from '@/lib/api-helpers';
+import bcrypt from 'bcryptjs';
 
 interface RouteParams {
     params: Promise<{ id: string }>;
@@ -27,7 +28,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         // Get employee
         const { data: employee, error } = await supabase
             .from('Employee')
-            .select('*')
+            .select('employee_id, first_name, last_name, phone, email, dob, bank_details, emergency_contact_name, emergency_contact_phone, employment_type, role_title, pay_cycle, start_date, end_date, created_at, updated_at, business_id, user_id, status')
             .eq('employee_id', id)
             .eq('business_id', authUser.business_id)
             .single();
@@ -118,7 +119,11 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
         const updateData: Record<string, unknown> = {};
         for (const field of allowedFields) {
             if (body[field] !== undefined) {
-                updateData[field] = body[field];
+                if (field === 'kiosk_pin') {
+                    updateData[field] = await bcrypt.hash(body[field], 10);
+                } else {
+                    updateData[field] = body[field];
+                }
             }
         }
 

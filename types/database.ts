@@ -32,6 +32,8 @@ export type UserRole = 'owner' | 'manager';
 
 export type SwapStatus = 'pending_acceptance' | 'pending_approval' | 'approved' | 'rejected' | 'cancelled' | 'expired';
 
+export type XeroSyncStatus = 'pending' | 'synced' | 'failed';
+
 // ==================== TABLE TYPES ====================
 
 export interface Business {
@@ -290,6 +292,28 @@ export interface PublicHoliday {
   created_at: string;
 }
 
+export interface XeroConfig {
+  config_id: string;
+  business_id: string;
+  xero_tenant_id: string | null;
+  access_token: string;
+  refresh_token: string;
+  token_expires_at: string;
+  connected_at: string;
+  updated_at: string;
+}
+
+export interface XeroSync {
+  sync_id: string;
+  business_id: string;
+  payroll_id: string;
+  status: XeroSyncStatus;
+  xero_invoice_id: string | null;
+  error_message: string | null;
+  synced_at: string | null;
+  created_at: string;
+}
+
 // ==================== INSERT TYPES (for creating new records) ====================
 
 export type BusinessInsert = Omit<Business, 'business_id' | 'created_at' | 'updated_at'> & {
@@ -357,6 +381,14 @@ export type LeaveRequestInsert = Omit<LeaveRequest, 'request_id' | 'created_at' 
 
 export type PublicHolidayInsert = Omit<PublicHoliday, 'holiday_id' | 'created_at'> & {
   holiday_id?: string;
+};
+
+export type XeroConfigInsert = Omit<XeroConfig, 'config_id' | 'connected_at' | 'updated_at'> & {
+  config_id?: string;
+};
+
+export type XeroSyncInsert = Omit<XeroSync, 'sync_id' | 'created_at'> & {
+  sync_id?: string;
 };
 
 // ==================== API RESPONSE TYPES ====================

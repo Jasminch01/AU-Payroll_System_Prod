@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 import { requireRole } from '@/lib/auth';
 import { successResponse, errorResponse, validateRequiredFields } from '@/lib/api-helpers';
+import bcrypt from 'bcryptjs';
 
 /**
  * GET /api/managers
@@ -19,16 +20,34 @@ export async function GET() {
 
         const supabase = await createClient();
 
-        const { data: managers, error } = await supabase
+        // Fetch Users (managers) first
+        const { data: users, error: userError } = await supabase
             .from('User')
             .select('*')
             .eq('business_id', authUser.business_id)
             .eq('role', 'manager')
             .order('created_at', { ascending: false });
 
-        if (error) {
-            return errorResponse(error.message, 400);
+        if (userError) {
+            return errorResponse(userError.message, 400);
         }
+
+        if (!users || users.length === 0) {
+            return successResponse([], 'No managers found');
+        }
+
+        // Fetch corresponding Employee details separately to avoid schema cache join issues
+        const userIds = users.map(u => u.user_id);
+        const { data: employees, error: empError } = await supabase
+            .from('Employee')
+            .select('employee_id, first_name, last_name, phone, email, dob, bank_details, emergency_contact_name, emergency_contact_phone, employment_type, role_title, pay_cycle, start_date, end_date, created_at, updated_at, business_id, user_id, status')
+            .in('user_id', userIds);
+
+        // Merge the data manually
+        const managers = users.map(user => ({
+            ...user,
+            Employee: employees?.find(e => e.user_id === user.user_id) || null
+        }));
 
         return successResponse(managers, `Found ${managers.length} manager(s)`);
     } catch (error) {
@@ -153,6 +172,8 @@ export async function POST(request: NextRequest) {
         }
 
         // Step 3: Create Employee record
+        const hashedPin = await bcrypt.hash(kiosk_pin, 10);
+
         const { error: employeeError } = await supabase
             .from('Employee')
             .insert({
@@ -168,7 +189,7 @@ export async function POST(request: NextRequest) {
                 employment_type: employment_type || null,
                 role_title,
                 pay_cycle: pay_cycle || null,
-                kiosk_pin,
+                kiosk_pin: hashedPin,
                 start_date,
                 end_date: end_date || null,
                 business_id: authUser.business_id,

@@ -8,6 +8,39 @@ interface RouteParams {
 }
 
 /**
+ * GET /api/timesheets/[id]
+ * 
+ * Get a single timesheet by ID
+ * Access: Owner, Manager
+ */
+export async function GET(request: NextRequest, { params }: RouteParams) {
+    try {
+        const authUser = await requireRole('owner', 'manager');
+        if (!authUser) return errorResponse('Unauthorized', 401);
+
+        const { id } = await params;
+        const supabase = await createClient();
+
+        const { data: timesheet, error } = await supabase
+            .from('TimeSheet')
+            .select(`
+                *,
+                Employee:employee_id(employee_id, first_name, last_name, role_title)
+            `)
+            .eq('timesheet_id', id)
+            .eq('business_id', authUser.business_id)
+            .single();
+
+        if (error || !timesheet) return errorResponse('Timesheet not found', 404);
+
+        return successResponse(timesheet);
+    } catch (err) {
+        console.error('Get timesheet error:', err);
+        return errorResponse('Internal server error', 500);
+    }
+}
+
+/**
  * PUT /api/timesheets/[id]
  * 
  * Approve, reject, or manually adjust a timesheet
