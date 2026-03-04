@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 import { requireRole } from '@/lib/auth';
 import { successResponse, errorResponse, validateRequiredFields } from '@/lib/api-helpers';
+import bcrypt from 'bcryptjs';
 
 /**
  * GET /api/employees
@@ -23,7 +24,7 @@ export async function GET(request: NextRequest) {
 
         let query = supabase
             .from('Employee')
-            .select('*')
+            .select('employee_id, first_name, last_name, phone, email, dob, bank_details, emergency_contact_name, emergency_contact_phone, employment_type, role_title, pay_cycle, start_date, end_date, created_at, updated_at, business_id, user_id, status')
             .eq('business_id', authUser.business_id)
             .order('created_at', { ascending: false });
 
@@ -153,6 +154,8 @@ export async function POST(request: NextRequest) {
         const supabase = await createClient();
 
         // Step 2: Create Employee record
+        const hashedPin = await bcrypt.hash(kiosk_pin, 10);
+
         const { data: employeeData, error: employeeError } = await supabase
             .from('Employee')
             .insert({
@@ -168,7 +171,7 @@ export async function POST(request: NextRequest) {
                 employment_type: employment_type || null,
                 role_title,
                 pay_cycle: pay_cycle || null,
-                kiosk_pin,
+                kiosk_pin: hashedPin,
                 start_date,
                 end_date: end_date || null,
                 business_id: authUser.business_id,

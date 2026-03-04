@@ -16,15 +16,31 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         if (!authUser) return errorResponse('Unauthorized', 401);
 
         const supabase = await createClient();
-        const { data, error } = await supabase
+
+        // 1. Fetch payroll record
+        const { data: payroll, error: payrollError } = await supabase
             .from('Payroll')
-            .select('*, PayrollLine(*, Employee(first_name, last_name, bank_details))')
+            .select('*')
             .eq('payroll_id', id)
             .eq('business_id', authUser.business_id)
             .single();
 
-        if (error || !data) return errorResponse('Payroll record not found', 404);
-        return successResponse(data);
+        if (payrollError || !payroll) return errorResponse('Payroll record not found', 404);
+
+        // 2. Fetch payroll lines with employee details
+        const { data: lines, error: linesError } = await supabase
+            .from('PayrollLine')
+            .select('*, Employee:employee_id(employee_id, first_name, last_name, bank_details)')
+            .eq('payroll_id', id);
+
+        if (linesError) {
+            console.error('Error fetching payroll lines:', linesError);
+        }
+
+        return successResponse({
+            ...payroll,
+            lines: lines || []
+        });
     } catch (err: any) {
         return errorResponse(err.message, 500);
     }

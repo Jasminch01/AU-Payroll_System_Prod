@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 import { requireRole } from '@/lib/auth';
 import { successResponse, errorResponse } from '@/lib/api-helpers';
+import bcrypt from 'bcryptjs';
 
 interface RouteParams {
     params: Promise<{ id: string }>;
@@ -24,17 +25,35 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         const { id } = await params;
         const supabase = await createClient();
 
-        const { data: manager, error } = await supabase
+        // 1. Fetch User Record
+        const { data: user, error: userError } = await supabase
             .from('User')
-            .select('*, Employee!inner(*)')
+            .select('*')
             .eq('user_id', id)
             .eq('business_id', authUser.business_id)
             .eq('role', 'manager')
             .single();
 
-        if (error || !manager) {
+        if (userError || !user) {
             return errorResponse('Manager not found', 404);
         }
+
+        // 2. Fetch Employee Record separately
+        const { data: employee, error: empError } = await supabase
+            .from('Employee')
+            .select('employee_id, first_name, last_name, phone, email, dob, bank_details, emergency_contact_name, emergency_contact_phone, employment_type, role_title, pay_cycle, start_date, end_date, created_at, updated_at, business_id, user_id, status')
+            .eq('user_id', id)
+            .single();
+
+        if (empError) {
+            // Log it but we still have the user profile
+            console.error('Error fetching employee details for manager:', empError);
+        }
+
+        const manager = {
+            ...user,
+            Employee: employee || null
+        };
 
         return successResponse(manager);
     } catch (error) {
@@ -95,7 +114,13 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
         ];
 
         for (const field of allowedEmployeeFields) {
-            if (body[field] !== undefined) employeeFields[field] = body[field];
+            if (body[field] !== undefined) {
+                if (field === 'kiosk_pin') {
+                    employeeFields[field] = await bcrypt.hash(body[field], 10);
+                } else {
+                    employeeFields[field] = body[field];
+                }
+            }
         }
 
         if (Object.keys(employeeFields).length > 0) {

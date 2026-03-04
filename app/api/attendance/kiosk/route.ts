@@ -1,8 +1,9 @@
 import { NextRequest } from 'next/server';
-import { createAdminClient } from '@/lib/supabase/admin'; // Use admin to verify PIN/Employee across business
+import { createAdminClient } from '@/lib/supabase/admin';
 import { successResponse, errorResponse, validateRequiredFields } from '@/lib/api-helpers';
 import { EventType } from '@/types/database';
 import { getNextAttendanceEvent, validateAttendanceTransition } from '@/lib/attendance-logic';
+import bcrypt from 'bcryptjs';
 
 /**
  * POST /api/attendance/kiosk
@@ -12,6 +13,7 @@ import { getNextAttendanceEvent, validateAttendanceTransition } from '@/lib/atte
  * 
  * Body:
  * {
+ *   "employee_id": "EMP001",
  *   "pin": "1234",
  *   "event_type": "CLOCK_IN" | "CLOCK_OUT" | "BREAK_START" | "BREAK_END",
  *   "device_info": "Front Desk Tablet" (optional)
@@ -20,28 +22,32 @@ import { getNextAttendanceEvent, validateAttendanceTransition } from '@/lib/atte
 export async function POST(request: NextRequest) {
     try {
         const body = await request.json();
-        const validationError = validateRequiredFields(body, ['pin']);
+        const validationError = validateRequiredFields(body, ['employee_id', 'pin']);
         if (validationError) return errorResponse(validationError, 400);
 
-        const { pin, device_info } = body;
-        let { event_type } = body; // event_type is optional for Auto-Toggle
+        const { employee_id, pin, device_info } = body;
+        let { event_type } = body;
 
-        // 1. Find employee by PIN
-        // We use admin client because the Kiosk might not have an active user session 
-        // (it's a shared device). In a real app, you'd protect this with a Kiosk-specific token.
+        // 1. Find employee by their unique employee_id string
         const supabase = createAdminClient();
         const { data: employee, error: empError } = await supabase
             .from('Employee')
-            .select('employee_id, business_id, first_name, last_name, status')
-            .eq('kiosk_pin', pin)
+            .select('employee_id, business_id, first_name, last_name, status, kiosk_pin')
+            .eq('employee_id', employee_id)
             .eq('status', 'active')
             .single();
 
         if (empError || !employee) {
-            return errorResponse('Invalid PIN or inactive employee.', 401);
+            return errorResponse('Invalid Employee ID or inactive employee.', 401);
         }
 
-        // 2. Check current state (the latest log for this employee)
+        // 2. Verify hashed PIN
+        const isMatch = await bcrypt.compare(pin, employee.kiosk_pin || '');
+        if (!isMatch) {
+            return errorResponse('Invalid PIN.', 401);
+        }
+
+        // 3. Check current state (the latest log for this employee)
         const { data: lastLog, error: lastLogError } = await supabase
             .from('AttendanceLog')
             .select('event_type, timestamp')
@@ -52,16 +58,12 @@ export async function POST(request: NextRequest) {
 
         if (lastLogError) return errorResponse('Error checking current status.', 500);
 
-        // Simple Approach (Auto-Toggle):
-        // If event_type is not provided, the system automatically 
-        // decides: IN if last was OUT/Empty, OUT if last was IN.
         if (!event_type) {
             event_type = getNextAttendanceEvent(
                 lastLog as { event_type: EventType, timestamp: string } | null,
                 body.timestamp || new Date().toISOString()
             );
         } else {
-            // If they DID provide an event_type, we still validate it loosely
             const transitionError = validateAttendanceTransition(
                 lastLog as { event_type: EventType, timestamp: string } | null,
                 event_type as EventType,
@@ -70,7 +72,7 @@ export async function POST(request: NextRequest) {
             if (transitionError) return errorResponse(transitionError, 400);
         }
 
-        // 3. Log the event
+        // 4. Log the event
         const { data: log, error: logError } = await supabase
             .from('AttendanceLog')
             .insert({

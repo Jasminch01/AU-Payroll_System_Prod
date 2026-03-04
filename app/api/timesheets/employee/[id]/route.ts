@@ -3,29 +3,33 @@ import { createClient } from '@/lib/supabase/server';
 import { getAuthUser } from '@/lib/auth';
 import { successResponse, errorResponse } from '@/lib/api-helpers';
 
-/**
- * GET /api/timesheets
- * 
- * List timesheets for the business
- * Access: Owner, Manager (all timesheets), Employee (own only)
- * 
- * Query Params:
- *   ?status=pending|approved|rejected
- *   ?employee_id=uuid (Owner/Manager only)
- *   ?from=YYYY-MM-DD
- *   ?to=YYYY-MM-DD
- */
+interface RouteParams {
+    params: Promise<{ id: string }>;
+}
 
-export async function GET(request: NextRequest) {
+/**
+ * GET /api/timesheets/employee/[id]
+ * 
+ * Get all timesheets for a specific employee
+ * Access: Owner, Manager, or the Employee themselves
+ */
+export async function GET(request: NextRequest, { params }: RouteParams) {
     try {
         const authUser = await getAuthUser();
-        if (!authUser) return errorResponse('Unauthorized', 401);
+        if (!authUser) {
+            return errorResponse('Unauthorized', 401);
+        }
 
+        const { id } = await params;
         const { searchParams } = new URL(request.url);
-        const employee_id = searchParams.get('employee_id');
-        const status = searchParams.get('status');
         const from = searchParams.get('from');
         const to = searchParams.get('to');
+        const status = searchParams.get('status');
+
+        // Security check: Employees can only see their own timesheets
+        if (authUser.role === 'employee' && authUser.employee_id !== id) {
+            return errorResponse('Forbidden: You can only view your own timesheets', 403);
+        }
 
         const supabase = await createClient();
 
@@ -35,16 +39,9 @@ export async function GET(request: NextRequest) {
                 *,
                 Employee:employee_id(first_name, last_name, role_title)
             `)
+            .eq('employee_id', id)
             .eq('business_id', authUser.business_id)
             .order('date', { ascending: false });
-
-        // Employees can only see their own timesheets
-        if (authUser.role === 'employee') {
-            query = query.eq('employee_id', authUser.employee_id!);
-        } else if (employee_id) {
-            // Owner/Manager can filter by any employee
-            query = query.eq('employee_id', employee_id);
-        }
 
         if (status) query = query.eq('status', status);
         if (from) query = query.gte('date', from);
@@ -52,11 +49,13 @@ export async function GET(request: NextRequest) {
 
         const { data: timesheets, error } = await query;
 
-        if (error) return errorResponse(error.message, 400);
+        if (error) {
+            return errorResponse(error.message, 400);
+        }
 
-        return successResponse(timesheets);
+        return successResponse(timesheets, `Found ${timesheets.length} timesheet(s) for employee`);
     } catch (err) {
-        console.error('List timesheets error:', err);
+        console.error('Get employee timesheets error:', err);
         return errorResponse('Internal server error', 500);
     }
 }
