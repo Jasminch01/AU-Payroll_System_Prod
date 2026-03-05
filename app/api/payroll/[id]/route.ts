@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { requireRole } from '@/lib/auth';
 import { successResponse, errorResponse } from '@/lib/api-helpers';
+import { logAudit } from '@/lib/audit';
 
 /**
  * GET /api/payroll/[id]
@@ -106,6 +107,17 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
         if (error) return errorResponse(error.message);
 
+        await logAudit({
+            businessId: authUser.business_id,
+            tableName: 'Payroll',
+            recordId: id,
+            action: 'UPDATE',
+            changedBy: authUser.user_id,
+            beforeValue: current,
+            afterValue: data,
+            reason: `Payroll marked as ${status}`
+        });
+
         // 2. If marking as paid, also update all lines
         if (status === 'paid') {
             const { error: linesErr } = await supabase
@@ -163,6 +175,16 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
             .eq('payroll_id', id);
 
         if (error) return errorResponse(error.message);
+
+        await logAudit({
+            businessId: authUser.business_id,
+            tableName: 'Payroll',
+            recordId: id,
+            action: 'DELETE',
+            changedBy: authUser.user_id,
+            beforeValue: payroll,
+            reason: 'Deleted payroll draft'
+        });
 
         return successResponse(null, 'Payroll draft deleted successfully');
     } catch (err: any) {

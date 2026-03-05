@@ -1,0 +1,133 @@
+"use client";
+
+import React from "react";
+import { useQuery } from "@tanstack/react-query";
+import { DashboardLayout } from "@/components/layout";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { StatusBadge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { apiGet, apiPost } from "@/lib/api-client";
+import { toast } from "sonner";
+import { Link2, CheckCircle, XCircle, ShieldCheck } from "lucide-react";
+
+export default function OwnerSettingsPage() {
+    // Xero status
+    const { data: xeroStatus, isLoading: xeroLoading } = useQuery({
+        queryKey: ["xero-status"],
+        queryFn: () => apiGet<any>("/xero/status"),
+    });
+
+    // Audit log
+    const { data: auditLogs = [], isLoading: auditLoading } = useQuery({
+        queryKey: ["audit-log"],
+        queryFn: () => apiGet<any[]>("/audit-log"),
+    });
+
+    const handleXeroConnect = () => {
+        window.location.href = "/api/xero/auth";
+    };
+
+    const handleXeroDisconnect = async () => {
+        try {
+            await apiPost("/xero/disconnect");
+            toast.success("Xero disconnected");
+        } catch (err: any) {
+            toast.error(err.message);
+        }
+    };
+
+    return (
+        <DashboardLayout
+            role="owner"
+            pageTitle="Settings"
+            pageDescription="Business settings and integrations"
+        >
+            {/* Xero Integration */}
+            <Card className="mb-6">
+                <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                        <Link2 size={20} /> Xero Integration
+                    </CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            {xeroStatus?.connected ? (
+                                <>
+                                    <CheckCircle size={20} className="text-[hsl(var(--success))]" />
+                                    <div>
+                                        <p className="font-medium text-[hsl(var(--success))]">Connected</p>
+                                        <p className="text-sm text-[hsl(var(--muted-foreground))]">
+                                            Tenant ID: {xeroStatus.tenant_id?.slice(0, 8)}...
+                                        </p>
+                                    </div>
+                                </>
+                            ) : (
+                                <>
+                                    <XCircle size={20} className="text-[hsl(var(--muted-foreground))]" />
+                                    <p className="text-[hsl(var(--muted-foreground))]">Not connected</p>
+                                </>
+                            )}
+                        </div>
+                        {xeroStatus?.connected ? (
+                            <Button variant="danger" size="sm" onClick={handleXeroDisconnect}>
+                                Disconnect
+                            </Button>
+                        ) : (
+                            <Button onClick={handleXeroConnect}>
+                                <Link2 size={16} /> Connect Xero
+                            </Button>
+                        )}
+                    </div>
+                </CardContent>
+            </Card>
+
+            {/* Audit Log */}
+            <Card>
+                <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                        <ShieldCheck size={20} /> Audit Log
+                    </CardTitle>
+                </CardHeader>
+                <CardContent>
+                    {auditLoading ? (
+                        <div className="space-y-2">
+                            {[1, 2, 3, 4, 5].map((i) => <div key={i} className="skeleton h-10 rounded" />)}
+                        </div>
+                    ) : (
+                        <div className="rounded-xl border border-[hsl(var(--border))] overflow-hidden">
+                            <table className="w-full text-sm">
+                                <thead>
+                                    <tr className="border-b border-[hsl(var(--border))] bg-[hsl(var(--muted))]">
+                                        <th className="px-4 py-3 text-left font-medium text-[hsl(var(--muted-foreground))]">Action</th>
+                                        <th className="px-4 py-3 text-left font-medium text-[hsl(var(--muted-foreground))]">Table</th>
+                                        <th className="px-4 py-3 text-left font-medium text-[hsl(var(--muted-foreground))]">Record</th>
+                                        <th className="px-4 py-3 text-left font-medium text-[hsl(var(--muted-foreground))]">Reason</th>
+                                        <th className="px-4 py-3 text-left font-medium text-[hsl(var(--muted-foreground))]">Time</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {auditLogs.slice(0, 20).map((log: any) => (
+                                        <tr key={log.audit_id || log.log_id} className="border-b border-[hsl(var(--border))]">
+                                            <td className="px-4 py-3">
+                                                <StatusBadge status={log.action?.toLowerCase()} />
+                                            </td>
+                                            <td className="px-4 py-3 font-medium">{log.table_name}</td>
+                                            <td className="px-4 py-3 text-xs font-mono text-[hsl(var(--muted-foreground))]">
+                                                {log.record_id?.slice(0, 12)}...
+                                            </td>
+                                            <td className="px-4 py-3 text-[hsl(var(--muted-foreground))]">{log.reason || "—"}</td>
+                                            <td className="px-4 py-3 text-[hsl(var(--muted-foreground))]">
+                                                {new Date(log.changed_at).toLocaleString("en-AU")}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                </CardContent>
+            </Card>
+        </DashboardLayout>
+    );
+}

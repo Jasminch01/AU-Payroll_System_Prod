@@ -9,7 +9,7 @@ export type EmployeeType = 'full_time' | 'part_time' | 'casual';
 
 export type PayCycle = 'weekly' | 'fortnightly' | 'monthly';
 
-export type EmployeeStatus = 'active' | 'inactive';
+export type EmployeeStatus = 'active' | 'inactive' | 'invited';
 
 export type CertificateType = 'RSA' | 'food_safety' | 'first_aid' | 'other';
 

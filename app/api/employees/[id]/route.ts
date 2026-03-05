@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server';
 import { requireRole } from '@/lib/auth';
 import { successResponse, errorResponse } from '@/lib/api-helpers';
 import bcrypt from 'bcryptjs';
+import { logAudit } from '@/lib/audit';
 
 interface RouteParams {
     params: Promise<{ id: string }>;
@@ -133,6 +134,14 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 
         updateData.updated_at = new Date().toISOString();
 
+        // Fetch before value for audit log
+        const { data: beforeValue } = await supabase
+            .from('Employee')
+            .select('*')
+            .eq('employee_id', id)
+            .eq('business_id', authUser.business_id)
+            .single();
+
         const { data: updatedEmployee, error } = await supabase
             .from('Employee')
             .update(updateData)
@@ -144,6 +153,17 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
         if (error || !updatedEmployee) {
             return errorResponse('Employee not found or update failed', 404);
         }
+
+        await logAudit({
+            businessId: authUser.business_id,
+            tableName: 'Employee',
+            recordId: updatedEmployee.employee_id,
+            action: 'UPDATE',
+            changedBy: authUser.user_id,
+            beforeValue,
+            afterValue: updatedEmployee,
+            reason: 'Employee details updated'
+        });
 
         return successResponse(updatedEmployee, 'Employee updated successfully');
     } catch (error) {
@@ -201,6 +221,16 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
             const adminClient = createAdminClient();
             await adminClient.auth.admin.deleteUser(employee.user_id);
 
+            await logAudit({
+                businessId: authUser.business_id,
+                tableName: 'Employee',
+                recordId: id,
+                action: 'DELETE',
+                changedBy: authUser.user_id,
+                beforeValue: employee,
+                reason: 'Employee permanently deleted'
+            });
+
             return successResponse(null, 'Employee permanently deleted');
         } else {
             // Soft delete: set status to inactive + set end_date
@@ -218,6 +248,17 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
             if (updateError) {
                 return errorResponse(`Failed to deactivate employee: ${updateError.message}`, 400);
             }
+
+            await logAudit({
+                businessId: authUser.business_id,
+                tableName: 'Employee',
+                recordId: id,
+                action: 'UPDATE',
+                changedBy: authUser.user_id,
+                beforeValue: employee,
+                afterValue: updatedEmployee,
+                reason: 'Employee deactivated (soft delete)'
+            });
 
             return successResponse(updatedEmployee, 'Employee deactivated');
         }
