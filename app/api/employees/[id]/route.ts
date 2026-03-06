@@ -14,7 +14,7 @@ interface RouteParams {
  * 
  * Get a specific employee by employee_id
  * Access: Owner, Manager
- */GIT
+ */
 export async function GET(request: NextRequest, { params }: RouteParams) {
     try {
         const authUser = await requireRole('owner', 'manager');
