@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 import { requireRole } from '@/lib/auth';
 import { successResponse, errorResponse, validateRequiredFields } from '@/lib/api-helpers';
+import { logAudit } from '@/lib/audit';
 import bcrypt from 'bcryptjs';
 
 /**
@@ -233,6 +234,16 @@ export async function POST(request: NextRequest) {
             const { error: balanceErr } = await supabase.from('LeaveBalance').insert(balanceData);
             if (balanceErr) console.error('Leave balance initialization failed:', balanceErr.message);
         }
+
+        await logAudit({
+            businessId: authUser.business_id,
+            tableName: 'Employee',
+            recordId: employeeData.employee_id,
+            action: 'INSERT',
+            changedBy: authUser.user_id,
+            afterValue: employeeData,
+            reason: 'Created new employee'
+        });
 
         return successResponse(
             {

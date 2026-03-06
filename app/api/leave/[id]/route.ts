@@ -5,6 +5,7 @@ import {
     successResponse,
     errorResponse
 } from '@/lib/api-helpers';
+import { logAudit } from '@/lib/audit';
 
 /**
  * PUT /api/leave/[id]
@@ -88,6 +89,17 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
             .single();
 
         if (error) return errorResponse(error.message);
+
+        await logAudit({
+            businessId: authUser.business_id,
+            tableName: 'LeaveRequest',
+            recordId: id,
+            action: 'UPDATE',
+            changedBy: authUser.user_id,
+            beforeValue: current,
+            afterValue: data,
+            reason: `Leave request ${status}`
+        });
 
         // 4. If approved, update LeaveBalance
         if (status === 'approved') {
