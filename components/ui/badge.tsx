@@ -54,6 +54,14 @@ function StatusBadge({ status }: { status: string }) {
         synced: { variant: "success", label: "Synced" },
         published: { variant: "success", label: "Published" },
         cancelled: { variant: "secondary", label: "Cancelled" },
+        confirmed: { variant: "success", label: "Confirmed" },
+        completed: { variant: "success", label: "Completed" },
+        insert: { variant: "success", label: "Created" },
+        update: { variant: "warning", label: "Updated" },
+        delete: { variant: "danger", label: "Deleted" },
+        clock_in: { variant: "success", label: "Clock In" },
+        clock_out: { variant: "default", label: "Clock Out" },
+        override: { variant: "warning", label: "Override" },
     };
 
     const config = statusMap[status?.toLowerCase()] || { variant: "secondary" as const, label: status };

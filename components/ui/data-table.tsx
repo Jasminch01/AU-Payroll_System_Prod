@@ -46,12 +46,17 @@ export function DataTable<T extends Record<string, any>>({
     const [sortKey, setSortKey] = React.useState<string | null>(null);
     const [sortDir, setSortDir] = React.useState<"asc" | "desc">("asc");
 
+    // Helper to get nested values by dot-notation key (e.g. "Employee.first_name")
+    const getNestedValue = (obj: any, path: string): any => {
+        return path.split('.').reduce((o, k) => o?.[k], obj);
+    };
+
     // Filter
     const filtered = React.useMemo(() => {
         if (!search || searchKeys.length === 0) return data;
         const lower = search.toLowerCase();
         return data.filter((row) =>
-            searchKeys.some((key) => String(row[key] ?? "").toLowerCase().includes(lower))
+            searchKeys.some((key) => String(getNestedValue(row, key) ?? "").toLowerCase().includes(lower))
         );
     }, [data, search, searchKeys]);
 

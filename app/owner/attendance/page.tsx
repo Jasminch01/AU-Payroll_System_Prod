@@ -192,7 +192,7 @@ export default function OwnerAttendancePage() {
                 columns={columns}
                 data={records}
                 searchable
-                searchKeys={["employee_id"]}
+                searchKeys={["Employee.first_name", "Employee.last_name"]}
                 searchPlaceholder="Search by employee..."
                 emptyMessage="No attendance records found"
                 emptyIcon={<Clock size={40} />}

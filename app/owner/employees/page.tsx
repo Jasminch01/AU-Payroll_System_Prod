@@ -13,19 +13,22 @@ import {
 } from "@/components/ui/dialog";
 import { apiGet, apiPost } from "@/lib/api-client";
 import { toast } from "sonner";
-import { UserPlus, Mail, Send, Eye } from "lucide-react";
+import { UserPlus, Mail, Send, Eye, RefreshCw, Copy, Check } from "lucide-react";
 import type { Employee } from "@/types/database";
 
 export default function OwnerEmployeesPage() {
     const router = useRouter();
     const queryClient = useQueryClient();
     const [inviteOpen, setInviteOpen] = useState(false);
+    const [generatedLink, setGeneratedLink] = useState<string | null>(null);
+    const [copied, setCopied] = useState(false);
 
     // Invite form state
     const [invEmail, setInvEmail] = useState("");
     const [invFirstName, setInvFirstName] = useState("");
     const [invLastName, setInvLastName] = useState("");
     const [invRole, setInvRole] = useState("");
+    const [invEmploymentType, setInvEmploymentType] = useState("full_time");
     const [invRate, setInvRate] = useState("");
     const [invAs, setInvAs] = useState<"employee" | "manager">("employee");
 
@@ -36,11 +39,25 @@ export default function OwnerEmployeesPage() {
 
     const inviteMutation = useMutation({
         mutationFn: (data: any) => apiPost("/employees/invite", data),
-        onSuccess: () => {
-            toast.success("Invitation sent!");
+        onSuccess: (response: any) => {
+            toast.success("Employee created successfully!");
+            if (response?.invite_link) {
+                setGeneratedLink(response.invite_link);
+            }
             queryClient.invalidateQueries({ queryKey: ["employees"] });
             setInviteOpen(false);
             resetForm();
+        },
+        onError: (err: Error) => toast.error(err.message),
+    });
+
+    const resendInviteMutation = useMutation({
+        mutationFn: (employeeId: string) => apiPost("/employees/resend-invite", { employee_id: employeeId }),
+        onSuccess: (response: any) => {
+            toast.success("Invitation link regenerated!");
+            if (response?.invite_link) {
+                setGeneratedLink(response.invite_link);
+            }
         },
         onError: (err: Error) => toast.error(err.message),
     });
@@ -50,6 +67,7 @@ export default function OwnerEmployeesPage() {
         setInvFirstName("");
         setInvLastName("");
         setInvRole("");
+        setInvEmploymentType("full_time");
         setInvRate("");
         setInvAs("employee");
     };
@@ -64,6 +82,7 @@ export default function OwnerEmployeesPage() {
             first_name: invFirstName,
             last_name: invLastName,
             role_title: invRole,
+            employment_type: invEmploymentType,
             weekday_rate: parseFloat(invRate),
             invite_as: invAs,
         });
@@ -109,13 +128,25 @@ export default function OwnerEmployeesPage() {
             key: "actions",
             label: "",
             render: (row) => (
-                <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={(e) => { e.stopPropagation(); router.push(`/owner/employees/${row.employee_id}`); }}
-                >
-                    <Eye size={14} /> View
-                </Button>
+                <div className="flex gap-2 justify-end">
+                    {row.status === "invited" && (
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={(e) => { e.stopPropagation(); resendInviteMutation.mutate(row.employee_id); }}
+                            loading={resendInviteMutation.isPending}
+                        >
+                            <RefreshCw size={14} className="mr-1" /> Resend
+                        </Button>
+                    )}
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={(e) => { e.stopPropagation(); router.push(`/owner/employees/${row.employee_id}`); }}
+                    >
+                        <Eye size={14} className="mr-1" /> View
+                    </Button>
+                </div>
             ),
         },
     ];
@@ -181,7 +212,23 @@ export default function OwnerEmployeesPage() {
                             <Input label="Last Name" placeholder="Doe" value={invLastName} onChange={(e) => setInvLastName(e.target.value)} />
                         </div>
                         <Input label="Email" type="email" placeholder="jane@company.com" value={invEmail} onChange={(e) => setInvEmail(e.target.value)} />
-                        <Input label="Role Title" placeholder="e.g. Barista, Kitchen Hand" value={invRole} onChange={(e) => setInvRole(e.target.value)} />
+
+                        <div className="grid grid-cols-2 gap-3">
+                            <Input label="Role Title" placeholder="e.g. Barista" value={invRole} onChange={(e) => setInvRole(e.target.value)} />
+                            <div className="space-y-1.5">
+                                <label className="text-sm font-medium">Employment Type</label>
+                                <select
+                                    value={invEmploymentType}
+                                    onChange={(e) => setInvEmploymentType(e.target.value)}
+                                    className="flex h-10 w-full rounded-lg border border-[hsl(var(--input))] bg-transparent px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]/20"
+                                >
+                                    <option value="full_time">Full Time</option>
+                                    <option value="part_time">Part Time</option>
+                                    <option value="casual">Casual</option>
+                                </select>
+                            </div>
+                        </div>
+
                         <Input label="Base Hourly Rate ($)" type="number" placeholder="28.50" value={invRate} onChange={(e) => setInvRate(e.target.value)} />
                     </div>
 
@@ -194,6 +241,39 @@ export default function OwnerEmployeesPage() {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
-        </DashboardLayout>
+
+            {/* Manual Link Sharing Dialog */}
+            <Dialog open={!!generatedLink} onOpenChange={(open) => { if (!open) setGeneratedLink(null); setCopied(false); }}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Share Invitation Link</DialogTitle>
+                        <DialogDescription>
+                            Because your email server is not fully configured, you must send this link manually to the employee so they can complete onboarding.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="flex items-center gap-2 p-3 bg-[hsl(var(--muted))] rounded-lg">
+                        <Input value={generatedLink || ""} readOnly className="font-mono text-xs w-full bg-transparent border-0 focus-visible:ring-0 px-1 truncate" />
+                        <Button
+                            variant="secondary"
+                            size="icon"
+                            className="shrink-0"
+                            onClick={() => {
+                                if (generatedLink) {
+                                    navigator.clipboard.writeText(generatedLink);
+                                    setCopied(true);
+                                    toast.success("Link copied to clipboard!");
+                                    setTimeout(() => setCopied(false), 2000);
+                                }
+                            }}
+                        >
+                            {copied ? <Check size={16} className="text-[hsl(var(--success))]" /> : <Copy size={16} />}
+                        </Button>
+                    </div>
+                    <DialogFooter>
+                        <Button onClick={() => setGeneratedLink(null)}>Done</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+        </DashboardLayout >
     );
 }

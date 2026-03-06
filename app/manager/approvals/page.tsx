@@ -60,7 +60,7 @@ export default function ManagerApprovalsPage() {
                                                 <Clock size={18} className="text-[hsl(var(--warning))]" />
                                             </div>
                                             <div>
-                                                <p className="font-medium">{ts.employee_id}</p>
+                                                <p className="font-medium">{ts.Employee ? `${ts.Employee.first_name} ${ts.Employee.last_name}` : ts.employee_id?.slice(0, 8) + "…"}</p>
                                                 <p className="text-sm text-[hsl(var(--muted-foreground))]">{new Date(ts.date).toLocaleDateString("en-AU")} · {ts.actual_hours?.toFixed(1)}h · ${ts.gross_pay?.toFixed(2)}</p>
                                             </div>
                                         </div>
@@ -96,7 +96,7 @@ export default function ManagerApprovalsPage() {
                                                 <Calendar size={18} className="text-[hsl(var(--info))]" />
                                             </div>
                                             <div>
-                                                <p className="font-medium">{lr.employee_id}</p>
+                                                <p className="font-medium">{lr.Employee ? `${lr.Employee.first_name} ${lr.Employee.last_name}` : lr.employee_id?.slice(0, 8) + "…"}</p>
                                                 <p className="text-sm text-[hsl(var(--muted-foreground))]">
                                                     {new Date(lr.start_date).toLocaleDateString("en-AU")} – {new Date(lr.end_date).toLocaleDateString("en-AU")} · {lr.total_hours}h
                                                 </p>

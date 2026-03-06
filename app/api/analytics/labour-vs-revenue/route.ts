@@ -20,9 +20,10 @@ export async function GET(request: NextRequest) {
         const from = searchParams.get('from');
         const to = searchParams.get('to');
 
-        if (!from || !to) {
-            return errorResponse('Missing from or to date parameters', 400);
-        }
+        // Default to current month if not specified
+        const now = new Date();
+        const defaultFrom = from || new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+        const defaultTo = to || new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
 
         const supabase = await createClient();
 
@@ -39,17 +40,16 @@ export async function GET(request: NextRequest) {
             .from('PayrollLine')
             .select('gross_wages, Payroll!inner(period_start, period_end)')
             .eq('business_id', authUser.business_id) // Assuming business_id is on PayrollLine or join correctly
-            .filter('Payroll.period_start', 'gte', from)
-            .filter('Payroll.period_end', 'lte', to);
+            .filter('Payroll.period_start', 'gte', defaultFrom)
+            .filter('Payroll.period_end', 'lte', defaultTo);
 
-        // Note: Check if business_id is on PayrollLine. Based on schema it might not be.
-        // Let's refine the query:
+        // Refined query with proper business_id filtering
         const { data: lines, error: lineError } = await supabase
             .from('PayrollLine')
             .select('gross_wages, Payroll!inner(*)')
             .eq('Payroll.business_id', authUser.business_id)
-            .gte('Payroll.period_start', from)
-            .lte('Payroll.period_end', to);
+            .gte('Payroll.period_start', defaultFrom)
+            .lte('Payroll.period_end', defaultTo);
 
         if (lineError) return errorResponse(lineError.message);
 
@@ -60,8 +60,8 @@ export async function GET(request: NextRequest) {
             .from('SalesData')
             .select('total_sales')
             .eq('business_id', authUser.business_id)
-            .gte('sales_date', from)
-            .lte('sales_date', to);
+            .gte('sales_date', defaultFrom)
+            .lte('sales_date', defaultTo);
 
         if (sError) return errorResponse(sError.message);
 
@@ -80,15 +80,12 @@ export async function GET(request: NextRequest) {
         }
 
         return successResponse({
-            period: { from, to },
-            total_labour_cost: Number(totalLabourCost.toFixed(2)),
+            total_labour: Number(totalLabourCost.toFixed(2)),
             total_revenue: Number(totalRevenue.toFixed(2)),
             labour_percentage: Number(labourPercentage.toFixed(2)),
-            thresholds: {
-                min: business?.labour_threshold_min ?? 10,
-                max: business?.labour_theshold_max ?? 50
-            },
-            status
+            threshold_min: business?.labour_threshold_min ?? 10,
+            threshold_max: business?.labour_theshold_max ?? 50,
+            alert_status: status,
         });
     } catch (err: any) {
         return errorResponse(err.message, 500);
