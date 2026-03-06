@@ -1,7 +1,4 @@
-<<<<<<< HEAD
-=======
 "use client";
->>>>>>> a18f2006569db4fc7e18af6b1b14b445a3e18b47
 
 import React from "react";
 import Link from "next/link";
@@ -67,10 +64,6 @@ const item = {
 
 export default function LandingPage() {
   return (
-<<<<<<< HEAD
-    <div className="">
-      <h2 className="text-center ">Welcome to the payroll system</h2>
-=======
     <div className="min-h-screen bg-[hsl(var(--background))]">
       {/* Nav */}
       <nav className="fixed top-0 z-50 w-full border-b border-[hsl(var(--border))]/50 bg-[hsl(var(--background))]/80 backdrop-blur-lg">
@@ -110,7 +103,7 @@ export default function LandingPage() {
             <h1 className="text-5xl sm:text-6xl lg:text-7xl font-bold tracking-tight leading-tight mb-6">
               Workforce management,
               <br />
-              <span className="bg-gradient-to-r from-[hsl(var(--brand))] to-[hsl(220,90%,70%)] bg-clip-text text-transparent">
+              <span className="bg-linear-to-r from-[hsl(var(--brand))] to-[hsl(220,90%,70%)] bg-clip-text text-transparent">
                 simplified.
               </span>
             </h1>
@@ -137,8 +130,8 @@ export default function LandingPage() {
 
         {/* Background gradient */}
         <div className="absolute inset-0 -z-10 overflow-hidden">
-          <div className="absolute left-1/2 top-0 -translate-x-1/2 -translate-y-1/2 h-[600px] w-[600px] rounded-full bg-[hsl(var(--brand))]/10 blur-3xl" />
-          <div className="absolute right-0 top-1/2 h-[400px] w-[400px] rounded-full bg-[hsl(220,90%,70%)]/10 blur-3xl" />
+          <div className="absolute left-1/2 top-0 -translate-x-1/2 -translate-y-1/2 h-150 w-150 rounded-full bg-[hsl(var(--brand))]/10 blur-3xl" />
+          <div className="absolute right-0 top-1/2 h-100 w-100 rounded-full bg-[hsl(220,90%,70%)]/10 blur-3xl" />
         </div>
       </section>
 
@@ -232,7 +225,6 @@ export default function LandingPage() {
           </p>
         </div>
       </footer>
->>>>>>> a18f2006569db4fc7e18af6b1b14b445a3e18b47
     </div>
   );
 }
