@@ -16,6 +16,7 @@ import {
     CheckCircle,
     Loader2,
 } from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
 
 const onboardingSteps = [
     { label: "Set Password", icon: <Lock size={20} /> },
@@ -44,9 +45,15 @@ export default function OnboardingPage() {
     const [bankDetails, setBankDetails] = useState("");
     const [kioskPin, setKioskPin] = useState("");
 
-    // Check if user needs onboarding
+    // Check if user needs onboarding, waiting for Supabase to parse the #access_token from email
     useEffect(() => {
+        const supabase = createClient();
+        let hasChecked = false;
+
         async function checkStatus() {
+            if (hasChecked) return;
+            hasChecked = true;
+
             try {
                 const res = await fetch("/api/onboarding/status");
                 const data = await res.json();
@@ -64,7 +71,21 @@ export default function OnboardingPage() {
                 setCheckingStatus(false);
             }
         }
-        checkStatus();
+
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+            if (session) {
+                checkStatus();
+            } else if (event === 'INITIAL_SESSION') {
+                // If there's no session and no hash token in URL, they aren't invited
+                if (!window.location.hash.includes('access_token')) {
+                    router.push("/login");
+                }
+            }
+        });
+
+        return () => {
+            subscription.unsubscribe();
+        };
     }, [router]);
 
     const handleComplete = async () => {
@@ -135,8 +156,8 @@ export default function OnboardingPage() {
                         <React.Fragment key={s.label}>
                             <div
                                 className={`flex h-10 w-10 items-center justify-center rounded-full transition-all ${i <= step
-                                        ? "bg-[hsl(var(--brand))] text-white"
-                                        : "bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))]"
+                                    ? "bg-[hsl(var(--brand))] text-white"
+                                    : "bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))]"
                                     }`}
                                 title={s.label}
                             >

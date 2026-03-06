@@ -31,7 +31,8 @@ export default function OwnerAnalyticsPage() {
         mutationFn: (data: any) => apiPost("/sales", data),
         onSuccess: () => {
             toast.success("Sales recorded");
-            queryClient.invalidateQueries({ queryKey: ["sales", "labour-vs-revenue"] });
+            queryClient.invalidateQueries({ queryKey: ["sales"] });
+            queryClient.invalidateQueries({ queryKey: ["labour-vs-revenue"] });
             setAddSalesOpen(false);
             setTotalSales("");
             setCogs("");

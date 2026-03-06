@@ -55,19 +55,29 @@ export default function ManagerDashboardPage() {
                             <p className="text-sm text-[hsl(var(--muted-foreground))]">All caught up! ✓</p>
                         ) : (
                             <div className="space-y-3">
-                                {pendingTimesheets.slice(0, 5).map((ts: any) => (
-                                    <div key={ts.timesheet_id} className="flex items-center justify-between py-2 border-b border-[hsl(var(--border))] last:border-0">
-                                        <div>
-                                            <p className="text-sm font-medium">{ts.employee_id}</p>
-                                            <p className="text-xs text-[hsl(var(--muted-foreground))]">
-                                                {new Date(ts.date).toLocaleDateString("en-AU")} · {ts.actual_hours?.toFixed(1)}h
-                                            </p>
+                                {pendingTimesheets.slice(0, 5).map((ts: any) => {
+                                    const empName = ts.Employee
+                                        ? `${ts.Employee.first_name} ${ts.Employee.last_name}`
+                                        : ts.employee_id?.slice(0, 8) + "…";
+                                    return (
+                                        <div key={ts.timesheet_id} className="flex items-center justify-between py-2 border-b border-[hsl(var(--border))] last:border-0">
+                                            <div className="flex items-center gap-3">
+                                                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[hsl(var(--brand-light))] text-[hsl(var(--brand))] text-xs font-bold">
+                                                    {ts.Employee ? `${ts.Employee.first_name?.[0] ?? ""}${ts.Employee.last_name?.[0] ?? ""}` : "??"}
+                                                </div>
+                                                <div>
+                                                    <p className="text-sm font-medium">{empName}</p>
+                                                    <p className="text-xs text-[hsl(var(--muted-foreground))]">
+                                                        {new Date(ts.date).toLocaleDateString("en-AU")} · {ts.actual_hours?.toFixed(1)}h
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            <StatusBadge status="pending" />
                                         </div>
-                                        <StatusBadge status="pending" />
-                                    </div>
-                                ))}
+                                    );
+                                })}
                                 {pendingTimesheets.length > 5 && (
-                                    <a href="/manager/timesheets" className="text-sm text-[hsl(var(--brand))] hover:underline">
+                                    <a href="/manager/approvals" className="text-sm text-[hsl(var(--brand))] hover:underline">
                                         View all {pendingTimesheets.length} →
                                     </a>
                                 )}
@@ -86,19 +96,29 @@ export default function ManagerDashboardPage() {
                             <p className="text-sm text-[hsl(var(--muted-foreground))]">No pending requests ✓</p>
                         ) : (
                             <div className="space-y-3">
-                                {pendingLeave.slice(0, 5).map((lr: any) => (
-                                    <div key={lr.request_id} className="flex items-center justify-between py-2 border-b border-[hsl(var(--border))] last:border-0">
-                                        <div>
-                                            <p className="text-sm font-medium">{lr.employee_id}</p>
-                                            <p className="text-xs text-[hsl(var(--muted-foreground))]">
-                                                {new Date(lr.start_date).toLocaleDateString("en-AU")} – {new Date(lr.end_date).toLocaleDateString("en-AU")}
-                                            </p>
+                                {pendingLeave.slice(0, 5).map((lr: any) => {
+                                    const empName = lr.Employee
+                                        ? `${lr.Employee.first_name} ${lr.Employee.last_name}`
+                                        : lr.employee_id?.slice(0, 8) + "…";
+                                    return (
+                                        <div key={lr.request_id} className="flex items-center justify-between py-2 border-b border-[hsl(var(--border))] last:border-0">
+                                            <div className="flex items-center gap-3">
+                                                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[hsl(var(--info-light))] text-[hsl(var(--info))] text-xs font-bold">
+                                                    {lr.Employee ? `${lr.Employee.first_name?.[0] ?? ""}${lr.Employee.last_name?.[0] ?? ""}` : "??"}
+                                                </div>
+                                                <div>
+                                                    <p className="text-sm font-medium">{empName}</p>
+                                                    <p className="text-xs text-[hsl(var(--muted-foreground))]">
+                                                        {new Date(lr.start_date).toLocaleDateString("en-AU")} – {new Date(lr.end_date).toLocaleDateString("en-AU")} · {lr.total_hours}h
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            <StatusBadge status="pending" />
                                         </div>
-                                        <StatusBadge status="pending" />
-                                    </div>
-                                ))}
+                                    );
+                                })}
                                 {pendingLeave.length > 5 && (
-                                    <a href="/manager/leave" className="text-sm text-[hsl(var(--brand))] hover:underline">
+                                    <a href="/manager/approvals" className="text-sm text-[hsl(var(--brand))] hover:underline">
                                         View all {pendingLeave.length} →
                                     </a>
                                 )}

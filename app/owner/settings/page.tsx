@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { DashboardLayout } from "@/components/layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/badge";
@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { Link2, CheckCircle, XCircle, ShieldCheck } from "lucide-react";
 
 export default function OwnerSettingsPage() {
+    const queryClient = useQueryClient();
     // Xero status
     const { data: xeroStatus, isLoading: xeroLoading } = useQuery({
         queryKey: ["xero-status"],
@@ -29,8 +30,9 @@ export default function OwnerSettingsPage() {
 
     const handleXeroDisconnect = async () => {
         try {
-            await apiPost("/xero/disconnect");
+            await apiPost("/xero/status");
             toast.success("Xero disconnected");
+            queryClient.invalidateQueries({ queryKey: ["xero-status"] });
         } catch (err: any) {
             toast.error(err.message);
         }

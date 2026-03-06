@@ -6,6 +6,7 @@ import { DashboardLayout } from "@/components/layout";
 import { MetricCard } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { apiGet } from "@/lib/api-client";
+import Link from "next/link";
 import { Users, CalendarDays, FileText, Palmtree, DollarSign, AlertTriangle } from "lucide-react";
 
 export default function OwnerDashboardPage() {
@@ -89,14 +90,14 @@ export default function OwnerDashboardPage() {
                         { label: "Review Timesheets", href: "/owner/timesheets", icon: <FileText size={18} /> },
                         { label: "Run Payroll", href: "/owner/payroll", icon: <DollarSign size={18} /> },
                     ].map((action) => (
-                        <a
+                        <Link
                             key={action.label}
                             href={action.href}
                             className="flex flex-col items-center gap-2 rounded-xl border border-[hsl(var(--border))] p-4 text-center text-sm font-medium text-[hsl(var(--muted-foreground))] transition-all hover:border-[hsl(var(--brand))] hover:text-[hsl(var(--brand))] hover:shadow-sm"
                         >
                             {action.icon}
                             {action.label}
-                        </a>
+                        </Link>
                     ))}
                 </div>
             </div>

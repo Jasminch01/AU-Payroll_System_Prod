@@ -55,14 +55,11 @@ export async function GET(request: NextRequest) {
         const labourCostToday = timesheetsToday?.reduce((sum, t) => sum + Number(t.gross_pay), 0) ?? 0;
 
         return successResponse({
-            stats: {
-                active_employees: employeeCount ?? 0,
-                pending_timesheets: pendingTimesheets ?? 0,
-                pending_leave: pendingLeave ?? 0,
-                shifts_today: shiftsToday ?? 0,
-                labour_cost_today: Number(labourCostToday.toFixed(2)),
-            },
-            role: authUser.role
+            active_employees: employeeCount ?? 0,
+            pending_timesheets: pendingTimesheets ?? 0,
+            pending_leave: pendingLeave ?? 0,
+            shifts_today: shiftsToday ?? 0,
+            estimated_labour_cost_today: Number(labourCostToday.toFixed(2)),
         });
     } catch (err: any) {
         return errorResponse(err.message, 500);
