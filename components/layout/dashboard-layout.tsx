@@ -69,9 +69,6 @@ export function DashboardLayout({
             {/* Main Content Area — offset by sidebar width */}
             <div className="flex flex-1 flex-col lg:ml-[260px]">
                 <TopNav
-                    pageTitle={pageTitle}
-                    pageDescription={pageDescription}
-                    actions={actions}
                     onMenuClick={() => setMobileMenuOpen(!mobileMenuOpen)}
                 />
 
@@ -82,6 +79,21 @@ export function DashboardLayout({
                     transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
                     className="flex-1 p-6"
                 >
+                    {/* Move the title and actions to the page body */}
+                    <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
+                        <div>
+                            <h1 className="text-2xl font-bold tracking-tight text-[hsl(var(--foreground))]">{pageTitle}</h1>
+                            {pageDescription && (
+                                <p className="text-[hsl(var(--muted-foreground))] mt-1">{pageDescription}</p>
+                            )}
+                        </div>
+                        {actions && (
+                            <div className="flex items-center gap-3 shrink-0">
+                                {actions}
+                            </div>
+                        )}
+                    </div>
+
                     {children}
                 </motion.main>
             </div>

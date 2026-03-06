@@ -156,12 +156,6 @@ export default function OwnerEmployeesPage() {
             role="owner"
             pageTitle="Employees"
             pageDescription="Manage your team"
-            actions={
-                <Button onClick={() => setInviteOpen(true)}>
-                    <UserPlus size={16} />
-                    Invite Employee
-                </Button>
-            }
         >
             <DataTable
                 columns={columns}
@@ -172,6 +166,12 @@ export default function OwnerEmployeesPage() {
                 emptyMessage="No employees yet. Invite your first team member!"
                 emptyIcon={<UserPlus size={40} />}
                 loading={isLoading}
+                actions={
+                    <Button onClick={() => setInviteOpen(true)}>
+                        <UserPlus size={16} className="mr-2" />
+                        Invite Employee
+                    </Button>
+                }
             />
 
             {/* Invite Dialog */}

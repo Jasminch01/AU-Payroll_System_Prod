@@ -2,23 +2,17 @@
 
 import React, { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Bell, Search, Menu, User, Settings, LogOut, ChevronDown } from "lucide-react";
+import { Bell, Menu, User, Settings, LogOut, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
 import { motion, AnimatePresence } from "framer-motion";
 
 interface TopNavProps {
-    pageTitle: string;
-    pageDescription?: string;
     onMenuClick?: () => void;
-    actions?: React.ReactNode;
 }
 
 export function TopNav({
-    pageTitle,
-    pageDescription,
     onMenuClick,
-    actions,
 }: TopNavProps) {
     const router = useRouter();
     const { user, fullName, initials, isLoading } = useAuth();
@@ -64,81 +58,32 @@ export function TopNav({
 
     return (
         <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-[hsl(var(--border))] bg-[hsl(var(--card))]/80 px-6 backdrop-blur-md">
-            {/* Left — Title */}
-            <div className="flex items-center gap-4">
-                {/* Mobile menu button */}
+            {/* Left — Mobile Menu Toggle */}
+            <div className="flex items-center">
                 <button
                     onClick={onMenuClick}
                     className="rounded-lg p-2 text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted))] transition-colors lg:hidden"
                 >
                     <Menu size={20} />
                 </button>
-
-                <div>
-                    <h1 className="text-lg font-semibold text-[hsl(var(--foreground))]">{pageTitle}</h1>
-                    {pageDescription && (
-                        <p className="text-sm text-[hsl(var(--muted-foreground))]">{pageDescription}</p>
-                    )}
-                </div>
             </div>
 
-            {/* Right — Actions + Profile */}
+            {/* Right — Notifications + Profile */}
             <div className="flex items-center gap-2">
-                {/* Custom page actions (e.g. "Add Employee" button) */}
-                {actions}
-
-                {/* Global Search */}
-                <button
-                    className="flex h-9 w-9 items-center justify-center rounded-lg text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted))] transition-colors"
-                    title="Search"
-                >
-                    <Search size={18} />
-                </button>
-
-                {/* Notifications */}
-                <button
-                    className="relative flex h-9 w-9 items-center justify-center rounded-lg text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted))] transition-colors"
-                    title="Notifications"
-                >
-                    <Bell size={18} />
-                    {/* Notification dot */}
-                    <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-[hsl(var(--danger))]" />
-                </button>
-
-                {/* Divider */}
-                <div className="mx-1 h-6 w-px bg-[hsl(var(--border))]" />
-
                 {/* User Profile Dropdown */}
                 <div ref={dropdownRef} className="relative">
                     <button
                         onClick={() => setProfileOpen(!profileOpen)}
                         className={cn(
-                            "flex items-center gap-2.5 rounded-xl px-2.5 py-1.5 transition-all duration-150",
-                            profileOpen
-                                ? "bg-[hsl(var(--muted))]"
-                                : "hover:bg-[hsl(var(--muted))]"
+                            "flex items-center justify-center rounded-full transition-all duration-150 ring-offset-[hsl(var(--background))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] focus-visible:ring-offset-2",
+                            profileOpen ? "ring-2 ring-[hsl(var(--brand))]" : "hover:opacity-80"
                         )}
+                        title="Profile Menu"
                     >
-                        {/* Avatar */}
-                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[hsl(var(--brand))] to-[hsl(var(--brand-dark,var(--brand)))] text-white text-xs font-bold uppercase shadow-sm">
+                        {/* Avatar Only */}
+                        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-[hsl(var(--brand))] to-[hsl(var(--brand-dark,var(--brand)))] text-white text-[10px] sm:text-xs font-bold uppercase shadow-sm">
                             {isLoading ? "…" : initials}
                         </div>
-                        {/* Name + Role */}
-                        <div className="hidden sm:block text-left">
-                            <p className="text-sm font-medium text-[hsl(var(--foreground))] leading-tight truncate max-w-[120px]">
-                                {isLoading ? "Loading…" : fullName || "User"}
-                            </p>
-                            <p className="text-[11px] text-[hsl(var(--muted-foreground))] capitalize leading-tight">
-                                {user?.role || ""}
-                            </p>
-                        </div>
-                        <ChevronDown
-                            size={14}
-                            className={cn(
-                                "hidden sm:block text-[hsl(var(--muted-foreground))] transition-transform duration-200",
-                                profileOpen && "rotate-180"
-                            )}
-                        />
                     </button>
 
                     {/* Dropdown Menu */}

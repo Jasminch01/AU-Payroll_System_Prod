@@ -66,7 +66,17 @@ export default function OwnerRosterPage() {
         onSuccess: () => {
             toast.success("Shift created");
             queryClient.invalidateQueries({ queryKey: ["shifts"] });
+            queryClient.invalidateQueries({ queryKey: ["rosters"] }); // Invalidate rosters in case one was auto-created
             setAddShiftOpen(false);
+        },
+        onError: (err: Error) => toast.error(err.message),
+    });
+
+    const publishRosterMutation = useMutation({
+        mutationFn: (rosterId: string) => apiPut(`/rosters/${rosterId}`, { status: "published" }),
+        onSuccess: () => {
+            toast.success("Roster published successfully!");
+            queryClient.invalidateQueries({ queryKey: ["rosters"] });
         },
         onError: (err: Error) => toast.error(err.message),
     });
@@ -100,19 +110,30 @@ export default function OwnerRosterPage() {
 
     const activeEmployees = employees.filter((e: any) => e.status === "active");
 
+    // Find the current week's roster
+    const currentRoster = useMemo(() => {
+        return rosters.find((r: any) =>
+            new Date(r.start_date) <= new Date(weekEnd) &&
+            new Date(r.end_date) >= new Date(weekStart)
+        );
+    }, [rosters, weekStart, weekEnd]);
+
     return (
         <DashboardLayout
             role="owner"
             pageTitle="Roster"
             pageDescription={`Week of ${weekDates[0].toLocaleDateString("en-AU", { month: "short", day: "numeric" })} – ${weekDates[6].toLocaleDateString("en-AU", { month: "short", day: "numeric", year: "numeric" })}`}
             actions={
-                <Button onClick={() => { setSelectedDate(formatDate(new Date())); setAddShiftOpen(true); }}>
-                    <Plus size={16} /> Add Shift
+                <Button onClick={() => {
+                    setSelectedDate(formatDate(new Date()));
+                    setAddShiftOpen(true);
+                }}>
+                    <Plus size={16} className="mr-2" /> Add Shift
                 </Button>
             }
         >
-            {/* Week Navigation */}
-            <div className="flex items-center justify-between mb-6">
+            {/* Week Navigation & Roster Actions */}
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 gap-4">
                 <div className="flex items-center gap-2">
                     <Button variant="outline" size="icon" onClick={() => setWeekOffset(weekOffset - 1)}>
                         <ChevronLeft size={18} />
@@ -122,6 +143,22 @@ export default function OwnerRosterPage() {
                         <ChevronRight size={18} />
                     </Button>
                 </div>
+
+                {currentRoster && (
+                    <div className="flex items-center gap-3">
+                        <StatusBadge status={currentRoster.status} />
+                        {currentRoster.status === 'draft' && shifts.length > 0 && (
+                            <Button
+                                variant="default"
+                                className="bg-[hsl(var(--success))] text-white hover:bg-[hsl(var(--success))]/90"
+                                onClick={() => publishRosterMutation.mutate(currentRoster.roster_id)}
+                                loading={publishRosterMutation.isPending}
+                            >
+                                Publish Roster
+                            </Button>
+                        )}
+                    </div>
+                )}
             </div>
 
             {/* Roster Grid */}
@@ -135,11 +172,17 @@ export default function OwnerRosterPage() {
                                 </th>
                                 {weekDates.map((d, i) => {
                                     const isToday = formatDate(d) === formatDate(new Date());
+                                    const today = new Date();
+                                    today.setHours(0, 0, 0, 0);
+                                    const dMidnight = new Date(d);
+                                    dMidnight.setHours(0, 0, 0, 0);
+                                    const isPast = dMidnight < today;
+
                                     return (
                                         <th
                                             key={i}
-                                            className={`px-3 py-3 text-center font-medium min-w-28 ${isToday ? "text-[hsl(var(--brand))] bg-[hsl(var(--brand-light))]" : "text-[hsl(var(--muted-foreground))]"
-                                                }`}
+                                            className={`px-3 py-3 text-center font-medium min-w-28 ${isToday ? "text-[hsl(var(--brand))] bg-[hsl(var(--brand-light))]" : (isPast ? "text-[hsl(var(--muted-foreground))] opacity-50" : "text-[hsl(var(--muted-foreground))]")}
+                                                `}
                                         >
                                             <div className="text-xs">{DAYS[i]}</div>
                                             <div className="text-sm font-semibold">{d.getDate()}</div>
@@ -169,16 +212,31 @@ export default function OwnerRosterPage() {
                                         {weekDates.map((d, i) => {
                                             const dateStr = formatDate(d);
                                             const dayShifts = shiftGrid[emp.employee_id]?.[dateStr] || [];
+
+                                            const today = new Date();
+                                            today.setHours(0, 0, 0, 0);
+                                            const dMidnight = new Date(d);
+                                            dMidnight.setHours(0, 0, 0, 0);
+                                            const isPast = dMidnight < today;
+
                                             return (
                                                 <td
                                                     key={i}
-                                                    className="px-2 py-2 text-center cursor-pointer hover:bg-[hsl(var(--brand-light))]/50 transition-colors"
-                                                    onClick={() => { setSelectedDate(dateStr); setShiftEmployee(emp.employee_id); setAddShiftOpen(true); }}
+                                                    className={`px-2 py-2 text-center transition-colors ${isPast ? "bg-black/5 opacity-60 cursor-not-allowed" : "cursor-pointer hover:bg-[hsl(var(--brand-light))]/50"}`}
+                                                    onClick={() => {
+                                                        if (!isPast) {
+                                                            setSelectedDate(dateStr);
+                                                            setShiftEmployee(emp.employee_id);
+                                                            setAddShiftOpen(true);
+                                                        } else {
+                                                            toast.error("Cannot add shifts to past dates.");
+                                                        }
+                                                    }}
                                                 >
                                                     {dayShifts.map((s: any, si: number) => (
                                                         <div
                                                             key={si}
-                                                            className="rounded-lg bg-[hsl(var(--brand-light))] border border-[hsl(var(--brand))]/20 px-2 py-1 text-xs text-[hsl(var(--brand))] font-medium mb-1"
+                                                            className={`rounded-lg bg-[hsl(var(--brand-light))] border border-[hsl(var(--brand))]/20 px-2 py-1 text-xs text-[hsl(var(--brand))] font-medium mb-1 ${isPast ? "opacity-75" : ""}`}
                                                         >
                                                             <Clock size={10} className="inline mr-1" />
                                                             {new Date(s.start_time).toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit" })}
