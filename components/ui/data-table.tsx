@@ -28,6 +28,7 @@ interface DataTableProps<T> {
     onRowClick?: (row: T) => void;
     className?: string;
     loading?: boolean;
+    actions?: React.ReactNode;
 }
 
 export function DataTable<T extends Record<string, any>>({
@@ -41,6 +42,7 @@ export function DataTable<T extends Record<string, any>>({
     onRowClick,
     className,
     loading = false,
+    actions,
 }: DataTableProps<T>) {
     const [search, setSearch] = React.useState("");
     const [sortKey, setSortKey] = React.useState<string | null>(null);
@@ -83,17 +85,28 @@ export function DataTable<T extends Record<string, any>>({
 
     return (
         <div className={cn("space-y-4", className)}>
-            {/* Search Bar */}
-            {searchable && (
-                <div className="relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[hsl(var(--muted-foreground))]" />
-                    <input
-                        type="text"
-                        placeholder={searchPlaceholder}
-                        value={search}
-                        onChange={(e) => setSearch(e.target.value)}
-                        className="flex h-10 w-full max-w-sm rounded-lg border border-[hsl(var(--input))] bg-transparent pl-9 pr-3 py-2 text-sm transition-all placeholder:text-[hsl(var(--muted-foreground))] focus:outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]/20 focus:border-[hsl(var(--brand))]"
-                    />
+            {/* Toolbar (Search & Actions) */}
+            {(searchable || actions) && (
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                    {searchable ? (
+                        <div className="relative w-full sm:max-w-sm">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[hsl(var(--muted-foreground))]" />
+                            <input
+                                type="text"
+                                placeholder={searchPlaceholder}
+                                value={search}
+                                onChange={(e) => setSearch(e.target.value)}
+                                className="flex h-10 w-full rounded-lg border border-[hsl(var(--input))] bg-transparent pl-9 pr-3 py-2 text-sm transition-all placeholder:text-[hsl(var(--muted-foreground))] focus:outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]/20 focus:border-[hsl(var(--brand))]"
+                            />
+                        </div>
+                    ) : (
+                        <div />
+                    )}
+                    {actions && (
+                        <div className="w-full sm:w-auto flex shrink-0">
+                            {actions}
+                        </div>
+                    )}
                 </div>
             )}
 

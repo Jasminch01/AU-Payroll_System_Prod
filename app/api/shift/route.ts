@@ -77,9 +77,19 @@ export async function POST(request: NextRequest) {
 
         const { employee_id, roster_id, shift_date, start_time, end_time, shift_type } = body;
 
-        // Validate time order
+        // Validate time order and prevent past shifts
         const start = new Date(start_time);
         const end = new Date(end_time);
+
+        // Simple local date check - ensure shift_date is not strictly before today
+        const today = new Date();
+        const todayLocalStr = today.getFullYear() + '-' +
+            String(today.getMonth() + 1).padStart(2, '0') + '-' +
+            String(today.getDate()).padStart(2, '0');
+
+        if (shift_date < todayLocalStr) {
+            return errorResponse('Cannot create shifts or rosters for past dates', 400);
+        }
 
         if (start >= end) {
             return errorResponse('start_time must be before end_time', 400);
@@ -111,12 +121,60 @@ export async function POST(request: NextRequest) {
             }
         }
 
+        // ====== STRICT ROSTER LINKAGE (Auto-create or link) ======
+        // 1. Calculate the week block (Monday to Sunday) for the given shift_date
+        const dateObj = new Date(shift_date);
+        const day = dateObj.getDay();
+        const diffToMonday = dateObj.getDate() - day + (day === 0 ? -6 : 1); // adjust when day is sunday
+
+        const monday = new Date(dateObj);
+        monday.setDate(diffToMonday);
+        const sunday = new Date(monday);
+        sunday.setDate(monday.getDate() + 6);
+
+        const start_date_str = monday.toISOString().split('T')[0];
+        const end_date_str = sunday.toISOString().split('T')[0];
+
+        // 2. Check if a roster already exists for this week
+        let target_roster_id = roster_id;
+
+        if (!target_roster_id) {
+            const { data: existingRoster } = await supabase
+                .from('Roster')
+                .select('roster_id')
+                .eq('business_id', authUser.business_id)
+                .lte('start_date', end_date_str)
+                .gte('end_date', start_date_str)
+                .limit(1)
+                .single();
+
+            if (existingRoster) {
+                target_roster_id = existingRoster.roster_id;
+            } else {
+                // 3. Create a new draft roster for this week
+                const { data: newRoster, error: rosterError } = await supabase
+                    .from('Roster')
+                    .insert({
+                        business_id: authUser.business_id,
+                        start_date: start_date_str,
+                        end_date: end_date_str,
+                        status: 'draft',
+                        created_by: authUser.user_id,
+                    })
+                    .select('roster_id')
+                    .single();
+
+                if (rosterError) return errorResponse(`Failed to create linking roster: ${rosterError.message}`, 400);
+                target_roster_id = newRoster.roster_id;
+            }
+        }
+
         const { data: shift, error } = await supabase
             .from('Shift')
             .insert({
                 business_id: authUser.business_id,
                 employee_id: employee_id || null,
-                roster_id: roster_id || null,
+                roster_id: target_roster_id,
                 shift_date,
                 start_time,
                 end_time,
