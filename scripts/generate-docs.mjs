@@ -14,8 +14,8 @@ function walkDir(dir, callback) {
 }
 
 const apiDir = path.join(process.cwd(), 'app', 'api');
-let mdContent = '# Deputy-MVP Backend API Documentation\n\n';
-mdContent += 'This document covers all currently implemented REST API endpoints for the Deputy-MVP platform, extracted directly from the codebase.\n\n';
+let mdContent = '# Australia Payroll System Backend API Documentation\n\n';
+mdContent += 'This document covers all currently implemented REST API endpoints for the Australia Payroll System platform, extracted directly from the codebase.\n\n';
 
 let apiEndpoints = [];
 
@@ -51,7 +51,7 @@ apiEndpoints.sort((a, b) => a.route.localeCompare(b.route));
 
 for (const ep of apiEndpoints) {
     mdContent += `## \`${ep.method}\` ${ep.route}\n\n`;
-    mdContent += ````text\n${ ep.docs } \n```\n\n`;
+    mdContent += "```text\n" + ep.docs + "\n```\n\n";
     mdContent += `---\n\n`;
 }
 

@@ -4,12 +4,14 @@ import { successResponse, errorResponse, validateRequiredFields } from '@/lib/ap
 import { EventType } from '@/types/database';
 import { getNextAttendanceEvent, validateAttendanceTransition } from '@/lib/attendance-logic';
 import bcrypt from 'bcryptjs';
+import { cookies } from 'next/headers';
+import { verifyKioskToken } from '@/lib/kiosk-auth';
 
 /**
  * POST /api/attendance/kiosk
  * 
  * Handle PIN-based clock in/out from a common device (Kiosk)
- * Access: Public (PIN Auth)
+ * Access: Restricted (Kiosk Device Token Required)
  * 
  * Body:
  * {
@@ -21,6 +23,18 @@ import bcrypt from 'bcryptjs';
  */
 export async function POST(request: NextRequest) {
     try {
+        const cookieStore = await cookies();
+        const kioskToken = cookieStore.get('device_kiosk_token');
+
+        if (!kioskToken) {
+            return errorResponse('Device not authorized as a Kiosk. Contact Administrator.', 403);
+        }
+
+        const kioskPayload = await verifyKioskToken(kioskToken.value);
+        if (!kioskPayload) {
+            return errorResponse('Invalid Kiosk token. Please re-authorize this device.', 403);
+        }
+
         const body = await request.json();
         const validationError = validateRequiredFields(body, ['employee_id', 'pin']);
         if (validationError) return errorResponse(validationError, 400);
@@ -39,6 +53,11 @@ export async function POST(request: NextRequest) {
 
         if (empError || !employee) {
             return errorResponse('Invalid Employee ID or inactive employee.', 401);
+        }
+
+        // Security Check: Make sure the employee belongs to this Authorized Kiosk's Business!
+        if (employee.business_id !== kioskPayload.business_id) {
+            return errorResponse('Invalid Employee ID for this location.', 403);
         }
 
         // 2. Verify hashed PIN

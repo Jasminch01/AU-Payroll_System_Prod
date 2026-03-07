@@ -8,7 +8,7 @@ import { StatusBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { apiGet, apiPost } from "@/lib/api-client";
 import { toast } from "sonner";
-import { Link2, CheckCircle, XCircle, ShieldCheck } from "lucide-react";
+import { Link2, CheckCircle, XCircle, ShieldCheck, MonitorSmartphone } from "lucide-react";
 
 export default function OwnerSettingsPage() {
     const queryClient = useQueryClient();
@@ -128,6 +128,28 @@ export default function OwnerSettingsPage() {
                             </table>
                         </div>
                     )}
+                </CardContent>
+            </Card>
+
+            {/* Kiosk Mode Setup */}
+            <Card className="mt-6">
+                <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                        <MonitorSmartphone size={20} /> Kiosk Mode
+                    </CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <div className="text-[hsl(var(--muted-foreground))]">
+                                <p className="font-medium text-[hsl(var(--foreground))]">Setup Kiosk Device</p>
+                                <p className="text-sm">Authorize an iPad or Tablet to securely run Kiosk Mode.</p>
+                            </div>
+                        </div>
+                        <Button onClick={() => window.open("/kiosk/setup", "_blank")}>
+                            <MonitorSmartphone size={16} /> Launch Kiosk
+                        </Button>
+                    </div>
                 </CardContent>
             </Card>
         </DashboardLayout>

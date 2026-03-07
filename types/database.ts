@@ -1,5 +1,5 @@
 // ============================================
-// Deputy-MVP — Database TypeScript Types
+// Australia Payroll System — Database TypeScript Types
 // Matches Supabase PostgreSQL schema exactly
 // ============================================
 

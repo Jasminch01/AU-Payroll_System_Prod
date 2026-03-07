@@ -10,7 +10,7 @@ function walkDir(dir, callback) {
 }
 
 const apiDir = path.join(process.cwd(), 'app', 'api');
-let mdContent = '# Deputy-MVP Backend API Documentation\n\n';
+let mdContent = '# Australia Payroll System Backend API Documentation\n\n';
 mdContent += 'This document covers all currently implemented REST API endpoints for the Deputy-MVP platform, extracted directly from the codebase.\n\n';
 
 let apiEndpoints = [];
