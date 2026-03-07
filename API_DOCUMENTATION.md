@@ -1,6 +1,6 @@
-# Deputy-MVP Backend API Documentation
+# Australia Payroll System Backend API Documentation
 
-This document covers all currently implemented REST API endpoints for the Deputy-MVP platform, extracted directly from the codebase.
+This document covers all currently implemented REST API endpoints for the Australia Payroll System platform, extracted directly from the codebase.
 
 ## `GET` /api/analytics/labour-vs-revenue
 
@@ -37,7 +37,7 @@ Manual entry/Correction by ManagerAccess: Owner, ManagerBody:{  "employee_i
 ## `POST` /api/attendance/kiosk
 
 ```text
-Handle PIN-based clock in/out from a common device (Kiosk)Access: Public (PIN Auth)Body:{  "employee_id": "EMP001",  "pin": "1234",  "event_type": "CLOCK_IN" | "CLOCK_OUT" | "BREAK_START" | "BREAK_END",  "device_info": "Front Desk Tablet" (optional)}
+Handle PIN-based clock in/out from a common device (Kiosk)Access: Restricted (Kiosk Device Token Required)Body:{  "employee_id": "EMP001",  "pin": "1234",  "event_type": "CLOCK_IN" | "CLOCK_OUT" | "BREAK_START" | "BREAK_END",  "device_info": "Front Desk Tablet" (optional)}
 ```
 
 ---
@@ -550,6 +550,30 @@ Get all timesheets for a specific employeeAccess: Owner, Manager, or the Employ
 
 ```text
 Manually trigger timesheet generationAccess: Owner, ManagerBody:{  "start_date": "2026-03-01",  "end_date": "2026-03-07",  "employee_id": "uuid" (optional)}
+```
+
+---
+
+## `POST` /api/upload/avatar
+
+```text
+Upload a profile photoAccess: Any authenticated user (uploads for themselves)Form Data:  file: File (image only)
+```
+
+---
+
+## `POST` /api/upload/certificate
+
+```text
+Upload a certificate file (RSA, Food Safety, First Aid, etc.)Access: Owner, Manager (for their employees), Employee (for themselves)Form Data:  file: File  employee_id: string  certificate_type: "RSA" | "food_safety" | "first_aid" | "other"  issue_date: "YYYY-MM-DD"  expiry_date: "YYYY-MM-DD" (optional)
+```
+
+---
+
+## `POST` /api/upload/document
+
+```text
+Upload a leave request supporting document (medical certificate, etc.)Access: Any authenticated userForm Data:  file: File  leave_request_id: string (optional — can attach later)Returns: { url, path }
 ```
 
 ---

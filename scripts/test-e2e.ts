@@ -26,7 +26,7 @@ async function request(endpoint: string, method: string = 'GET', body?: any) {
 }
 
 async function runTests() {
-    console.log('--- Starting Deputy-MVP E2E API Tests ---\n');
+    console.log('--- Starting Australia Payroll System E2E API Tests ---\n');
 
     const testSuffix = Math.floor(Math.random() * 100000);
     const ownerEmail = `owner${testSuffix}@test.com`;

@@ -18,6 +18,7 @@ import {
     ShieldCheck,
     ChevronLeft,
     ChevronRight,
+    MonitorSmartphone,
 } from "lucide-react";
 
 export interface NavItem {
