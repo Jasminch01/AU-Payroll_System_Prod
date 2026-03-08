@@ -7,11 +7,11 @@ import { logAudit } from '@/lib/audit';
 
 /**
  * POST /api/employees/invite
- * 
+ *
  * Send an invitation to a new employee or manager.
  * Owner/Manager fills in minimal info; the invitee completes self-onboarding.
  * Access: Owner, Manager
- * 
+ *
  * Body:
  * {
  *   "email": "newemployee@example.com",
@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
             saturday_multiplier = 1.25,
             sunday_multiplier = 1.50,
             public_holiday_multiplier = 2.50,
-            invite_as = 'employee'
+            invite_as = 'employee',
         } = body;
 
         // Only owners can invite managers
@@ -60,9 +60,11 @@ export async function POST(request: NextRequest) {
         }
 
         const adminClient = createAdminClient();
+        // FIX: createClient() returns a promise — await it once and reuse
+        const supabase = await createClient();
 
-        // 1. Check if user already exists
-        const { data: existingEmployee } = await (await createClient())
+        // 1. Check if employee already exists in this business
+        const { data: existingEmployee } = await supabase
             .from('Employee')
             .select('employee_id')
             .eq('email', email)
@@ -73,30 +75,104 @@ export async function POST(request: NextRequest) {
             return errorResponse('An employee with this email already exists in your business', 409);
         }
 
-        // 2. Create auth user with a random temporary password (invitee will set their own)
-        const tempPassword = crypto.randomUUID() + 'Aa1!'; // Satisfies most password policies
-        const { data: authData, error: authError } = await adminClient.auth.admin.createUser({
-            email,
-            password: tempPassword,
-            email_confirm: false, // They'll confirm via invite email
-            user_metadata: {
+        let authUserId = '';
+        let inviteSent = false;
+        let actionLink: string | null = null;
+        // FIX: track whether the auth user already existed before this request
+        let isExistingUser = false;
+
+        // 2. Try officially inviting (sends email and creates auth user if they don't exist)
+        const { data: inviteData, error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(email, {
+            data: {
                 first_name,
                 last_name,
                 business_id: authUser.business_id,
                 invite_as,
                 invited_by: authUser.user_id,
-            }
+            },
+            redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/onboarding`,
         });
 
-        if (authError) {
-            return errorResponse(`Failed to create invite: ${authError.message}`, 400);
+        if (inviteError) {
+            if (
+                inviteError.message.toLowerCase().includes('already been registered') ||
+                inviteError.status === 422
+            ) {
+                // Auth user already exists — look them up
+                isExistingUser = true;
+                const { data: { users } } = await adminClient.auth.admin.listUsers();
+                const found = users.find(u => u.email === email);
+                if (!found) {
+                    return errorResponse('User already exists but could not find their auth record.', 400);
+                }
+                authUserId = found.id;
+
+            } else if (inviteError.message.includes('Error sending invite email')) {
+                // SMTP failure — create the auth user manually so we can still generate a link
+                console.error('SUPABASE SMTP ERROR:', inviteError);
+
+                const tempPassword = crypto.randomUUID() + 'Aa1!';
+                const { data: createData, error: createError } = await adminClient.auth.admin.createUser({
+                    email,
+                    password: tempPassword,
+                    email_confirm: true,
+                    user_metadata: {
+                        first_name,
+                        last_name,
+                        business_id: authUser.business_id,
+                        invite_as,
+                        invited_by: authUser.user_id,
+                    },
+                });
+
+                if (createError) {
+                    if (createError.message.toLowerCase().includes('already been registered')) {
+                        // Race condition — user was created between our check and now
+                        isExistingUser = true;
+                        const { data: { users } } = await adminClient.auth.admin.listUsers();
+                        const found = users.find(u => u.email === email);
+                        if (!found) {
+                            // FIX: was silently setting authUserId to '' — now we hard-fail
+                            return errorResponse('User already exists but could not find their auth record.', 400);
+                        }
+                        authUserId = found.id;
+                    } else {
+                        return errorResponse(`Failed to create auth user: ${createError.message}`, 400);
+                    }
+                } else {
+                    authUserId = createData.user.id;
+                }
+            } else {
+                return errorResponse(`Invitation failed: ${inviteError.message}`, 400);
+            }
+        } else {
+            authUserId = inviteData.user.id;
+            inviteSent = true;
         }
 
-        // 3. Generate an employee_id
+        // 3. Generate a shareable link for manual delivery (essential when email fails)
+        // FIX: always use 'magiclink' for existing users — 'invite' tokens are one-time and
+        //      will have already been consumed if the user was created in a previous attempt.
+        const linkType = isExistingUser ? 'magiclink' : 'invite';
+        const { data: linkData, error: linkError } = await adminClient.auth.admin.generateLink({
+            type: linkType,
+            email,
+            options: {
+                redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/onboarding`,
+            },
+        });
+
+        if (linkError) {
+            // Non-fatal — we still proceed; the admin just won't have a copyable link
+            console.error('generateLink error:', linkError);
+        } else if (linkData?.properties?.action_link) {
+            actionLink = linkData.properties.action_link;
+        }
+
+        // 4. Generate a unique employee_id
         const employee_id = `EMP-${Date.now().toString(36).toUpperCase()}`;
 
-        // 4. Create an Employee record with 'invited' status (minimal data)
-        const supabase = await createClient();
+        // 5. Create the Employee record with 'invited' status
         const { data: employeeData, error: empError } = await supabase
             .from('Employee')
             .insert({
@@ -107,10 +183,10 @@ export async function POST(request: NextRequest) {
                 role_title,
                 employment_type: employment_type || null,
                 business_id: authUser.business_id,
-                user_id: authData.user.id,
+                user_id: authUserId,
                 status: 'invited',
                 start_date: new Date().toISOString().split('T')[0],
-                // Placeholder values — employee will fill these in during onboarding
+                // Placeholder values — employee will replace these during onboarding
                 dob: '1900-01-01',
                 bank_details: '',
                 emergency_contact_name: '',
@@ -121,13 +197,16 @@ export async function POST(request: NextRequest) {
             .single();
 
         if (empError) {
-            // Cleanup: remove auth user if employee creation fails
-            await adminClient.auth.admin.deleteUser(authData.user.id);
+            // Rollback: remove the auth user only if we freshly created them here
+            if (!isExistingUser && authUserId) {
+                await adminClient.auth.admin.deleteUser(authUserId);
+            }
             return errorResponse(`Failed to create employee record: ${empError.message}`, 400);
         }
 
-        // 5. Create initial pay rate record
-        await supabase
+        // 6. Create initial pay rate record
+        // FIX: typo 'created_bv' → 'created_by'
+        const { error: rateError } = await supabase
             .from('EmployeeRateHistory')
             .insert({
                 employee_id,
@@ -137,34 +216,32 @@ export async function POST(request: NextRequest) {
                 sunday_multiplier,
                 public_holiday_multiplier,
                 effective_from: new Date().toISOString().split('T')[0],
-                created_bv: authUser.user_id,
+                created_by: authUser.user_id,
             });
 
-        // 6. If inviting as manager, create the User record with 'manager' role
+        if (rateError) {
+            console.error('Failed to insert rate history:', rateError);
+            // Non-fatal for the invite flow — log and continue
+        }
+
+        // 7. If inviting as manager, create the User record with 'manager' role
+        // FIX: moved inside the success path (after employee insert) so it only runs
+        //      if the employee record was actually created successfully
         if (invite_as === 'manager') {
-            await supabase
+            const { error: userRoleError } = await supabase
                 .from('User')
                 .insert({
-                    user_id: authData.user.id,
+                    user_id: authUserId,
                     business_id: authUser.business_id,
                     role: 'manager',
                     first_name,
                     last_name,
                 });
-        }
 
-        // 7. Send the actual invitation email via Supabase
-        const { data: linkData, error: linkError } = await adminClient.auth.admin.generateLink({
-            type: 'invite',
-            email,
-            options: {
-                redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/onboarding`,
+            if (userRoleError) {
+                console.error('Failed to create manager User record:', userRoleError);
+                // Non-fatal — the employee record exists; the manager role can be assigned manually
             }
-        });
-
-        if (linkError) {
-            console.error('Failed to generate invite link:', linkError);
-            // Employee is created, just the email didn't send. Not a hard failure.
         }
 
         // 8. Audit log
@@ -175,14 +252,20 @@ export async function POST(request: NextRequest) {
             action: 'INSERT',
             changedBy: authUser.user_id,
             afterValue: employeeData,
-            reason: `Invited ${invite_as} via email`
+            reason: `Invited ${invite_as} via email`,
         });
 
-        return successResponse({
-            employee: employeeData,
-            invite_link: linkData?.properties?.action_link || null,
-            invite_sent: !linkError,
-        }, `Invitation sent to ${email}`, 201);
+        return successResponse(
+            {
+                employee: employeeData,
+                invite_link: actionLink,
+                invite_sent: inviteSent,
+            },
+            inviteSent
+                ? `Invitation email sent to ${email}`
+                : `Employee added. ${actionLink ? 'Share the invite link manually.' : 'Could not generate invite link — check Supabase logs.'}`,
+            201
+        );
     } catch (error: any) {
         console.error('Invite employee error:', error);
         return errorResponse(error.message || 'Internal server error', 500);

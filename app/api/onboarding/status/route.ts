@@ -25,12 +25,17 @@ export async function GET(request: NextRequest) {
             return errorResponse('Not authenticated', 401);
         }
 
-        // Look up the employee record
-        const { data: employee, error: empError } = await supabase
+        // Look up the employee records
+        const { data: employees, error: empError } = await supabase
             .from('Employee')
             .select('employee_id, first_name, last_name, email, status, business_id, role_title')
-            .eq('user_id', user.id)
-            .maybeSingle();
+            .eq('user_id', user.id);
+
+        let employee = null;
+        if (employees && employees.length > 0) {
+            // If they belong to multiple businesses, prioritize the one needing onboarding
+            employee = employees.find(e => e.status === 'invited') || employees[0];
+        }
 
         if (!employee) {
             // No employee record — might be a pure owner (created via /register)
@@ -47,8 +52,14 @@ export async function GET(request: NextRequest) {
             .eq('business_id', employee.business_id)
             .single();
 
+        // Check if user has an existing password (from auth.users).
+        // Since we can't easily query this, we assume if they have multiple employee records
+        // OR if they aren't 'invited', they might already have a password. 
+        // But let's let the frontend handle the password field.
+
         return successResponse({
             needs_onboarding: employee.status === 'invited',
+            is_existing_user: employees && employees.length > 1,
             employee: {
                 employee_id: employee.employee_id,
                 first_name: employee.first_name,

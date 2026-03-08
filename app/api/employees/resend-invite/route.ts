@@ -41,8 +41,27 @@ export async function POST(request: NextRequest) {
             return errorResponse('Can only resend invites for employees with "invited" status', 400);
         }
 
-        // 2. Generate a new invite link
+        let inviteSent = false;
+        let actionLink: string | null = null;
+
+        // 2. Resend invite via Supabase (sends email)
         const adminClient = createAdminClient();
+        const { data: inviteData, error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(employee.email, {
+            data: {
+                first_name: employee.first_name,
+                last_name: employee.last_name,
+                business_id: authUser.business_id,
+            },
+            redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/onboarding`,
+        });
+
+        if (inviteError) {
+            return errorResponse(`Failed to resend invitation email: ${inviteError.message}`, 500);
+        }
+
+        inviteSent = true;
+
+        // 3. Also generate a link for manual copying
         const { data: linkData, error: linkError } = await adminClient.auth.admin.generateLink({
             type: 'invite',
             email: employee.email,
@@ -51,14 +70,14 @@ export async function POST(request: NextRequest) {
             }
         });
 
-        if (linkError) {
-            return errorResponse(`Failed to resend invite: ${linkError.message}`, 500);
+        if (!linkError && linkData?.properties?.action_link) {
+            actionLink = linkData.properties.action_link;
         }
 
         return successResponse({
-            invite_link: linkData?.properties?.action_link || null,
+            invite_link: actionLink,
             email: employee.email,
-        }, `Invitation resent to ${employee.email}`);
+        }, inviteSent ? `Invitation resent to ${employee.email}` : `Email failed to send, but invite link is ready.`);
     } catch (error: any) {
         console.error('Resend invite error:', error);
         return errorResponse(error.message || 'Internal server error', 500);

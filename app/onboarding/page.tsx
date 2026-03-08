@@ -2,50 +2,31 @@
 
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-import {
-    ArrowRight,
-    ArrowLeft,
-    Lock,
-    Phone,
-    Building,
-    Shield,
-    CheckCircle,
-    Loader2,
-} from "lucide-react";
+import { Loader2, Store, Fan } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-
-const onboardingSteps = [
-    { label: "Set Password", icon: <Lock size={20} /> },
-    { label: "Personal Info", icon: <Phone size={20} /> },
-    { label: "Bank & PIN", icon: <Building size={20} /> },
-    { label: "Complete", icon: <CheckCircle size={20} /> },
-];
 
 export default function OnboardingPage() {
     const router = useRouter();
-    const [step, setStep] = useState(0);
     const [loading, setLoading] = useState(false);
     const [checkingStatus, setCheckingStatus] = useState(true);
+    const [isExistingUser, setIsExistingUser] = useState(false);
 
-    // Onboarding status
+    // Context Data
     const [employeeName, setEmployeeName] = useState("");
     const [businessName, setBusinessName] = useState("");
 
-    // Form fields
+    // Minimal Form fields (as required by the new screenshot)
     const [password, setPassword] = useState("");
-    const [confirmPassword, setConfirmPassword] = useState("");
     const [phone, setPhone] = useState("");
     const [dob, setDob] = useState("");
+    const [bankDetails, setBankDetails] = useState("");
     const [emergencyName, setEmergencyName] = useState("");
     const [emergencyPhone, setEmergencyPhone] = useState("");
-    const [bankDetails, setBankDetails] = useState("");
     const [kioskPin, setKioskPin] = useState("");
 
-    // Check if user needs onboarding, waiting for Supabase to parse the #access_token from email
     useEffect(() => {
         const supabase = createClient();
         let hasChecked = false;
@@ -63,8 +44,12 @@ export default function OnboardingPage() {
                     return;
                 }
 
-                setEmployeeName(`${data.data.employee.first_name} ${data.data.employee.last_name}`);
+                setEmployeeName(`${data.data.employee.first_name || ""} ${data.data.employee.last_name || ""}`.trim());
                 setBusinessName(data.data.business_name);
+
+                if (data.data?.is_existing_user) {
+                    setIsExistingUser(true);
+                }
             } catch {
                 toast.error("Failed to load onboarding status");
             } finally {
@@ -72,14 +57,64 @@ export default function OnboardingPage() {
             }
         }
 
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-            if (session) {
-                checkStatus();
-            } else if (event === 'INITIAL_SESSION') {
-                // If there's no session and no hash token in URL, they aren't invited
-                if (!window.location.hash.includes('access_token')) {
-                    router.push("/login");
+        async function initialize() {
+            try {
+                // First check for PKCE token_hash (invite or magiclink)
+                const params = new URLSearchParams(window.location.search);
+                const token_hash = params.get('token_hash');
+                const type = params.get('type') as any;
+
+                if (token_hash && type) {
+                    const { error } = await supabase.auth.verifyOtp({ token_hash, type });
+                    if (error) {
+                        toast.error('Invalid or expired invitation link.');
+                        router.push('/login');
+                        return;
+                    }
+                    // Strip the ugly token from URL
+                    window.history.replaceState({}, document.title, window.location.pathname);
                 }
+
+                // Second check for implicit flow hash (admin.generateLink defaults to this)
+                if (window.location.hash.includes('access_token')) {
+                    const hashParams = new URLSearchParams(window.location.hash.substring(1));
+                    const access_token = hashParams.get('access_token');
+                    const refresh_token = hashParams.get('refresh_token');
+
+                    if (access_token && refresh_token) {
+                        const { error } = await supabase.auth.setSession({ access_token, refresh_token });
+                        if (error) {
+                            toast.error('Invalid or expired invitation link.');
+                            router.push('/login');
+                            return;
+                        }
+                        // Clean up URL
+                        window.history.replaceState({}, document.title, window.location.pathname);
+                        await checkStatus();
+                        return;
+                    }
+                }
+
+                // Wait a moment for session to naturally populate
+                const { data: { session } } = await supabase.auth.getSession();
+
+                if (session) {
+                    await checkStatus();
+                } else {
+                    // Not signed in and no hash fragment handled
+                    router.push('/login');
+                }
+            } catch (err) {
+                console.error("Initialization error:", err);
+                setCheckingStatus(false);
+            }
+        }
+
+        initialize();
+
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+            if (session && !hasChecked) {
+                checkStatus();
             }
         });
 
@@ -88,7 +123,11 @@ export default function OnboardingPage() {
         };
     }, [router]);
 
-    const handleComplete = async () => {
+    const handleComplete = async (e: React.FormEvent) => {
+        e.preventDefault();
+
+        if (!isExistingUser && password.length < 6) return toast.error("Password must be at least 6 characters");
+
         setLoading(true);
         try {
             const res = await fetch("/api/onboarding/complete", {
@@ -111,8 +150,8 @@ export default function OnboardingPage() {
                 return;
             }
 
-            setStep(3); // Show completion
             toast.success("Welcome aboard! 🎉");
+            router.push("/employee/dashboard");
         } catch {
             toast.error("Something went wrong");
         } finally {
@@ -122,228 +161,207 @@ export default function OnboardingPage() {
 
     if (checkingStatus) {
         return (
-            <div className="flex min-h-screen items-center justify-center">
-                <Loader2 className="h-8 w-8 animate-spin text-[hsl(var(--brand))]" />
+            <div className="flex min-h-screen items-center justify-center bg-gray-50">
+                <Loader2 className="h-10 w-10 animate-spin text-[#3B28A2]" />
             </div>
         );
     }
 
     return (
-        <div className="flex min-h-screen items-center justify-center bg-[hsl(var(--background))] p-6">
-            <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="w-full max-w-lg space-y-8"
-            >
-                {/* Header */}
-                <div className="text-center space-y-2">
-                    <div className="flex justify-center mb-4">
-                        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[hsl(var(--brand))] text-white">
-                            <Shield size={24} />
+        <div className="flex min-h-screen w-full lg:flex-row flex-col">
+            {/* Left Panel - Visual Branding matching screenshot exactly */}
+            <div className="lg:w-1/2 w-full bg-[#261C7F] text-white flex flex-col justify-center items-center p-8 lg:p-12 min-h-[40vh]">
+                <div className="w-full flex flex-col items-center max-w-sm mx-auto text-center space-y-7">
+
+                    {/* Simplified Illustration Area matching cloud/store theme */}
+                    <div className="h-40 w-fit flex flex-col items-center justify-end relative pb-4">
+                        {/* Clouds */}
+                        <div className="flex gap-4 opacity-80 translate-y-2 translate-x-3">
+                            <div className="w-10 h-3 bg-white rounded-full"></div>
+                            <div className="w-6 h-3 bg-white rounded-full"></div>
                         </div>
+                        {/* Store front icon representation */}
+                        <Store size={100} className="text-[#FBA8BA] z-10" strokeWidth={1.5} />
                     </div>
-                    <h1 className="text-3xl font-bold tracking-tight">
-                        Welcome, {employeeName}!
-                    </h1>
-                    <p className="text-[hsl(var(--muted-foreground))]">
-                        Complete your profile to join <strong>{businessName}</strong>
-                    </p>
+
+                    <h2 className="text-[17px] font-medium tracking-wide">
+                        Use AU Payroll System to:
+                    </h2>
+
+                    <ul className="text-left text-[14px] leading-relaxed mx-auto space-y-2 opacity-90 pl-3">
+                        <li className="flex gap-3">
+                            <span className="mt-[7px] block h-1 w-1 shrink-0 rounded-full bg-white"></span>
+                            <span>Get your rosters and view your shifts</span>
+                        </li>
+                        <li className="flex gap-3">
+                            <span className="mt-[7px] block h-1 w-1 shrink-0 rounded-full bg-white"></span>
+                            <span>Easily swap shifts with team mates</span>
+                        </li>
+                        <li className="flex gap-3">
+                            <span className="mt-[7px] block h-1 w-1 shrink-0 rounded-full bg-white"></span>
+                            <span>Share leave and unavailability with your manager</span>
+                        </li>
+                    </ul>
                 </div>
+            </div>
 
-                {/* Step Progress */}
-                <div className="flex items-center justify-center gap-1">
-                    {onboardingSteps.map((s, i) => (
-                        <React.Fragment key={s.label}>
-                            <div
-                                className={`flex h-10 w-10 items-center justify-center rounded-full transition-all ${i <= step
-                                    ? "bg-[hsl(var(--brand))] text-white"
-                                    : "bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))]"
-                                    }`}
-                                title={s.label}
-                            >
-                                {i < step ? <CheckCircle size={18} /> : s.icon}
-                            </div>
-                            {i < onboardingSteps.length - 1 && (
-                                <div className={`h-px w-6 sm:w-10 ${i < step ? "bg-[hsl(var(--brand))]" : "bg-[hsl(var(--border))]"}`} />
-                            )}
-                        </React.Fragment>
-                    ))}
-                </div>
+            {/* Right Panel - Form (Extremely Minimalist) */}
+            <div className="lg:w-1/2 w-full bg-white flex flex-col justify-center lg:h-screen lg:overflow-y-auto custom-scrollbar">
+                <div className="max-w-[400px] w-full mx-auto px-6 py-12 text-center text-slate-800">
+                    {/* Header */}
+                    <div className="mb-8 space-y-2">
+                        <div className="flex justify-center mb-6">
+                            {/* Deputy-style red windmill logo approximation */}
+                            <Fan className="text-[#FF4A4A] h-[42px] w-[42px] stroke-[2.5]" />
+                        </div>
+                        <h1 className="text-[20px] font-semibold tracking-tight text-[#261C7F]">
+                            Join {businessName} on<br />AU Payroll System
+                        </h1>
+                        <p className="text-[#4B5563] text-[13.5px] leading-[1.6] pt-3 px-2">
+                            Your manager from <span className="font-semibold text-[#1F2937]">{businessName}</span> has invited you to start using AU Payroll System to simplify scheduling.
+                        </p>
+                    </div>
 
-                {/* Form Card */}
-                <div className="rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-8 shadow-sm">
-                    <AnimatePresence mode="wait">
-                        {/* Step 0: Password */}
-                        {step === 0 && (
-                            <motion.div
-                                key="password"
-                                initial={{ opacity: 0, x: 20 }}
-                                animate={{ opacity: 1, x: 0 }}
-                                exit={{ opacity: 0, x: -20 }}
-                                className="space-y-5"
-                            >
-                                <h2 className="text-lg font-semibold">Set your password</h2>
-                                <p className="text-sm text-[hsl(var(--muted-foreground))]">
-                                    Create a secure password for your account.
-                                </p>
-                                <Input
-                                    label="Password"
-                                    type="password"
-                                    placeholder="Min. 6 characters"
-                                    value={password}
-                                    onChange={(e) => setPassword(e.target.value)}
-                                />
-                                <Input
-                                    label="Confirm Password"
-                                    type="password"
-                                    placeholder="Re-enter your password"
-                                    value={confirmPassword}
-                                    onChange={(e) => setConfirmPassword(e.target.value)}
-                                    error={confirmPassword && password !== confirmPassword ? "Passwords don't match" : undefined}
-                                />
-                                <Button
-                                    className="w-full"
-                                    size="lg"
-                                    onClick={() => {
-                                        if (password.length < 6) return toast.error("Password must be at least 6 characters");
-                                        if (password !== confirmPassword) return toast.error("Passwords don't match");
-                                        setStep(1);
-                                    }}
-                                >
-                                    Continue <ArrowRight size={18} />
-                                </Button>
-                            </motion.div>
-                        )}
+                    <form onSubmit={handleComplete} className="space-y-[18px] text-left">
+                        {/* Name Field */}
+                        <div className="space-y-[6px]">
+                            <label className="text-[12px] font-bold text-slate-800 ml-1">Full name</label>
+                            <Input
+                                value={employeeName || ""}
+                                disabled
+                                className="bg-[#F9FAFB] text-slate-600 focus-visible:ring-0 focus-visible:ring-offset-0 border-slate-300 h-10 shadow-none text-sm"
+                            />
+                            <p className="text-[11px] text-[#6B7280] text-center px-1 leading-tight pt-1">
+                                Your name should match your payroll details to ensure pay is always on time
+                            </p>
+                        </div>
 
-                        {/* Step 1: Personal Info */}
-                        {step === 1 && (
-                            <motion.div
-                                key="personal"
-                                initial={{ opacity: 0, x: 20 }}
-                                animate={{ opacity: 1, x: 0 }}
-                                exit={{ opacity: 0, x: -20 }}
-                                className="space-y-5"
-                            >
-                                <h2 className="text-lg font-semibold">Personal Information</h2>
+                        {/* Mobile Field */}
+                        <div className="space-y-[6px]">
+                            <label className="text-[12px] font-bold text-slate-800 ml-1">Mobile number</label>
+                            <Input
+                                type="tel"
+                                placeholder="0412 345 678"
+                                value={phone}
+                                onChange={(e) => setPhone(e.target.value)}
+                                required
+                                className="focus-visible:ring-0 focus-visible:ring-offset-0 border-[#D1D5DB] h-10 shadow-none text-sm placeholder:text-[#9CA3AF]"
+                            />
+                        </div>
+
+                        {/* DOB Field */}
+                        <div className="space-y-[6px]">
+                            <label className="text-[12px] font-bold text-slate-800 ml-1">Date of Birth</label>
+                            <Input
+                                type="date"
+                                value={dob}
+                                onChange={(e) => setDob(e.target.value)}
+                                required
+                                className="focus-visible:ring-0 focus-visible:ring-offset-0 border-[#D1D5DB] h-10 shadow-none text-sm"
+                            />
+                        </div>
+
+                        {/* Bank Details Field */}
+                        <div className="space-y-[6px]">
+                            <label className="text-[12px] font-bold text-slate-800 ml-1">Bank Details (BSB & Acc)</label>
+                            <Input
+                                placeholder="BSB: 000-000, Acc: 00000000"
+                                value={bankDetails}
+                                onChange={(e) => setBankDetails(e.target.value)}
+                                required
+                                className="focus-visible:ring-0 focus-visible:ring-offset-0 border-[#D1D5DB] h-10 shadow-none text-sm placeholder:text-[#9CA3AF]"
+                            />
+                        </div>
+
+                        {/* Emergency Contact */}
+                        <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-[6px]">
+                                <label className="text-[12px] font-bold text-slate-800 ml-1">Emergency Name</label>
                                 <Input
-                                    label="Phone Number"
-                                    type="tel"
-                                    placeholder="0412 345 678"
-                                    value={phone}
-                                    onChange={(e) => setPhone(e.target.value)}
-                                />
-                                <Input
-                                    label="Date of Birth"
-                                    type="date"
-                                    value={dob}
-                                    onChange={(e) => setDob(e.target.value)}
-                                />
-                                <Input
-                                    label="Emergency Contact Name"
-                                    placeholder="e.g. Sarah Johnson"
+                                    placeholder="Name"
                                     value={emergencyName}
                                     onChange={(e) => setEmergencyName(e.target.value)}
+                                    required
+                                    className="focus-visible:ring-0 focus-visible:ring-offset-0 border-[#D1D5DB] h-10 shadow-none text-sm placeholder:text-[#9CA3AF]"
                                 />
+                            </div>
+                            <div className="space-y-[6px]">
+                                <label className="text-[12px] font-bold text-slate-800 ml-1">Emergency Phone</label>
                                 <Input
-                                    label="Emergency Contact Phone"
                                     type="tel"
-                                    placeholder="0498 765 432"
+                                    placeholder="Phone"
                                     value={emergencyPhone}
                                     onChange={(e) => setEmergencyPhone(e.target.value)}
+                                    required
+                                    className="focus-visible:ring-0 focus-visible:ring-offset-0 border-[#D1D5DB] h-10 shadow-none text-sm placeholder:text-[#9CA3AF]"
                                 />
-                                <div className="flex gap-3">
-                                    <Button variant="outline" className="flex-1" size="lg" onClick={() => setStep(0)}>
-                                        <ArrowLeft size={18} /> Back
-                                    </Button>
-                                    <Button
-                                        className="flex-1"
-                                        size="lg"
-                                        onClick={() => {
-                                            if (!phone || !dob || !emergencyName || !emergencyPhone) {
-                                                return toast.error("Please fill in all fields");
-                                            }
-                                            setStep(2);
-                                        }}
-                                    >
-                                        Continue <ArrowRight size={18} />
-                                    </Button>
-                                </div>
-                            </motion.div>
-                        )}
+                            </div>
+                        </div>
 
-                        {/* Step 2: Bank & PIN */}
-                        {step === 2 && (
-                            <motion.div
-                                key="bank"
-                                initial={{ opacity: 0, x: 20 }}
-                                animate={{ opacity: 1, x: 0 }}
-                                exit={{ opacity: 0, x: -20 }}
-                                className="space-y-5"
-                            >
-                                <h2 className="text-lg font-semibold">Bank Details & Kiosk PIN</h2>
+                        {/* Kiosk PIN */}
+                        <div className="space-y-[6px]">
+                            <label className="text-[12px] font-bold text-slate-800 ml-1">Kiosk PIN (4 digits)</label>
+                            <Input
+                                type="text"
+                                inputMode="numeric"
+                                pattern="[0-9]*"
+                                maxLength={4}
+                                placeholder="e.g. 1234"
+                                value={kioskPin}
+                                onChange={(e) => setKioskPin(e.target.value.replace(/\D/g, ''))}
+                                required
+                                className="focus-visible:ring-0 focus-visible:ring-offset-0 border-[#D1D5DB] h-10 shadow-none text-sm placeholder:text-[#9CA3AF]"
+                            />
+                            <p className="text-[11px] text-[#6B7280] ml-1">
+                                Use this PIN to clock in/out at the kiosk
+                            </p>
+                        </div>
+
+                        {/* Password Field */}
+                        {!isExistingUser && (
+                            <div className="space-y-[6px]">
+                                <label className="text-[12px] font-bold text-slate-800 ml-1">Set Password</label>
                                 <Input
-                                    label="Bank Details (BSB & Account Number)"
-                                    placeholder="BSB: 062-000, Acc: 1234 5678"
-                                    value={bankDetails}
-                                    onChange={(e) => setBankDetails(e.target.value)}
-                                    hint="This is used for payroll payments"
-                                />
-                                <Input
-                                    label="Kiosk PIN (4 digits)"
                                     type="password"
-                                    placeholder="e.g. 1234"
-                                    maxLength={4}
-                                    value={kioskPin}
-                                    onChange={(e) => setKioskPin(e.target.value.replace(/\D/g, ""))}
-                                    hint="Used to clock in/out on the shared device"
-                                    error={kioskPin && !/^\d{4}$/.test(kioskPin) ? "PIN must be exactly 4 digits" : undefined}
+                                    placeholder="Minimum 6 characters"
+                                    value={password}
+                                    onChange={(e) => setPassword(e.target.value)}
+                                    required
+                                    className="focus-visible:ring-0 focus-visible:ring-offset-0 border-[#D1D5DB] h-10 shadow-none text-sm placeholder:text-[#9CA3AF]"
                                 />
-                                <div className="flex gap-3">
-                                    <Button variant="outline" className="flex-1" size="lg" onClick={() => setStep(1)}>
-                                        <ArrowLeft size={18} /> Back
-                                    </Button>
-                                    <Button
-                                        className="flex-1"
-                                        size="lg"
-                                        loading={loading}
-                                        onClick={() => {
-                                            if (!bankDetails) return toast.error("Bank details are required");
-                                            if (!/^\d{4}$/.test(kioskPin)) return toast.error("PIN must be 4 digits");
-                                            handleComplete();
-                                        }}
-                                    >
-                                        Complete Setup <CheckCircle size={18} />
-                                    </Button>
-                                </div>
-                            </motion.div>
+                                {password && (
+                                    <div className="flex gap-1 pt-0.5 opacity-80">
+                                        <div className={`h-[5px] flex-1 rounded-sm ${password.length > 0 ? 'bg-slate-300' : 'bg-slate-100'} ${password.length > 2 ? 'bg-[#FF4A4A]' : ''}`}></div>
+                                        <div className={`h-[5px] flex-1 rounded-sm ${password.length >= 6 ? 'bg-orange-400' : 'bg-slate-100'}`}></div>
+                                        <div className={`h-[5px] flex-1 rounded-sm ${password.length >= 8 ? 'bg-[#10B981]' : 'bg-slate-100'}`}></div>
+                                    </div>
+                                )}
+                            </div>
                         )}
 
-                        {/* Step 3: Done */}
-                        {step === 3 && (
-                            <motion.div
-                                key="done"
-                                initial={{ opacity: 0, scale: 0.95 }}
-                                animate={{ opacity: 1, scale: 1 }}
-                                className="text-center space-y-5 py-4"
+                        {/* Submit Actions */}
+                        <div className="pt-2 flex flex-col items-center">
+                            <Button
+                                type="submit"
+                                className="w-full h-11 text-[14px] font-medium bg-[#3724B3] hover:bg-[#261C7F] rounded-[8px] transition-colors shadow-none"
+                                loading={loading}
                             >
-                                <div className="flex justify-center">
-                                    <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[hsl(var(--success-light))]">
-                                        <CheckCircle size={32} className="text-[hsl(var(--success))]" />
-                                    </div>
-                                </div>
-                                <h2 className="text-2xl font-bold">Welcome aboard! 🎉</h2>
-                                <p className="text-[hsl(var(--muted-foreground))]">
-                                    Your profile is complete. You can now access your dashboard,
-                                    view shifts, and clock in.
+                                Join {businessName}
+                            </Button>
+
+                            <div className="mt-5 space-y-4 text-center px-2">
+                                <p className="text-[11px] text-[#6B7280]">
+                                    By signing up you are accepting the <span className="text-[#3724B3] hover:underline cursor-pointer font-medium">User Terms of Service</span> and <span className="text-[#3724B3] hover:underline cursor-pointer font-medium">Privacy Policy</span>
                                 </p>
-                                <Button className="w-full" size="lg" onClick={() => router.push("/employee/dashboard")}>
-                                    Go to Dashboard <ArrowRight size={18} />
-                                </Button>
-                            </motion.div>
-                        )}
-                    </AnimatePresence>
+
+                                <p className="text-[11px] text-[#9CA3AF] leading-relaxed">
+                                    By signing up you agree to receive shift notifications and updates. Message frequency may vary. Message and data rates may apply. Reply HELP for help & STOP to cancel.
+                                </p>
+                            </div>
+                        </div>
+                    </form>
                 </div>
-            </motion.div>
+            </div>
         </div>
     );
 }
