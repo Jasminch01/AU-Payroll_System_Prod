@@ -42,11 +42,7 @@ export function TopNav({
 
     const handleProfileClick = () => {
         setProfileOpen(false);
-        if (user?.role === "owner") {
-            router.push("/owner/settings");
-        } else if (user?.role === "employee") {
-            router.push("/employee/profile");
-        }
+        router.push("/profile");
     };
 
     const handleSettingsClick = () => {

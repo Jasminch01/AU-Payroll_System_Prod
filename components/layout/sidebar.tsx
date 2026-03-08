@@ -43,7 +43,6 @@ const ownerNav: NavItem[] = [
     { label: "Payroll", href: "/owner/payroll", icon: <DollarSign size={20} /> },
     { label: "Analytics", href: "/owner/analytics", icon: <BarChart3 size={20} /> },
     { label: "Audit Log", href: "/owner/audit", icon: <ShieldCheck size={20} /> },
-    { label: "Settings", href: "/owner/settings", icon: <Settings size={20} /> },
 ];
 
 const managerNav: NavItem[] = [
@@ -56,7 +55,6 @@ const managerNav: NavItem[] = [
 const employeeNav: NavItem[] = [
     { label: "Dashboard", href: "/employee/dashboard", icon: <LayoutDashboard size={20} /> },
     { label: "My Shifts", href: "/employee/shifts", icon: <CalendarDays size={20} /> },
-    { label: "Clock In/Out", href: "/employee/clock", icon: <Clock size={20} /> },
     { label: "Timesheets", href: "/employee/timesheets", icon: <FileText size={20} /> },
     { label: "Leave", href: "/employee/leave", icon: <Palmtree size={20} /> },
 ];
