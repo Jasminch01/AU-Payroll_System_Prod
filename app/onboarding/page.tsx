@@ -37,9 +37,27 @@ export default function OnboardingPage() {
 
             try {
                 const res = await fetch("/api/onboarding/status");
+                if (res.status === 401) {
+                    // Not authenticated yet - this can happen during token processing
+                    // We don't redirect here; we let initialize resolve the session
+                    hasChecked = false; // Allow retry
+                    return;
+                }
+
                 const data = await res.json();
 
-                if (!data.success || !data.data?.needs_onboarding) {
+                if (!data.success) {
+                    // Only redirect to dashboard if we are SURE they don't need onboarding 
+                    // AND they are actually logged in.
+                    if (data.data?.is_owner) {
+                        router.push("/owner/dashboard");
+                    } else if (data.data && !data.data.needs_onboarding) {
+                        router.push("/employee/dashboard");
+                    }
+                    return;
+                }
+
+                if (!data.data?.needs_onboarding) {
                     router.push("/employee/dashboard");
                     return;
                 }
@@ -50,20 +68,21 @@ export default function OnboardingPage() {
                 if (data.data?.is_existing_user) {
                     setIsExistingUser(true);
                 }
-            } catch {
+                setCheckingStatus(false);
+            } catch (err) {
+                console.error("checkStatus error:", err);
                 toast.error("Failed to load onboarding status");
-            } finally {
                 setCheckingStatus(false);
             }
         }
 
         async function initialize() {
             try {
-                // First check for PKCE token_hash (invite or magiclink)
                 const params = new URLSearchParams(window.location.search);
                 const token_hash = params.get('token_hash');
                 const type = params.get('type') as any;
 
+                // 1. Check for PKCE token_hash (invite or magiclink)
                 if (token_hash && type) {
                     const { error } = await supabase.auth.verifyOtp({ token_hash, type });
                     if (error) {
@@ -73,9 +92,12 @@ export default function OnboardingPage() {
                     }
                     // Strip the ugly token from URL
                     window.history.replaceState({}, document.title, window.location.pathname);
+                    // Session should be established now, checkStatus will be triggered by onAuthStateChange or manual call
+                    await checkStatus();
+                    return;
                 }
 
-                // Second check for implicit flow hash (admin.generateLink defaults to this)
+                // 2. Check for implicit flow hash (admin.generateLink defaults to this)
                 if (window.location.hash.includes('access_token')) {
                     const hashParams = new URLSearchParams(window.location.hash.substring(1));
                     const access_token = hashParams.get('access_token');
@@ -95,14 +117,20 @@ export default function OnboardingPage() {
                     }
                 }
 
-                // Wait a moment for session to naturally populate
+                // 3. Check for existing session
                 const { data: { session } } = await supabase.auth.getSession();
 
                 if (session) {
                     await checkStatus();
                 } else {
-                    // Not signed in and no hash fragment handled
-                    router.push('/login');
+                    // Give it a tiny moment to see if an onAuthStateChange fires 
+                    // (useful if Supabase is still initializing)
+                    setTimeout(async () => {
+                        const { data: { session: delayedSession } } = await supabase.auth.getSession();
+                        if (!delayedSession && !window.location.hash && !window.location.search) {
+                            router.push('/login');
+                        }
+                    }, 1000);
                 }
             } catch (err) {
                 console.error("Initialization error:", err);

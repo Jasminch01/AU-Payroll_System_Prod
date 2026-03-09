@@ -58,6 +58,16 @@ export function apiPut<T = unknown>(endpoint: string, body?: unknown) {
 }
 
 /**
+ * PATCH request helper
+ */
+export function apiPatch<T = unknown>(endpoint: string, body?: unknown) {
+    return apiClient<T>(endpoint, {
+        method: "PATCH",
+        body: body ? JSON.stringify(body) : undefined,
+    });
+}
+
+/**
  * DELETE request helper
  */
 export function apiDelete<T = unknown>(endpoint: string) {

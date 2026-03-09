@@ -11,8 +11,9 @@ import {
     Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Pencil, CheckCircle, XCircle, Palmtree } from "lucide-react";
+import { Pencil, CheckCircle, XCircle, Palmtree, Clock } from "lucide-react";
 import type { LeaveBalance, LeaveRequest } from "@/types/database";
+import { useAuth } from "@/hooks/use-auth";
 
 interface LeaveBalanceWithType extends LeaveBalance {
     LeaveType?: { name: string; is_paid: boolean } | null;
@@ -24,11 +25,7 @@ interface LeaveRequestWithType extends LeaveRequest {
 
 export function EmployeeLeave({ employeeId }: { employeeId: string }) {
     const queryClient = useQueryClient();
-
-    // Adjustment dialog state
-    const [adjustTarget, setAdjustTarget] = useState<LeaveBalanceWithType | null>(null);
-    const [adjustAccrued, setAdjustAccrued] = useState("");
-    const [adjustTaken, setAdjustTaken] = useState("");
+    const { user } = useAuth();
 
     // Approval dialog
     const [rejectTarget, setRejectTarget] = useState<string | null>(null);
@@ -47,18 +44,6 @@ export function EmployeeLeave({ employeeId }: { employeeId: string }) {
         enabled: !!employeeId,
     });
 
-    // Balance adjustment mutation
-    const adjustMutation = useMutation({
-        mutationFn: ({ id, accrued_hours, taken_hours }: { id: string; accrued_hours?: number; taken_hours?: number }) =>
-            apiPatch(`/leave/balances/${id}`, { accrued_hours, taken_hours }),
-        onSuccess: () => {
-            toast.success("Leave balance adjusted");
-            queryClient.invalidateQueries({ queryKey: ["employee-leave-balances", employeeId] });
-            setAdjustTarget(null);
-        },
-        onError: (err: Error) => toast.error(err.message),
-    });
-
     // Leave approval/rejection mutation
     const actionMutation = useMutation({
         mutationFn: ({ id, status, rejection_reason }: { id: string; status: string; rejection_reason?: string }) =>
@@ -72,21 +57,6 @@ export function EmployeeLeave({ employeeId }: { employeeId: string }) {
         },
         onError: (err: Error) => toast.error(err.message),
     });
-
-    function openAdjust(b: LeaveBalanceWithType) {
-        setAdjustTarget(b);
-        setAdjustAccrued(String(b.accrued_hours));
-        setAdjustTaken(String(b.taken_hours));
-    }
-
-    function handleAdjust() {
-        if (!adjustTarget) return;
-        adjustMutation.mutate({
-            id: adjustTarget.balance_id,
-            accrued_hours: Number(adjustAccrued),
-            taken_hours: Number(adjustTaken),
-        });
-    }
 
     function confirmReject() {
         if (!rejectTarget) return;
@@ -117,15 +87,6 @@ export function EmployeeLeave({ employeeId }: { employeeId: string }) {
                                     <div key={b.balance_id} className="p-4 border rounded-lg bg-[hsl(var(--muted))]/10 group relative">
                                         <div className="flex items-start justify-between mb-2">
                                             <h4 className="font-semibold">{b.LeaveType?.name || "Leave"}</h4>
-                                            <Button
-                                                variant="ghost"
-                                                size="sm"
-                                                className="opacity-0 group-hover:opacity-100 transition-opacity -mt-1 -mr-1"
-                                                onClick={() => openAdjust(b)}
-                                                title="Adjust balance"
-                                            >
-                                                <Pencil size={14} />
-                                            </Button>
                                         </div>
                                         <div className="flex justify-between text-sm">
                                             <span className="text-[hsl(var(--muted-foreground))]">Remaining</span>
@@ -190,23 +151,30 @@ export function EmployeeLeave({ employeeId }: { employeeId: string }) {
                                         )}
                                     </div>
                                     {req.status === "pending" && (
-                                        <div className="flex gap-2">
-                                            <Button
-                                                variant="ghost"
-                                                size="sm"
-                                                className="text-[hsl(var(--danger))]"
-                                                onClick={() => setRejectTarget(req.request_id)}
-                                            >
-                                                <XCircle size={14} /> Reject
-                                            </Button>
-                                            <Button
-                                                size="sm"
-                                                variant="success"
-                                                onClick={() => actionMutation.mutate({ id: req.request_id, status: "approved" })}
-                                            >
-                                                <CheckCircle size={14} /> Approve
-                                            </Button>
-                                        </div>
+                                        req.employee_id === user?.employee_id ? (
+                                            <span className="text-sm font-medium text-[hsl(var(--muted-foreground))] ml-2">
+                                                <Clock size={14} className="inline mr-1 -mt-0.5" />
+                                                Requires Owner approval
+                                            </span>
+                                        ) : (
+                                            <div className="flex gap-2">
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="text-[hsl(var(--danger))]"
+                                                    onClick={() => setRejectTarget(req.request_id)}
+                                                >
+                                                    <XCircle size={14} /> Reject
+                                                </Button>
+                                                <Button
+                                                    size="sm"
+                                                    variant="success"
+                                                    onClick={() => actionMutation.mutate({ id: req.request_id, status: "approved" })}
+                                                >
+                                                    <CheckCircle size={14} /> Approve
+                                                </Button>
+                                            </div>
+                                        )
                                     )}
                                 </div>
                             ))}
@@ -218,46 +186,6 @@ export function EmployeeLeave({ employeeId }: { employeeId: string }) {
                     )}
                 </CardContent>
             </Card>
-
-            {/* Adjust Balance Dialog */}
-            <Dialog open={!!adjustTarget} onOpenChange={() => setAdjustTarget(null)}>
-                <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle>Adjust Leave Balance</DialogTitle>
-                        <DialogDescription>
-                            Manually adjust {adjustTarget?.LeaveType?.name || "leave"} balance for this employee.
-                        </DialogDescription>
-                    </DialogHeader>
-                    <div className="space-y-4 py-2">
-                        <Input
-                            label="Accrued Hours"
-                            type="number"
-                            value={adjustAccrued}
-                            onChange={(e) => setAdjustAccrued(e.target.value)}
-                        />
-                        <Input
-                            label="Taken Hours"
-                            type="number"
-                            value={adjustTaken}
-                            onChange={(e) => setAdjustTaken(e.target.value)}
-                        />
-                        {adjustTarget && (
-                            <div className="p-3 rounded-lg bg-[hsl(var(--muted))]/30 text-sm">
-                                <span className="text-[hsl(var(--muted-foreground))]">New remaining: </span>
-                                <span className="font-bold text-[hsl(var(--success))]">
-                                    {Math.max(0, Number(adjustAccrued || 0) - Number(adjustTaken || 0))}h
-                                </span>
-                            </div>
-                        )}
-                    </div>
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setAdjustTarget(null)}>Cancel</Button>
-                        <Button loading={adjustMutation.isPending} onClick={handleAdjust}>
-                            Save Adjustment
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
 
             {/* Rejection Dialog */}
             <Dialog open={!!rejectTarget} onOpenChange={() => { setRejectTarget(null); setRejectionReason(""); }}>

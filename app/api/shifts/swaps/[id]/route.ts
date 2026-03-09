@@ -86,6 +86,22 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
                 return errorResponse('This request is not awaiting manager approval.', 400);
             }
 
+            // --- ROLE VALIDATION FOR APPROVAL ---
+            // If the requester is a manager, only an owner can approve it.
+            const { data: requester, error: reqError } = await supabase
+                .from('Employee')
+                .select('user_id, User:user_id(role)')
+                .eq('employee_id', swapRequest.requester_id)
+                .single();
+
+            if (reqError) console.error("Could not verify requester role for swap approval:", reqError);
+            const reqRole = requester?.User?.[0]?.role || 'employee';
+
+            if (reqRole === 'manager' && authUser.role !== 'owner') {
+                return errorResponse('Only an owner can approve a manager\'s shift swap request.', 403);
+            }
+            // ------------------------------------
+
             if (action === 'approve') {
                 // --- POINT OF NO RETURN CHECK ---
                 const shiftStart = new Date(swapRequest.Shift.start_time);

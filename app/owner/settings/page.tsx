@@ -7,7 +7,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { apiGet, apiPost } from "@/lib/api-client";
 import { toast } from "sonner";
-import { Link2, CheckCircle, XCircle, MonitorSmartphone } from "lucide-react";
+import { Link2, CheckCircle, XCircle, MonitorSmartphone, Calendar } from "lucide-react";
+import Link from "next/link";
 
 export default function OwnerSettingsPage() {
     const queryClient = useQueryClient();
@@ -73,6 +74,30 @@ export default function OwnerSettingsPage() {
                                 <Link2 size={16} /> Connect Xero
                             </Button>
                         )}
+                    </div>
+                </CardContent>
+            </Card>
+
+            {/* Public Holidays */}
+            <Card className="mt-6">
+                <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                        <Calendar size={20} /> Public Holidays
+                    </CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <div className="text-[hsl(var(--muted-foreground))]">
+                                <p className="font-medium text-[hsl(var(--foreground))]">Holiday Calendar</p>
+                                <p className="text-sm">Manage National, State, and local regional public holidays.</p>
+                            </div>
+                        </div>
+                        <Link href="/owner/settings/holidays">
+                            <Button variant="outline">
+                                <Calendar size={16} /> Manage Holidays
+                            </Button>
+                        </Link>
                     </div>
                 </CardContent>
             </Card>

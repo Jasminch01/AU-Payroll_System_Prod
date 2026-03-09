@@ -54,7 +54,15 @@ export async function GET(request: NextRequest) {
 
         if (error) return errorResponse(error.message, 400);
 
-        return successResponse(timesheets);
+        // Security: Remove sensitive data if requester is a manager (and not viewing their own profile)
+        const redactedTimesheets = timesheets?.map(ts => {
+            if (authUser.role === 'manager' && ts.employee_id !== authUser.employee_id) {
+                return { ...ts, hourly_rate: null, gross_pay: null, rate_type: null };
+            }
+            return ts;
+        });
+
+        return successResponse(redactedTimesheets);
     } catch (err) {
         console.error('List timesheets error:', err);
         return errorResponse('Internal server error', 500);

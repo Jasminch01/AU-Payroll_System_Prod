@@ -1,15 +1,18 @@
 "use client";
 
 import React from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { DashboardLayout } from "@/components/layout";
 import { MetricCard } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { apiGet } from "@/lib/api-client";
+import { Button } from "@/components/ui/button";
+import { apiGet, apiPut } from "@/lib/api-client";
+import { toast } from "sonner";
 import Link from "next/link";
-import { Users, CalendarDays, FileText, Palmtree, DollarSign, AlertTriangle } from "lucide-react";
+import { Users, CalendarDays, FileText, Palmtree, DollarSign, AlertTriangle, ArrowLeftRight, CheckCircle, XCircle, ShieldCheck } from "lucide-react";
 
 export default function OwnerDashboardPage() {
+    const queryClient = useQueryClient();
     const { data: summary, isLoading } = useQuery({
         queryKey: ["analytics-summary"],
         queryFn: () => apiGet<any>("/analytics/summary"),
@@ -18,6 +21,27 @@ export default function OwnerDashboardPage() {
     const { data: labourData } = useQuery({
         queryKey: ["labour-vs-revenue"],
         queryFn: () => apiGet<any>("/analytics/labour-vs-revenue"),
+    });
+
+    // Owners handle Manager shift swaps
+    const { data: shiftSwaps = [] } = useQuery({
+        queryKey: ["owner-swap-approvals"],
+        queryFn: () => apiGet<any[]>("/shifts/swaps?status=pending_approval"),
+    });
+
+    const swapMutation = useMutation({
+        mutationFn: ({ id, action }: { id: string; action: "approve" | "reject" }) =>
+            apiPut(`/shifts/swaps/${id}`, { action }),
+        onSuccess: () => {
+            toast.success("Manager shift swap updated");
+            queryClient.invalidateQueries({ queryKey: ["owner-swap-approvals"] });
+        },
+        onError: (err: Error) => toast.error(err.message),
+    });
+
+    const pendingManagerSwaps = shiftSwaps.filter((swap: any) => {
+        const reqRole = swap.Requester?.User?.[0]?.role || 'employee';
+        return reqRole === 'manager';
     });
 
     return (
@@ -38,6 +62,8 @@ export default function OwnerDashboardPage() {
                     </div>
                 </div>
             )}
+
+
 
             {/* Metric Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
@@ -60,6 +86,11 @@ export default function OwnerDashboardPage() {
                     title="Pending Leave"
                     value={isLoading ? "—" : summary?.pending_leave ?? 0}
                     icon={<Palmtree size={24} />}
+                />
+                <MetricCard
+                    title="Pending Swaps"
+                    value={isLoading ? "—" : shiftSwaps.length ?? 0}
+                    icon={<ArrowLeftRight size={24} />}
                 />
             </div>
 
@@ -87,7 +118,7 @@ export default function OwnerDashboardPage() {
                     {[
                         { label: "Invite Employee", href: "/owner/employees", icon: <Users size={18} /> },
                         { label: "Create Roster", href: "/owner/roster", icon: <CalendarDays size={18} /> },
-                        { label: "Review Timesheets", href: "/owner/timesheets", icon: <FileText size={18} /> },
+                        { label: "Approvals Hub", href: "/owner/approvals", icon: <ShieldCheck size={18} /> },
                         { label: "Run Payroll", href: "/owner/payroll", icon: <DollarSign size={18} /> },
                     ].map((action) => (
                         <Link

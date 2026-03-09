@@ -15,7 +15,7 @@ export type CertificateType = 'RSA' | 'food_safety' | 'first_aid' | 'other';
 
 export type RosterStatus = 'draft' | 'published';
 
-export type ShiftType = 'morning' | 'afternoon' | 'night' | 'split';
+export type ShiftType = 'morning' | 'afternoon' | 'evening';
 
 export type EventType = 'CLOCK_IN' | 'CLOCK_OUT';
 export type TimesheetStatus = 'pending' | 'approved' | 'rejected';

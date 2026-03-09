@@ -33,6 +33,13 @@ export async function getAuthUser(): Promise<AuthUser | null> {
         .single();
 
     if (userRecord) {
+        // Find if this user also has an Employee record (for managers who clock in)
+        const { data: empLinked } = await supabase
+            .from('Employee')
+            .select('employee_id')
+            .eq('user_id', user.id)
+            .single();
+
         return {
             user_id: user.id,
             email: user.email!,
@@ -40,6 +47,7 @@ export async function getAuthUser(): Promise<AuthUser | null> {
             business_id: userRecord.business_id,
             first_name: userRecord.first_name,
             last_name: userRecord.last_name,
+            employee_id: empLinked?.employee_id,
         };
     }
 
