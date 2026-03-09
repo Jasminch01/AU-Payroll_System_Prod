@@ -34,16 +34,6 @@ export async function POST(request: NextRequest) {
         }
 
         const body = await request.json();
-        const validationError = validateRequiredFields(body, [
-            'password',
-            'phone',
-            'dob',
-            'bank_details',
-            'emergency_contact_name',
-            'emergency_contact_phone',
-            'kiosk_pin',
-        ]);
-        if (validationError) return errorResponse(validationError, 400);
 
         const {
             password,
@@ -52,59 +42,62 @@ export async function POST(request: NextRequest) {
             bank_details,
             emergency_contact_name,
             emergency_contact_phone,
-            kiosk_pin,
+            kiosk_pin
         } = body;
 
-        if (password.length < 6) {
+        // If password is provided, validate it
+        if (password && password.length < 6) {
             return errorResponse('Password must be at least 6 characters', 400);
         }
 
-        if (!/^\d{4}$/.test(kiosk_pin)) {
-            return errorResponse('Kiosk PIN must be exactly 4 digits', 400);
-        }
-
-        // 2. Find the employee record linked to this auth user
-        const { data: employee, error: empError } = await supabase
+        // 2. Find the employee records linked to this auth user
+        const { data: employees, error: empError } = await supabase
             .from('Employee')
             .select('*')
-            .eq('user_id', user.id)
-            .single();
+            .eq('user_id', user.id);
 
-        if (empError || !employee) {
-            return errorResponse('No pending invitation found for this account', 404);
+        if (empError || !employees || employees.length === 0) {
+            return errorResponse('No associated employee record found for this account', 404);
         }
 
-        if (employee.status !== 'invited') {
-            return errorResponse('This account has already been onboarded', 400);
+        let employee = employees.find(e => e.status === 'invited');
+
+        if (!employee) {
+            return errorResponse('This account has already been onboarded or has no pending invitations', 400);
         }
 
-        // 3. Update the user's password (replace the temp one)
-        const adminClient = createAdminClient();
-        const { error: passwordError } = await adminClient.auth.admin.updateUserById(user.id, {
-            password,
-            email_confirm: true, // Mark email as confirmed now
-        });
+        // 3. Update the user's password (if provided)
+        if (password) {
+            const adminClient = createAdminClient();
+            const { error: passwordError } = await adminClient.auth.admin.updateUserById(user.id, {
+                password,
+                email_confirm: true, // Mark email as confirmed now
+            });
 
-        if (passwordError) {
-            return errorResponse(`Failed to set password: ${passwordError.message}`, 500);
+            if (passwordError) {
+                return errorResponse(`Failed to set password: ${passwordError.message}`, 500);
+            }
         }
 
-        // 4. Hash the kiosk PIN
-        const hashedPin = await bcrypt.hash(kiosk_pin, 10);
+        // 4. Update the Employee record with self-service data
+        const updatePayload: any = {
+            status: 'active',
+            updated_at: new Date().toISOString(),
+        };
+        if (phone) updatePayload.phone = phone;
+        if (dob) updatePayload.dob = dob;
+        if (bank_details) updatePayload.bank_details = bank_details;
+        if (emergency_contact_name) updatePayload.emergency_contact_name = emergency_contact_name;
+        if (emergency_contact_phone) updatePayload.emergency_contact_phone = emergency_contact_phone;
 
-        // 5. Update the Employee record with self-service data
+        // Hash Kiosk PIN if provided
+        if (kiosk_pin) {
+            updatePayload.kiosk_pin = await bcrypt.hash(kiosk_pin, 10);
+        }
+
         const { data: updatedEmployee, error: updateError } = await supabase
             .from('Employee')
-            .update({
-                phone,
-                dob,
-                bank_details,
-                emergency_contact_name,
-                emergency_contact_phone,
-                kiosk_pin: hashedPin,
-                status: 'active',
-                updated_at: new Date().toISOString(),
-            })
+            .update(updatePayload)
             .eq('employee_id', employee.employee_id)
             .select()
             .single();

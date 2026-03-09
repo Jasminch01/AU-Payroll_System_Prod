@@ -4,11 +4,10 @@ import React from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { DashboardLayout } from "@/components/layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { StatusBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { apiGet, apiPost } from "@/lib/api-client";
 import { toast } from "sonner";
-import { Link2, CheckCircle, XCircle, ShieldCheck, MonitorSmartphone } from "lucide-react";
+import { Link2, CheckCircle, XCircle, MonitorSmartphone } from "lucide-react";
 
 export default function OwnerSettingsPage() {
     const queryClient = useQueryClient();
@@ -16,12 +15,6 @@ export default function OwnerSettingsPage() {
     const { data: xeroStatus, isLoading: xeroLoading } = useQuery({
         queryKey: ["xero-status"],
         queryFn: () => apiGet<any>("/xero/status"),
-    });
-
-    // Audit log
-    const { data: auditLogs = [], isLoading: auditLoading } = useQuery({
-        queryKey: ["audit-log"],
-        queryFn: () => apiGet<any[]>("/audit-log"),
     });
 
     const handleXeroConnect = () => {
@@ -84,53 +77,6 @@ export default function OwnerSettingsPage() {
                 </CardContent>
             </Card>
 
-            {/* Audit Log */}
-            <Card>
-                <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                        <ShieldCheck size={20} /> Audit Log
-                    </CardTitle>
-                </CardHeader>
-                <CardContent>
-                    {auditLoading ? (
-                        <div className="space-y-2">
-                            {[1, 2, 3, 4, 5].map((i) => <div key={i} className="skeleton h-10 rounded" />)}
-                        </div>
-                    ) : (
-                        <div className="rounded-xl border border-[hsl(var(--border))] overflow-hidden">
-                            <table className="w-full text-sm">
-                                <thead>
-                                    <tr className="border-b border-[hsl(var(--border))] bg-[hsl(var(--muted))]">
-                                        <th className="px-4 py-3 text-left font-medium text-[hsl(var(--muted-foreground))]">Action</th>
-                                        <th className="px-4 py-3 text-left font-medium text-[hsl(var(--muted-foreground))]">Table</th>
-                                        <th className="px-4 py-3 text-left font-medium text-[hsl(var(--muted-foreground))]">Record</th>
-                                        <th className="px-4 py-3 text-left font-medium text-[hsl(var(--muted-foreground))]">Reason</th>
-                                        <th className="px-4 py-3 text-left font-medium text-[hsl(var(--muted-foreground))]">Time</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {auditLogs.slice(0, 20).map((log: any) => (
-                                        <tr key={log.audit_id || log.log_id} className="border-b border-[hsl(var(--border))]">
-                                            <td className="px-4 py-3">
-                                                <StatusBadge status={log.action?.toLowerCase()} />
-                                            </td>
-                                            <td className="px-4 py-3 font-medium">{log.table_name}</td>
-                                            <td className="px-4 py-3 text-xs font-mono text-[hsl(var(--muted-foreground))]">
-                                                {log.record_id?.slice(0, 12)}...
-                                            </td>
-                                            <td className="px-4 py-3 text-[hsl(var(--muted-foreground))]">{log.reason || "—"}</td>
-                                            <td className="px-4 py-3 text-[hsl(var(--muted-foreground))]">
-                                                {new Date(log.changed_at).toLocaleString("en-AU")}
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    )}
-                </CardContent>
-            </Card>
-
             {/* Kiosk Mode Setup */}
             <Card className="mt-6">
                 <CardHeader>
@@ -152,6 +98,6 @@ export default function OwnerSettingsPage() {
                     </div>
                 </CardContent>
             </Card>
-        </DashboardLayout>
+        </DashboardLayout >
     );
 }
