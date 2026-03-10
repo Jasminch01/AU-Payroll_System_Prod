@@ -25,7 +25,7 @@ export async function DELETE(
             .delete()
             .eq('holiday_id', holidayId)
             .eq('business_id', authUser.business_id);
-git
+
         if (error) return errorResponse(error.message);
         return successResponse(null, 'Public holiday deleted');
     } catch (err: any) {
