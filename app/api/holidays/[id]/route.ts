@@ -11,13 +11,13 @@ import { successResponse, errorResponse } from '@/lib/api-helpers';
  */
 export async function DELETE(
     request: NextRequest,
-    { params }: { params: { id: string } }
+    { params }: { params: Promise<{ id: string }> }  // ✅ wrapped in Promise
 ) {
     try {
         const authUser = await requireRole('owner', 'manager');
         if (!authUser) return errorResponse('Unauthorized', 401);
 
-        const holidayId = params.id;
+        const { id: holidayId } = await params;  // ✅ awaited params
         const supabase = await createClient();
 
         const { error } = await supabase
@@ -25,7 +25,7 @@ export async function DELETE(
             .delete()
             .eq('holiday_id', holidayId)
             .eq('business_id', authUser.business_id);
-
+git
         if (error) return errorResponse(error.message);
         return successResponse(null, 'Public holiday deleted');
     } catch (err: any) {
