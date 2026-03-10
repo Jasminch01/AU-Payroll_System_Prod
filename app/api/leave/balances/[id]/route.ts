@@ -19,8 +19,8 @@ import { successResponse, errorResponse } from '@/lib/api-helpers';
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
     try {
         const { id } = await params;
-        const authUser = await requireRole('owner', 'manager');
-        if (!authUser) return errorResponse('Unauthorized', 401);
+        const authUser = await requireRole('owner');
+        if (!authUser) return errorResponse('Unauthorized or Insufficient Permissions', 403);
 
         const body = await request.json();
         const { accrued_hours, taken_hours, reason } = body;

@@ -23,14 +23,13 @@ export async function GET(request: NextRequest) {
             .select(`
         *,
         Shift:shift_id(*),
-        Requester:requester_id(employee_id, first_name, last_name),
+        Requester:requester_id(employee_id, first_name, last_name, user_id, User:user_id(role)),
         TargetEmployee:target_employee_id(employee_id, first_name, last_name),
         TargetShift:target_shift_id(*)
       `)
             .eq('business_id', authUser.business_id)
             .order('created_at', { ascending: false });
 
-        // Managers see everything for their business
         // Employees see only their relevant requests
         if (authUser.role === 'employee') {
             const employeeId = authUser.employee_id;
@@ -45,7 +44,20 @@ export async function GET(request: NextRequest) {
 
         if (error) return errorResponse(error.message, 400);
 
-        return successResponse(swaps);
+        let filteredSwaps = swaps || [];
+
+        // Managers only see Employee swaps.
+        if (authUser.role === 'manager') {
+            filteredSwaps = filteredSwaps.filter((swap: any) => {
+                const reqRole = swap.Requester?.User?.[0]?.role || 'employee';
+                return reqRole === 'employee';
+            });
+        }
+
+        // Owners theoretically see all, but let's separate them if requested in the future.
+        // For now, owners view the manager-level shift swaps in their own dashboard, so they need to see manager swaps.
+
+        return successResponse(filteredSwaps);
     } catch (err) {
         console.error('List swaps error:', err);
         return errorResponse('Internal server error', 500);
@@ -88,12 +100,36 @@ export async function POST(request: NextRequest) {
         // 1. Verify ownership of the shift
         const { data: shift, error: shiftError } = await supabase
             .from('Shift')
-            .select('*')
+            .select('*, Employee:employee_id(user_id, User:user_id(role))')
             .eq('shift_id', shift_id)
             .eq('business_id', authUser.business_id)
             .single();
 
         if (shiftError || !shift) return errorResponse('Shift not found', 404);
+
+        // --- ROLE VALIDATIONS ---
+        const requesterRole = shift.Employee?.User?.[0]?.role || authUser.role;
+
+        if (target_employee_id) {
+            const { data: targetEmployee, error: targetError } = await supabase
+                .from('Employee')
+                .select('user_id, User:user_id(role)')
+                .eq('employee_id', target_employee_id)
+                .single();
+
+            if (targetError || !targetEmployee) return errorResponse('Target employee not found.', 404);
+
+            const targetRole = targetEmployee.User?.[0]?.role || 'employee';
+
+            if (requesterRole === 'employee' && targetRole !== 'employee') {
+                return errorResponse('Employees can only swap shifts with other Employees.', 403);
+            }
+
+            if (requesterRole === 'manager' && targetRole !== 'manager') {
+                return errorResponse('Managers can only swap shifts with other Managers.', 403);
+            }
+        }
+        // ------------------------
 
         // --- TIME VALIDATION ---
         const startTime = new Date(shift.start_time);

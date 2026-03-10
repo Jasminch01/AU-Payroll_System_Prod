@@ -296,8 +296,7 @@ export default function OwnerRosterPage() {
                             >
                                 <option value="morning">Morning</option>
                                 <option value="afternoon">Afternoon</option>
-                                <option value="night">Night</option>
-                                <option value="split">Split</option>
+                                <option value="evening">Evening</option>
                             </select>
                         </div>
                     </div>

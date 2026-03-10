@@ -77,6 +77,13 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 
         if (findError || !current) return errorResponse('Timesheet not found', 404);
 
+        // Validate manager self-approval
+        if (authUser.role === 'manager' && current.employee_id === authUser.employee_id) {
+            if (body.status && body.status !== 'pending' && body.status !== current.status) {
+                return errorResponse('Managers cannot approve or reject their own timesheets', 403);
+            }
+        }
+
         // TODO: If attached to an approved Payroll, prevent edits (Locked state)
 
         // 2. Prepare updates

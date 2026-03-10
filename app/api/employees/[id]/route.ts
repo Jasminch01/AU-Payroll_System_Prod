@@ -55,9 +55,15 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
             .select('*')
             .eq('employee_id', id);
 
+        // Security: Remove sensitive data if requester is a manager (and not viewing their own profile)
+        const isSelf = authUser.employee_id === id;
+        if (authUser.role === 'manager' && !isSelf) {
+            employee.bank_details = null;
+        }
+
         return successResponse({
             ...employee,
-            current_rate: currentRate || null,
+            current_rate: (authUser.role === 'manager' && !isSelf) ? null : (currentRate || null),
             certificates: certificates || [],
         });
     } catch (error) {
@@ -106,16 +112,19 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
             'last_name',
             'phone',
             'email',
-            'bank_details',
             'emergency_contact_name',
             'emergency_contact_phone',
             'employment_type',
             'role_title',
             'pay_cycle',
-            'kiosk_pin',
             'end_date',
             'status',
         ];
+
+        // Only owners (or the employee themselves, if we supported it) can update bank details and pin via this endpoint
+        if (authUser.role === 'owner') {
+            allowedFields.push('bank_details', 'kiosk_pin');
+        }
 
         const updateData: Record<string, unknown> = {};
         for (const field of allowedFields) {

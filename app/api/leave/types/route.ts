@@ -66,8 +66,8 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
     try {
-        const authUser = await requireRole('owner', 'manager');
-        if (!authUser) return errorResponse('Unauthorized', 401);
+        const authUser = await requireRole('owner');
+        if (!authUser) return errorResponse('Unauthorized or Insufficient Permissions', 403);
 
         const body = await request.json();
         const validationError = validateRequiredFields(body, ['name']);

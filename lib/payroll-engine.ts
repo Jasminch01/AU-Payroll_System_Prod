@@ -33,16 +33,22 @@ export async function generatePayroll(
         .gte('date', periodStart)
         .lte('date', periodEnd);
 
-    if (tsError || !timesheets || timesheets.length === 0) {
-        return null;
-    }
+    // 1.1 Fetch Approved Leave Requests
+    const { data: leaveRequests } = await supabase
+        .from('LeaveRequest')
+        .select('*, LeaveType(*)')
+        .eq('business_id', businessId)
+        .eq('status', 'approved')
+        .gte('start_date', periodStart)
+        .lte('end_date', periodEnd);
+
+    if (tsError) throw new Error(tsError.message);
 
     // 2. Group by Employee
-    const employeeGroups = timesheets.reduce((acc: Record<string, TimeSheet[]>, ts) => {
-        if (!acc[ts.employee_id]) acc[ts.employee_id] = [];
-        acc[ts.employee_id].push(ts);
-        return acc;
-    }, {});
+    const employeeIds = new Set([
+        ...(timesheets?.map(ts => ts.employee_id) || []),
+        ...(leaveRequests?.map(lr => lr.employee_id) || [])
+    ]);
 
     let totalGross = 0;
 
@@ -70,34 +76,95 @@ export async function generatePayroll(
     const payrollLines: PayrollLineInsert[] = [];
 
     // 4. Create Lines
-    for (const [employeeId, logs] of Object.entries(employeeGroups)) {
-        const grossWages = logs.reduce((sum, log) => sum + Number(log.gross_pay), 0);
-        totalGross += grossWages;
+    for (const employeeId of employeeIds) {
+        const empTimesheets = timesheets?.filter(ts => ts.employee_id === employeeId) || [];
+        const empLeaveRequests = leaveRequests?.filter(lr => lr.employee_id === employeeId) || [];
+
+        // Fetch Employee to get base rate
+        const { data: employee } = await supabase
+            .from('Employee')
+            .select('weekday_rate')
+            .eq('employee_id', employeeId)
+            .single();
+
+        const baseRate = Number(employee?.weekday_rate || 0);
+
+        let employeeGross = 0;
+        const breakdown: any[] = [];
+
+        // Add Timesheet Hours
+        for (const ts of empTimesheets) {
+            employeeGross += Number(ts.gross_pay);
+            breakdown.push({
+                type: 'work',
+                date: ts.date,
+                hours: ts.actual_hours,
+                rate: ts.hourly_rate,
+                pay: ts.gross_pay
+            });
+        }
+
+        // Add Leave Hours (only if paid and has balance)
+        for (const lr of empLeaveRequests) {
+            const isPaidType = lr.LeaveType?.is_paid ?? true;
+            if (!isPaidType) continue;
+
+            // Fetch current balance to verify
+            const { data: balance } = await supabase
+                .from('LeaveBalance')
+                .select('accrued_hours, taken_hours')
+                .eq('employee_id', employeeId)
+                .eq('leave_type_id', lr.leave_type_id)
+                .eq('year', new Date(lr.start_date).getFullYear())
+                .single();
+
+            const remaining = Number(balance?.accrued_hours || 0) - Number(balance?.taken_hours || 0);
+
+            // If they have balance, pay them. (Note: in Part 7 we update the taken_hours)
+            if (remaining >= Number(lr.total_hours)) {
+                const leavePay = Number(lr.total_hours) * baseRate;
+                employeeGross += leavePay;
+                breakdown.push({
+                    type: 'leave',
+                    leave_type: lr.LeaveType?.name,
+                    date: lr.start_date, // Simplify to start_date for the breakdown
+                    hours: lr.total_hours,
+                    rate: baseRate,
+                    pay: Number(leavePay.toFixed(2))
+                });
+            }
+        }
+
+        totalGross += employeeGross;
 
         payrollLines.push({
             payroll_id: payroll.payroll_id,
             employee_id: employeeId,
-            gross_wages: Number(grossWages.toFixed(2)),
+            gross_wages: Number(employeeGross.toFixed(2)),
             additions: 0,
             deductions: 0,
-            net_pay: Number(grossWages.toFixed(2)), // Placeholder: net = gross
-            hours_breakdown: logs.map(l => ({ date: l.date, hours: l.actual_hours, rate: l.hourly_rate })),
+            net_pay: Number(employeeGross.toFixed(2)),
+            hours_breakdown: breakdown,
             payment_status: 'pending',
             payment_date: null
         });
     }
 
     // 5. Bulk insert lines
-    const { error: linesErr } = await supabase
-        .from('PayrollLine')
-        .insert(payrollLines);
-
-    if (linesErr) console.error('Error inserting payroll lines:', linesErr);
+    if (payrollLines.length > 0) {
+        const { error: linesErr } = await supabase
+            .from('PayrollLine')
+            .insert(payrollLines);
+        if (linesErr) console.error('Error inserting payroll lines:', linesErr);
+    }
 
     // 6. Update total gross on parent
     await supabase
         .from('Payroll')
-        .update({ total_gross: Number(totalGross.toFixed(2)), total_net: Number(totalGross.toFixed(2)) })
+        .update({
+            total_gross: Number(totalGross.toFixed(2)),
+            total_net: Number(totalGross.toFixed(2))
+        })
         .eq('payroll_id', payroll.payroll_id);
 
     // 7. Accrue Leave for Employees
@@ -111,16 +178,15 @@ export async function generatePayroll(
         const currentYear = new Date().getFullYear();
 
         for (const line of payrollLines) {
-            const totalHours = (line.hours_breakdown as any[]).reduce((sum, h) => sum + Number(h.hours || 0), 0);
+            // Only accrue based on 'work' hours, not 'leave' hours
+            const workHours = (line.hours_breakdown as any[])
+                .filter(b => b.type === 'work')
+                .reduce((sum, h) => sum + Number(h.hours || 0), 0);
 
             for (const lt of leaveTypes) {
-                if (!lt.accrual_rate) continue;
-
-                const earned = totalHours * lt.accrual_rate;
+                const earned = workHours * (lt.accrual_rate || 0);
                 if (earned <= 0) continue;
 
-                // Atomic increment in DB or fetch and update?
-                // For simplicity in MVP, we fetch the current and add
                 const { data: currentBalance } = await supabase
                     .from('LeaveBalance')
                     .select('*')
@@ -138,7 +204,6 @@ export async function generatePayroll(
                         })
                         .eq('balance_id', currentBalance.balance_id);
                 } else {
-                    // Fallback create if initialization failed earlier
                     await supabase.from('LeaveBalance').insert({
                         employee_id: line.employee_id,
                         leave_type_id: lt.leave_type_id,

@@ -81,7 +81,7 @@ function formatTime(iso: string | null) {
 
 /* ===== Component ===== */
 
-export default function OwnerAttendancePage() {
+export default function ManagerAttendancePage() {
     const today = todayDateString();
     const [fromDate, setFromDate] = useState<string>(today);
     const [toDate, setToDate] = useState<string>(today);
@@ -396,7 +396,7 @@ export default function OwnerAttendancePage() {
 
     return (
         <DashboardLayout
-            role="owner"
+            role="manager"
             pageTitle="Attendance"
             pageDescription="Review employee clock in/out records"
         >

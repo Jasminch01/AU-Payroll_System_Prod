@@ -6,8 +6,10 @@ import { DashboardLayout } from "@/components/layout";
 import { MetricCard } from "@/components/ui/card";
 import { Card, CardContent } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { apiGet } from "@/lib/api-client";
-import { Users, CalendarDays, FileText, Palmtree, Clock } from "lucide-react";
+import { Users, CalendarDays, FileText, Palmtree, Clock, MonitorPlay } from "lucide-react";
+import Link from "next/link";
 
 export default function ManagerDashboardPage() {
     const { data: employees = [] } = useQuery({
@@ -77,7 +79,7 @@ export default function ManagerDashboardPage() {
                                     );
                                 })}
                                 {pendingTimesheets.length > 5 && (
-                                    <a href="/manager/approvals" className="text-sm text-[hsl(var(--brand))] hover:underline">
+                                    <a href="/manager/timesheets" className="text-sm text-[hsl(var(--brand))] hover:underline">
                                         View all {pendingTimesheets.length} →
                                     </a>
                                 )}
@@ -118,7 +120,7 @@ export default function ManagerDashboardPage() {
                                     );
                                 })}
                                 {pendingLeave.length > 5 && (
-                                    <a href="/manager/approvals" className="text-sm text-[hsl(var(--brand))] hover:underline">
+                                    <a href="/manager/leave" className="text-sm text-[hsl(var(--brand))] hover:underline">
                                         View all {pendingLeave.length} →
                                     </a>
                                 )}
@@ -126,6 +128,19 @@ export default function ManagerDashboardPage() {
                         )}
                     </CardContent>
                 </Card>
+            </div>
+
+            {/* Quick Actions */}
+            <div className="mt-8 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-6">
+                <h2 className="text-lg font-semibold mb-4">Quick Actions</h2>
+                <div className="flex flex-wrap gap-4">
+                    <Link href="/kiosk" target="_blank">
+                        <Button variant="default" className="gap-2">
+                            <MonitorPlay size={18} />
+                            Launch Kiosk Mode
+                        </Button>
+                    </Link>
+                </div>
             </div>
         </DashboardLayout>
     );

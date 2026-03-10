@@ -71,7 +71,7 @@ export async function updateSession(request: NextRequest) {
             return NextResponse.redirect(new URL(role ? fallback : '/login', request.url));
         }
 
-        if (isManagerRoute && role !== 'manager') {
+        if (isManagerRoute && role !== 'manager' && role !== 'owner') {
             const fallback = role === 'owner' ? '/owner/dashboard' : '/employee/dashboard';
             return NextResponse.redirect(new URL(role ? fallback : '/login', request.url));
         }

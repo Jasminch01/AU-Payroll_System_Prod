@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { TimeSheet, TimesheetStatus } from "@/types/database";
+import { useAuth } from "@/hooks/use-auth";
 
 /* ── Types ─────────────────────────────────────────────── */
 
@@ -48,8 +49,9 @@ const TABS: { key: TabKey; label: string }[] = [
 
 /* ── Page Component ────────────────────────────────────── */
 
-export default function OwnerTimesheetsPage() {
+export default function ManagerTimesheetsPage() {
     const queryClient = useQueryClient();
+    const { user } = useAuth();
     const [activeTab, setActiveTab] = useState<TabKey>("all");
     const [expandedId, setExpandedId] = useState<string | null>(null);
     const [searchTerm, setSearchTerm] = useState("");
@@ -158,9 +160,6 @@ export default function OwnerTimesheetsPage() {
     };
 
     const totalHours = timesheets.reduce((s, t) => s + (t.actual_hours || 0), 0);
-    const totalGrossPay = timesheets
-        .filter((t) => t.status === "approved")
-        .reduce((s, t) => s + (t.gross_pay || 0), 0);
 
     /* ── Unique employees for dropdown ──────────────────── */
 
@@ -238,7 +237,7 @@ export default function OwnerTimesheetsPage() {
 
     return (
         <DashboardLayout
-            role="owner"
+            role="manager"
             pageTitle="Timesheets"
             pageDescription="Review, generate, and manage employee timesheets"
             actions={
@@ -248,11 +247,10 @@ export default function OwnerTimesheetsPage() {
             }
         >
             {/* Summary Metrics */}
-            <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-6">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
                 <MetricCard title="Total Timesheets" value={timesheets.length} icon={<FileText size={24} />} />
                 <MetricCard title="Pending Approval" value={counts.pending} icon={<Clock size={24} />} />
                 <MetricCard title="Total Hours" value={`${totalHours.toFixed(1)}h`} icon={<CalendarDays size={24} />} />
-                <MetricCard title="Approved Pay" value={`$${totalGrossPay.toLocaleString("en-AU", { minimumFractionDigits: 2 })}`} icon={<DollarSign size={24} />} />
             </div>
 
             {/* Filters Bar */}
@@ -382,14 +380,18 @@ export default function OwnerTimesheetsPage() {
                                                 <p className="text-xs text-[hsl(var(--muted-foreground))]">Hours</p>
                                                 <p className="text-sm font-semibold">{ts.actual_hours?.toFixed(1) ?? "—"}h</p>
                                             </div>
-                                            <div className="text-right">
-                                                <p className="text-xs text-[hsl(var(--muted-foreground))]">Rate</p>
-                                                <p className="text-sm font-semibold">${ts.hourly_rate?.toFixed(2) ?? "—"}/hr</p>
-                                            </div>
-                                            <div className="text-right">
-                                                <p className="text-xs text-[hsl(var(--muted-foreground))]">Gross Pay</p>
-                                                <p className="text-sm font-semibold">${ts.gross_pay?.toFixed(2) ?? "0.00"}</p>
-                                            </div>
+                                            {ts.hourly_rate !== null && (
+                                                <div className="text-right">
+                                                    <p className="text-xs text-[hsl(var(--muted-foreground))]">Rate</p>
+                                                    <p className="text-sm font-semibold">${ts.hourly_rate?.toFixed(2)}/hr</p>
+                                                </div>
+                                            )}
+                                            {ts.gross_pay !== null && (
+                                                <div className="text-right">
+                                                    <p className="text-xs text-[hsl(var(--muted-foreground))]">Gross Pay</p>
+                                                    <p className="text-sm font-semibold">${ts.gross_pay?.toFixed(2)}</p>
+                                                </div>
+                                            )}
                                         </div>
 
                                         <StatusBadge status={ts.status || "pending"} />
@@ -477,61 +479,81 @@ export default function OwnerTimesheetsPage() {
 
                                         {/* Action Buttons */}
                                         <div className="flex items-center gap-2 pt-2 border-t border-[hsl(var(--border))]">
-                                            {/* Edit button — always available for owner */}
-                                            <Button
-                                                variant="outline"
-                                                size="sm"
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    openEditDialog(ts);
-                                                }}
-                                            >
-                                                <Pencil size={14} /> Edit / Adjust
-                                            </Button>
-
-                                            {ts.status === "pending" && (
-                                                <>
-                                                    <div className="flex-1" />
+                                            {ts.employee_id === user?.employee_id ? (
+                                                <div className="flex items-center w-full justify-between">
+                                                    <span className="text-sm font-medium text-[hsl(var(--muted-foreground))]">
+                                                        <Clock size={14} className="inline mr-1 -mt-0.5" />
+                                                        Requires Owner approval
+                                                    </span>
                                                     <Button
-                                                        variant="ghost"
-                                                        size="sm"
-                                                        className="text-[hsl(var(--danger))]"
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            approveMutation.mutate({ id: ts.timesheet_id, status: "rejected" });
-                                                        }}
-                                                        loading={approveMutation.isPending}
-                                                    >
-                                                        <XCircle size={16} /> Reject
-                                                    </Button>
-                                                    <Button
-                                                        size="sm"
-                                                        variant="success"
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            approveMutation.mutate({ id: ts.timesheet_id, status: "approved" });
-                                                        }}
-                                                        loading={approveMutation.isPending}
-                                                    >
-                                                        <CheckCircle size={16} /> Approve
-                                                    </Button>
-                                                </>
-                                            )}
-
-                                            {ts.status === "rejected" && (
-                                                <>
-                                                    <div className="flex-1" />
-                                                    <Button
-                                                        size="sm"
                                                         variant="outline"
+                                                        size="sm"
                                                         onClick={(e) => {
                                                             e.stopPropagation();
-                                                            approveMutation.mutate({ id: ts.timesheet_id, status: "pending" });
+                                                            openEditDialog(ts);
                                                         }}
-                                                        loading={approveMutation.isPending}
                                                     >
-                                                        <Clock size={14} /> Revert to Pending
+                                                        <Pencil size={14} /> Adjust Notes/Hours
                                                     </Button>
+                                                </div>
+                                            ) : (
+                                                <>
+                                                    <Button
+                                                        variant="outline"
+                                                        size="sm"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            openEditDialog(ts);
+                                                        }}
+                                                    >
+                                                        <Pencil size={14} /> Edit / Adjust
+                                                    </Button>
+
+                                                    {ts.status === "pending" && (
+                                                        <>
+                                                            <div className="flex-1" />
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                className="text-[hsl(var(--danger))]"
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    approveMutation.mutate({ id: ts.timesheet_id, status: "rejected" });
+                                                                }}
+                                                                loading={approveMutation.isPending}
+                                                            >
+                                                                <XCircle size={16} /> Reject
+                                                            </Button>
+                                                            <Button
+                                                                size="sm"
+                                                                variant="success"
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    approveMutation.mutate({ id: ts.timesheet_id, status: "approved" });
+                                                                }}
+                                                                loading={approveMutation.isPending}
+                                                            >
+                                                                <CheckCircle size={16} /> Approve
+                                                            </Button>
+                                                        </>
+                                                    )}
+
+                                                    {ts.status === "rejected" && (
+                                                        <>
+                                                            <div className="flex-1" />
+                                                            <Button
+                                                                size="sm"
+                                                                variant="outline"
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    approveMutation.mutate({ id: ts.timesheet_id, status: "pending" });
+                                                                }}
+                                                                loading={approveMutation.isPending}
+                                                            >
+                                                                <Clock size={14} /> Revert to Pending
+                                                            </Button>
+                                                        </>
+                                                    )}
                                                 </>
                                             )}
                                         </div>
@@ -646,26 +668,30 @@ export default function OwnerTimesheetsPage() {
                         {/* Status selector */}
                         <div className="space-y-1.5">
                             <label className="text-sm font-medium text-[hsl(var(--foreground))]">Status</label>
-                            <div className="flex gap-2">
-                                {(["pending", "approved", "rejected"] as TimesheetStatus[]).map((s) => (
-                                    <button
-                                        key={s}
-                                        onClick={() => setEditStatus(s)}
-                                        className={cn(
-                                            "px-3 py-1.5 rounded-lg text-sm font-medium border transition-all capitalize",
-                                            editStatus === s
-                                                ? s === "approved"
-                                                    ? "bg-[hsl(var(--success))]/10 border-[hsl(var(--success))] text-[hsl(var(--success))]"
-                                                    : s === "rejected"
-                                                        ? "bg-[hsl(var(--danger))]/10 border-[hsl(var(--danger))] text-[hsl(var(--danger))]"
-                                                        : "bg-[hsl(var(--warning))]/10 border-[hsl(var(--warning))] text-[hsl(var(--warning))]"
-                                                : "border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted))]"
-                                        )}
-                                    >
-                                        {s}
-                                    </button>
-                                ))}
-                            </div>
+                            {editingTs?.employee_id === user?.employee_id ? (
+                                <p className="text-sm text-[hsl(var(--muted-foreground))]">You cannot change the status of your own timesheets. An Owner must approve it.</p>
+                            ) : (
+                                <div className="flex gap-2">
+                                    {(["pending", "approved", "rejected"] as TimesheetStatus[]).map((s) => (
+                                        <button
+                                            key={s}
+                                            onClick={() => setEditStatus(s)}
+                                            className={cn(
+                                                "px-3 py-1.5 rounded-lg text-sm font-medium border transition-all capitalize",
+                                                editStatus === s
+                                                    ? s === "approved"
+                                                        ? "bg-[hsl(var(--success))]/10 border-[hsl(var(--success))] text-[hsl(var(--success))]"
+                                                        : s === "rejected"
+                                                            ? "bg-[hsl(var(--danger))]/10 border-[hsl(var(--danger))] text-[hsl(var(--danger))]"
+                                                            : "bg-[hsl(var(--warning))]/10 border-[hsl(var(--warning))] text-[hsl(var(--warning))]"
+                                                    : "border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted))]"
+                                            )}
+                                        >
+                                            {s}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
                         </div>
 
                         <Input

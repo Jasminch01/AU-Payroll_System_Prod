@@ -9,19 +9,26 @@ import { StatusBadge } from "@/components/ui/badge";
 import {
     Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter
 } from "@/components/ui/dialog";
-import { apiGet, apiPost } from "@/lib/api-client";
+import { apiGet, apiPost, apiPut } from "@/lib/api-client";
 import { toast } from "sonner";
-import { CalendarDays, Clock, ArrowLeftRight } from "lucide-react";
+import { CalendarDays, Clock, ArrowLeftRight, Check, X } from "lucide-react";
+import { useAuth } from "@/hooks/use-auth";
 
 export default function EmployeeShiftsPage() {
     const queryClient = useQueryClient();
     const [swapDialogOpen, setSwapDialogOpen] = useState(false);
     const [selectedShift, setSelectedShift] = useState<any>(null);
     const [targetEmployee, setTargetEmployee] = useState("");
+    const { user } = useAuth();
 
     const { data: shifts = [], isLoading } = useQuery({
         queryKey: ["my-shifts"],
         queryFn: () => apiGet<any[]>("/shifts/me"),
+    });
+
+    const { data: swapRequests = [] } = useQuery({
+        queryKey: ["my-swap-requests"],
+        queryFn: () => apiGet<any[]>("/shifts/swaps"),
     });
 
     const swapMutation = useMutation({
@@ -29,7 +36,20 @@ export default function EmployeeShiftsPage() {
         onSuccess: () => {
             toast.success("Swap request sent!");
             queryClient.invalidateQueries({ queryKey: ["my-shifts"] });
+            queryClient.invalidateQueries({ queryKey: ["my-swap-requests"] });
             setSwapDialogOpen(false);
+            setTargetEmployee("");
+        },
+        onError: (err: Error) => toast.error(err.message),
+    });
+
+    const respondSwapMutation = useMutation({
+        mutationFn: ({ id, action }: { id: string; action: "accept" | "decline" }) =>
+            apiPut(`/shifts/swaps/${id}`, { action }),
+        onSuccess: () => {
+            toast.success("Swap response recorded!");
+            queryClient.invalidateQueries({ queryKey: ["my-swap-requests"] });
+            queryClient.invalidateQueries({ queryKey: ["my-shifts"] });
         },
         onError: (err: Error) => toast.error(err.message),
     });
@@ -40,12 +60,51 @@ export default function EmployeeShiftsPage() {
     const past = shifts.filter((s: any) => new Date(s.start_time) < now)
         .sort((a: any, b: any) => new Date(b.start_time).getTime() - new Date(a.start_time).getTime());
 
+    const pendingIncomingSwaps = swapRequests.filter((sr: any) =>
+        sr.target_employee_id === user?.employee_id && sr.status === 'pending_acceptance'
+    );
+
     return (
         <DashboardLayout
             role="employee"
             pageTitle="My Shifts"
             pageDescription={`${upcoming.length} upcoming shifts`}
         >
+            {/* Incoming Swap Requests */}
+            {pendingIncomingSwaps.length > 0 && (
+                <div className="mb-8 p-4 bg-[hsl(var(--warning-light))] border border-[hsl(var(--warning))] rounded-xl">
+                    <h2 className="text-lg font-semibold text-[hsl(var(--warning-foreground))] mb-3 flex items-center gap-2">
+                        <ArrowLeftRight size={18} /> Shift Swap Invitations
+                    </h2>
+                    <div className="space-y-3">
+                        {pendingIncomingSwaps.map((sr: any) => (
+                            <div key={sr.request_id} className="bg-white rounded-lg p-3 flex flex-wrap gap-4 items-center justify-between shadow-sm">
+                                <div>
+                                    <p className="font-medium text-sm">
+                                        <span className="font-bold">{sr.Requester?.first_name} {sr.Requester?.last_name}</span> wants to swap their shift:
+                                    </p>
+                                    <p className="text-sm text-[hsl(var(--muted-foreground))]">
+                                        {new Date(sr.Shift?.start_time).toLocaleDateString("en-AU", { weekday: "short", month: "short", day: "numeric" })}
+                                        {" · "}
+                                        {new Date(sr.Shift?.start_time).toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit" })}
+                                        {" – "}
+                                        {new Date(sr.Shift?.end_time).toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit" })}
+                                    </p>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <Button size="sm" variant="outline" className="text-[hsl(var(--danger))]" onClick={() => respondSwapMutation.mutate({ id: sr.request_id, action: "decline" })}>
+                                        <X size={14} className="mr-1" /> Decline
+                                    </Button>
+                                    <Button size="sm" variant="success" onClick={() => respondSwapMutation.mutate({ id: sr.request_id, action: "accept" })}>
+                                        <Check size={14} className="mr-1" /> Accept
+                                    </Button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
             {/* Upcoming Shifts */}
             <div className="mb-8">
                 <h2 className="text-lg font-semibold mb-4">Upcoming</h2>
