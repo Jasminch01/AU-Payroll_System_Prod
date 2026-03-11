@@ -7,39 +7,35 @@
    AU Payroll — Global Design System
    ============================================ */
 
-/* ==================== CSS Variables ==================== */
 :root {
-  /* Brand */
-  --brand: 220 90% 56%;
-  /* #2563EB Electric Blue */
-  --brand-hover: 220 90% 48%;
-  --brand-light: 220 90% 96%;
+  /* Brand (Deep Blue) */
+
+  --brand: 221 83% 45%; 
+  /* #134E9A Deep Navy Blue */
+  --brand-hover: 221 83% 40%;
+  --brand-light: 221 83% 96%;
 
   /* Surfaces */
-  --background: 210 40% 98%;
-  /* #F8FAFC off-white canvas */
+  --background: 210 20% 98%;
   --foreground: 222 47% 11%;
-  /* #0F172A deep navy text */
   --card: 0 0% 100%;
-  /* Pure white cards */
   --card-foreground: 222 47% 11%;
 
   /* Muted */
-  --muted: 210 40% 96%;
+  --muted: 210 20% 96%;
   --muted-foreground: 215 16% 47%;
 
   /* Borders */
   --border: 214 32% 91%;
-  /* #E2E8F0 */
   --input: 214 32% 91%;
-  --ring: 220 90% 56%;
+  --ring: 221 83% 45%;
 
-  /* Sidebar */
-  --sidebar: 222 47% 11%;
-  /* Deep navy */
-  --sidebar-foreground: 210 40% 98%;
-  --sidebar-muted: 217 33% 17%;
-  --sidebar-accent: 220 90% 56%;
+  /* Sidebar (Light Gray Style) */
+  --sidebar: 210 20% 98%; /* Match background but slightly distinct */
+  --sidebar-foreground: 222 47% 11%;
+  --sidebar-muted: 210 20% 94%;
+  --sidebar-accent: 221 83% 45%;
+
 
   /* Semantic — Status colors */
   --success: 152 76% 36%;

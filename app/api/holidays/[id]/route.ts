@@ -11,13 +11,14 @@ import { successResponse, errorResponse } from '@/lib/api-helpers';
  */
 export async function DELETE(
     request: NextRequest,
-    { params }: { params: { id: string } }
+    { params }: { params: Promise<{ id: string }> }
 ) {
     try {
+        const { id: holidayId } = await params;
         const authUser = await requireRole('owner', 'manager');
         if (!authUser) return errorResponse('Unauthorized', 401);
 
-        const holidayId = params.id;
+
         const supabase = await createClient();
 
         const { error } = await supabase

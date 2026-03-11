@@ -1,26 +1,50 @@
 import { XeroClient, TokenSet } from 'xero-node';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { XeroConfig } from '@/types/database';
 
-const clientId = process.env.XERO_CLIENT_ID!;
-const clientSecret = process.env.XERO_CLIENT_SECRET!;
-const redirectUri = process.env.XERO_REDIRECT_URI!;
+// Fixed state value — must be same for auth and callback
+const XERO_STATE = 'xero-auth-state';
 
-const xero = new XeroClient({
-    clientId,
-    clientSecret,
-    redirectUris: [redirectUri],
-    scopes: 'openid profile email accounting.settings accounting.transactions accounting.contacts offline_access'.split(' '),
-});
+const XERO_SCOPES: string[] = [
+    'openid',
+    'profile',
+    'email',
+    'offline_access',
+    'accounting.settings',
+    'accounting.contacts',
+];
 
-/**
- * Get an authenticated Xero client for a specific business.
- * Handles automatic token refresh if expired.
- */
+
+// Singleton instance
+let xeroInstance: XeroClient | null = null;
+
+export function getXero(): XeroClient {
+    if (!xeroInstance) {
+        const clientId = (process.env.XERO_CLIENT_ID || '').trim();
+        const clientSecret = (process.env.XERO_CLIENT_SECRET || '').trim();
+        const redirectUri = (process.env.XERO_REDIRECT_URI || '').trim();
+
+        if (!clientId || !clientSecret || !redirectUri) {
+            throw new Error('Xero configuration missing in .env.local');
+        }
+
+        xeroInstance = new XeroClient({
+            clientId,
+            clientSecret,
+            redirectUris: [redirectUri],
+            scopes: XERO_SCOPES,
+            state: XERO_STATE,
+        });
+    }
+    return xeroInstance;
+}
+
+export function resetXeroInstance() {
+    xeroInstance = null;
+}
+
 export async function getXeroClient(businessId: string) {
     const supabase = createAdminClient();
 
-    // 1. Fetch config from DB
     const { data: config, error } = await supabase
         .from('XeroConfig')
         .select('*')
@@ -37,58 +61,62 @@ export async function getXeroClient(businessId: string) {
         id_token: '',
         expires_at: Math.floor(new Date(config.token_expires_at).getTime() / 1000),
         token_type: 'Bearer',
-        scope: 'openid profile email accounting.settings accounting.transactions accounting.contacts offline_access'
+        scope: XERO_SCOPES.join(' '),
     });
 
+    const xero = getXero();
     xero.setTokenSet(tokenSet);
 
-    // 2. Refresh if expired (or within 5 mins of expiry)
     const now = Math.floor(Date.now() / 1000);
+    // Refresh if expiring in less than 5 minutes
     if (tokenSet.expires_at! < now + 300) {
-        console.log('Xero token expired or near expiry, refreshing...');
+        const clientId = (process.env.XERO_CLIENT_ID || '').trim();
+        const clientSecret = (process.env.XERO_CLIENT_SECRET || '').trim();
         const newTokenSet = await xero.refreshWithRefreshToken(clientId, clientSecret, config.refresh_token);
-        await saveXeroTokens(businessId, newTokenSet);
+        await saveXeroTokens(businessId, newTokenSet, config.tenant_id);
         xero.setTokenSet(newTokenSet);
     }
+
 
     return xero;
 }
 
-/**
- * Save Xero tokens to the database.
- */
-export async function saveXeroTokens(businessId: string, tokenSet: TokenSet) {
+export async function saveXeroTokens(businessId: string, tokenSet: TokenSet, tenantId: string) {
     const supabase = createAdminClient();
 
-    const configData = {
+    const configData: any = {
         business_id: businessId,
+        tenant_id: tenantId,
         access_token: tokenSet.access_token!,
         refresh_token: tokenSet.refresh_token!,
         token_expires_at: new Date(tokenSet.expires_at! * 1000).toISOString(),
         updated_at: new Date().toISOString(),
     };
 
+    const { data: existing } = await supabase
+        .from('XeroConfig')
+        .select('created_at')
+        .eq('business_id', businessId)
+        .single();
+
+    if (!existing) {
+        configData.created_at = new Date().toISOString();
+    }
+
     const { error } = await supabase
         .from('XeroConfig')
         .upsert(configData, { onConflict: 'business_id' });
 
-    if (error) {
-        console.error('Error saving Xero tokens:', error);
-        throw new Error('Failed to save Xero credentials');
-    }
+    if (error) throw new Error('Failed to save Xero credentials: ' + error.message);
 }
 
-/**
- * Disconnect Xero for a business.
- */
+
 export async function disconnectXero(businessId: string) {
     const supabase = createAdminClient();
     const { error } = await supabase
         .from('XeroConfig')
         .delete()
         .eq('business_id', businessId);
-
     if (error) throw error;
+    resetXeroInstance();
 }
-
-export { xero };

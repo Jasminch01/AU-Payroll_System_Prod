@@ -1,48 +1,77 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { xero, saveXeroTokens } from '@/lib/xero';
+import { getXero, saveXeroTokens, resetXeroInstance } from '@/lib/xero';
 import { errorResponse } from '@/lib/api-helpers';
 import { createAdminClient } from '@/lib/supabase/admin';
 
-/**
- * GET /api/xero/callback
- * 
- * Handle Xero OAuth2 callback and store tokens
- */
 export async function GET(request: NextRequest) {
-    try {
-        const { searchParams } = new URL(request.url);
-        const code = searchParams.get('code');
-        const state = searchParams.get('state'); // Current business_id
+    const origin = new URL(request.url).origin;
 
-        if (!code || !state) {
-            return errorResponse('Missing code or state from Xero', 400);
+    try {
+        // Read business_id from cookie (set during /auth)
+        const businessId = request.cookies.get('xero_business_id')?.value;
+
+        if (!businessId) {
+            return NextResponse.redirect(
+                `${origin}/owner/dashboard?xero=error&msg=Session+expired.+Please+try+again.`
+            );
         }
 
-        // 1. Exchange code for tokens
+        const { searchParams } = new URL(request.url);
+        const code = searchParams.get('code');
+        const errorParam = searchParams.get('error');
+
+        // If Xero returned an error (e.g. user denied access)
+        if (errorParam) {
+            const errorDesc = searchParams.get('error_description') || errorParam;
+            resetXeroInstance(); // Clean up since auth failed
+            return NextResponse.redirect(
+                `${origin}/owner/dashboard?xero=error&msg=${encodeURIComponent(errorDesc)}`
+            );
+        }
+
+        if (!code) {
+            resetXeroInstance();
+            return NextResponse.redirect(
+                `${origin}/owner/dashboard?xero=error&msg=Missing+authorization+code+from+Xero`
+            );
+        }
+
+        // Use the SAME singleton that built the consent URL
+        const xero = getXero();
+
+        // Exchange the authorization code for tokens
         const tokenSet = await xero.apiCallback(request.url);
 
-        // 2. Fetch Xero Tenant ID (needed for subsequent API calls)
+        // Fetch connected tenants (organizations)
         const tenants = await xero.updateTenants();
-        if (tenants.length === 0) {
-            return errorResponse('No Xero organizations authorized', 403);
+
+        if (!tenants || tenants.length === 0) {
+            resetXeroInstance();
+            return NextResponse.redirect(
+                `${origin}/owner/dashboard?xero=error&msg=No+Xero+organization+authorized.+Please+reconnect+and+select+an+organization.`
+            );
         }
 
         const tenantId = tenants[0].tenantId;
 
-        // 3. Save tokens and tenantId to DB
-        await saveXeroTokens(state, tokenSet);
+        // Save tokens and tenant ID to database in one go
+        await saveXeroTokens(businessId, tokenSet, tenantId);
 
-        const supabase = createAdminClient();
-        await supabase
-            .from('XeroConfig')
-            .update({ xero_tenant_id: tenantId })
-            .eq('business_id', state);
 
-        // 4. Redirect to owner dashboard
-        // In a real app, this should redirect to /owner/xero on success
-        return NextResponse.redirect(`${new URL(request.url).origin}/owner/dashboard?xero=connected`);
+        // Auth cycle complete — reset for next time
+        resetXeroInstance();
+
+        // ✅ Redirect to the success page inside the popup
+        const response = NextResponse.redirect(`${origin}/api/xero/success`);
+        response.cookies.delete('xero_business_id');
+        return response;
+
     } catch (err: any) {
-        console.error('Xero callback error:', err);
-        return errorResponse(err.message, 500);
+        console.error('Xero callback error:', err?.message || err);
+        resetXeroInstance();
+        // Redirect to success page with error status to handle inside popup
+        return NextResponse.redirect(
+            `${origin}/api/xero/success?status=error&msg=${encodeURIComponent(err?.message || 'Xero connection failed')}`
+        );
     }
 }

@@ -79,8 +79,9 @@ export function Sidebar({ role, businessName = "AU Payroll" }: SidebarProps) {
             initial={false}
             animate={{ width: collapsed ? 72 : 260 }}
             transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
-            className="fixed left-0 top-0 z-40 flex h-screen flex-col border-r border-[hsl(var(--sidebar-muted))] bg-[hsl(var(--sidebar))] text-[hsl(var(--sidebar-foreground))]"
+            className="fixed left-0 top-0 z-40 flex h-screen flex-col border-r border-[hsl(var(--sidebar-muted))] bg-[hsl(var(--sidebar))] text-[hsl(var(--sidebar-foreground))] shadow-[1px_0_0_0_hsl(var(--sidebar-muted))]"
         >
+
             {/* Logo / Business Name */}
             <div className="flex h-16 items-center gap-3 border-b border-[hsl(var(--sidebar-muted))] px-4">
                 <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[hsl(var(--sidebar-accent))] text-white font-bold text-sm">
@@ -109,11 +110,12 @@ export function Sidebar({ role, businessName = "AU Payroll" }: SidebarProps) {
                             key={item.label}
                             href={item.href}
                             className={cn(
-                                "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-150",
+                                "flex items-center gap-3.5 rounded-xl px-4 py-3 text-sm font-medium transition-all duration-150",
                                 isActive
-                                    ? "bg-[hsl(var(--sidebar-accent))] text-white shadow-sm"
-                                    : "text-[hsl(var(--sidebar-foreground))]/70 hover:bg-[hsl(var(--sidebar-muted))] hover:text-[hsl(var(--sidebar-foreground))]"
+                                    ? "bg-[hsl(var(--sidebar-accent))] text-white shadow-md shadow-[hsl(var(--sidebar-accent))/20]"
+                                    : "text-[hsl(var(--sidebar-foreground))]/60 hover:bg-[hsl(var(--sidebar-muted))] hover:text-[hsl(var(--sidebar-foreground))]"
                             )}
+
                             title={collapsed ? item.label : undefined}
                         >
                             <span className="shrink-0">{item.icon}</span>

@@ -79,6 +79,52 @@ export async function GET(request: NextRequest) {
             else if (labourPercentage < (business.labour_threshold_min ?? 10)) status = 'critical_low';
         }
 
+        const dailyBreakdown: Array<{ date: string; labour: number; revenue: number }> = [];
+        
+        // 5. Generate Daily Breakdown for the last 7 days (including today)
+        const sevenDaysAgo = new Date();
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
+        const chartStart = sevenDaysAgo.toISOString().split('T')[0];
+        const chartEnd = new Date().toISOString().split('T')[0];
+
+        const { data: dailySales } = await supabase
+            .from('SalesData')
+            .select('sales_date, total_sales')
+            .eq('business_id', authUser.business_id)
+            .gte('sales_date', chartStart)
+            .lte('sales_date', chartEnd);
+
+        const { data: dailySheets } = await supabase
+            .from('TimeSheet')
+            .select('date, gross_pay')
+            .eq('business_id', authUser.business_id)
+            .gte('date', chartStart)
+            .lte('date', chartEnd);
+
+        // Group by date
+        const salesByDate = (dailySales || []).reduce((acc: any, s) => {
+            acc[s.sales_date] = (acc[s.sales_date] || 0) + Number(s.total_sales);
+            return acc;
+        }, {});
+
+        const labourByDate = (dailySheets || []).reduce((acc: any, s) => {
+            acc[s.date] = (acc[s.date] || 0) + Number(s.gross_pay);
+            return acc;
+        }, {});
+
+        for (let i = 0; i < 7; i++) {
+            const d = new Date(sevenDaysAgo);
+            d.setDate(d.getDate() + i);
+            const dateStr = d.toISOString().split('T')[0];
+            const displayDate = d.toLocaleDateString('en-AU', { weekday: 'short' });
+            
+            dailyBreakdown.push({
+                date: displayDate,
+                revenue: salesByDate[dateStr] || 0,
+                labour: labourByDate[dateStr] || 0
+            });
+        }
+
         return successResponse({
             total_labour: Number(totalLabourCost.toFixed(2)),
             total_revenue: Number(totalRevenue.toFixed(2)),
@@ -86,7 +132,9 @@ export async function GET(request: NextRequest) {
             threshold_min: business?.labour_threshold_min ?? 10,
             threshold_max: business?.labour_theshold_max ?? 50,
             alert_status: status,
+            chart_data: dailyBreakdown
         });
+
     } catch (err: any) {
         return errorResponse(err.message, 500);
     }
