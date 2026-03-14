@@ -18,9 +18,10 @@ export async function GET(request: NextRequest) {
         const supabase = createAdminClient();
         const { data: config, error } = await supabase
             .from('XeroConfig')
-            .select('connected_at, updated_at')
+            .select('created_at, updated_at, tenant_id')
             .eq('business_id', authUser.business_id)
             .single();
+
 
         if (error || !config) {
             return successResponse({ connected: false });
@@ -28,9 +29,11 @@ export async function GET(request: NextRequest) {
 
         return successResponse({
             connected: true,
-            connected_at: config.connected_at,
-            updated_at: config.updated_at
+            connected_at: config.created_at,
+            updated_at: config.updated_at,
+            tenant_id: config.tenant_id
         });
+
     } catch (err: any) {
         return errorResponse(err.message, 500);
     }

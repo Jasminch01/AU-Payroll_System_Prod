@@ -12,25 +12,59 @@ import Link from "next/link";
 
 export default function OwnerSettingsPage() {
     const queryClient = useQueryClient();
-    // Xero status
+
     const { data: xeroStatus, isLoading: xeroLoading } = useQuery({
         queryKey: ["xero-status"],
         queryFn: () => apiGet<any>("/xero/status"),
     });
 
+    // Listen for messages from the Xero popup
+    React.useEffect(() => {
+        const handleMessage = (event: MessageEvent) => {
+            if (event.origin !== window.location.origin) return;
+
+            if (event.data?.type === 'xero-connected') {
+                toast.success("Xero connected successfully!");
+                queryClient.invalidateQueries({ queryKey: ["xero-status"] });
+            } else if (event.data?.type === 'xero-error') {
+                toast.error(event.data.msg || "Xero connection failed");
+            }
+        };
+
+        window.addEventListener('message', handleMessage);
+        return () => window.removeEventListener('message', handleMessage);
+    }, [queryClient]);
+
     const handleXeroConnect = () => {
-        window.location.href = "/api/xero/auth";
+        const width = 600;
+        const height = 700;
+        const left = window.screenX + (window.outerWidth - width) / 2;
+        const top = window.screenY + (window.outerHeight - height) / 2;
+        
+        window.open(
+            "/api/xero/auth", 
+            "XeroConnect", 
+            `width=${width},height=${height},left=${left},top=${top},status=no,menubar=no,toolbar=no`
+        );
     };
+
+
+
 
     const handleXeroDisconnect = async () => {
         try {
-            await apiPost("/xero/status");
+            // ✅ Fix Bug 1 — correct endpoint is /xero/disconnect
+            await apiPost("/xero/disconnect");
             toast.success("Xero disconnected");
             queryClient.invalidateQueries({ queryKey: ["xero-status"] });
         } catch (err: any) {
             toast.error(err.message);
         }
     };
+
+    // ✅ Fix Bug 3 — safely unwrap in case apiGet wraps in { data: ... }
+    const xeroConnected = xeroStatus?.data?.connected ?? xeroStatus?.connected ?? false;
+    const xeroTenantId = xeroStatus?.data?.tenant_id ?? xeroStatus?.tenant_id;
 
     return (
         <DashboardLayout
@@ -48,13 +82,16 @@ export default function OwnerSettingsPage() {
                 <CardContent>
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
-                            {xeroStatus?.connected ? (
+                            {xeroLoading ? (
+                                <p className="text-sm text-[hsl(var(--muted-foreground))]">Checking status...</p>
+                            ) : xeroConnected ? (
                                 <>
                                     <CheckCircle size={20} className="text-[hsl(var(--success))]" />
                                     <div>
                                         <p className="font-medium text-[hsl(var(--success))]">Connected</p>
                                         <p className="text-sm text-[hsl(var(--muted-foreground))]">
-                                            Tenant ID: {xeroStatus.tenant_id?.slice(0, 8)}...
+                                            {/* ✅ Fix Bug 3 — use unwrapped value */}
+                                            Tenant ID: {xeroTenantId?.slice(0, 8)}...
                                         </p>
                                     </div>
                                 </>
@@ -65,12 +102,13 @@ export default function OwnerSettingsPage() {
                                 </>
                             )}
                         </div>
-                        {xeroStatus?.connected ? (
+                        {xeroConnected ? (
                             <Button variant="danger" size="sm" onClick={handleXeroDisconnect}>
                                 Disconnect
                             </Button>
                         ) : (
-                            <Button onClick={handleXeroConnect}>
+                            // ✅ Fix Bug 2 — plain button with onClick, not <Link>
+                            <Button onClick={handleXeroConnect} disabled={xeroLoading}>
                                 <Link2 size={16} /> Connect Xero
                             </Button>
                         )}
@@ -123,6 +161,6 @@ export default function OwnerSettingsPage() {
                     </div>
                 </CardContent>
             </Card>
-        </DashboardLayout >
+        </DashboardLayout>
     );
 }

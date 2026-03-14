@@ -295,13 +295,14 @@ export interface PublicHoliday {
 export interface XeroConfig {
   config_id: string;
   business_id: string;
-  xero_tenant_id: string | null;
+  tenant_id: string;
   access_token: string;
   refresh_token: string;
   token_expires_at: string;
-  connected_at: string;
+  created_at: string;
   updated_at: string;
 }
+
 
 export interface XeroSync {
   sync_id: string;
@@ -383,9 +384,10 @@ export type PublicHolidayInsert = Omit<PublicHoliday, 'holiday_id' | 'created_at
   holiday_id?: string;
 };
 
-export type XeroConfigInsert = Omit<XeroConfig, 'config_id' | 'connected_at' | 'updated_at'> & {
+export type XeroConfigInsert = Omit<XeroConfig, 'config_id' | 'created_at' | 'updated_at'> & {
   config_id?: string;
 };
+
 
 export type XeroSyncInsert = Omit<XeroSync, 'sync_id' | 'created_at'> & {
   sync_id?: string;

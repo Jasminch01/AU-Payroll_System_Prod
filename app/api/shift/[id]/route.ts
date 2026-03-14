@@ -70,6 +70,14 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
             .single();
 
         if (findError || !existing) return errorResponse('Shift not found', 404);
+        
+        // Check if shift has already started
+        const now = new Date();
+        const startTime = new Date(existing.start_time);
+        if (now >= startTime) {
+            return errorResponse('Cannot update a shift that has already started.', 400);
+        }
+
 
         const updateData: Record<string, unknown> = {};
         const allowedFields = [
@@ -161,6 +169,14 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
             .single();
 
         if (findError || !shift) return errorResponse('Shift not found', 404);
+
+        // Check if shift has already started
+        const now = new Date();
+        const startTime = new Date(shift.start_time);
+        if (now >= startTime) {
+            return errorResponse('Cannot delete a shift that has already started.', 400);
+        }
+
 
         const { error: deleteError } = await supabase
             .from('Shift')
