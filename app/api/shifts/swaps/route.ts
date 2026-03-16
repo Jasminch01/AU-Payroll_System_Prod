@@ -16,28 +16,23 @@ export async function GET(request: NextRequest) {
 
         const supabase = await createClient();
         const { searchParams } = new URL(request.url);
-        const status = searchParams.get('status');
 
         let query = supabase
             .from('ShiftSwapRequest')
             .select(`
-        *,
-        Shift:shift_id(*),
-        Requester:requester_id(employee_id, first_name, last_name, user_id, User:user_id(role)),
-        TargetEmployee:target_employee_id(employee_id, first_name, last_name),
-        TargetShift:target_shift_id(*)
-      `)
+                *,
+                Shift:shift_id(*),
+                Requester:requester_id(employee_id, first_name, last_name, user_id),
+                TargetEmployee:target_employee_id(employee_id, first_name, last_name),
+                TargetShift:target_shift_id(*)
+            `)
             .eq('business_id', authUser.business_id)
             .order('created_at', { ascending: false });
 
-        // Employees see only their relevant requests
+        // Employees see only their relevant requests AND open pool offers
         if (authUser.role === 'employee') {
             const employeeId = authUser.employee_id;
-            query = query.or(`requester_id.eq.${employeeId},target_employee_id.eq.${employeeId}`);
-        }
-
-        if (status) {
-            query = query.eq('status', status);
+            query = query.or(`requester_id.eq.${employeeId},target_employee_id.eq.${employeeId},target_employee_id.is.null`);
         }
 
         const { data: swaps, error } = await query;
@@ -46,16 +41,40 @@ export async function GET(request: NextRequest) {
 
         let filteredSwaps = swaps || [];
 
-        // Managers only see Employee swaps.
-        if (authUser.role === 'manager') {
-            filteredSwaps = filteredSwaps.filter((swap: any) => {
-                const reqRole = swap.Requester?.User?.[0]?.role || 'employee';
-                return reqRole === 'employee';
-            });
+        // Pre-fetch roles for filtering
+        const requesterUserIds = filteredSwaps.map(s => s.Requester?.user_id).filter(Boolean);
+        const roleMap = new Map<string, string>();
+        if (requesterUserIds.length > 0) {
+            const { data: userRoles } = await supabase
+                .from('User')
+                .select('user_id, role')
+                .in('user_id', requesterUserIds);
+            (userRoles || []).forEach(u => roleMap.set(u.user_id, u.role));
         }
 
-        // Owners theoretically see all, but let's separate them if requested in the future.
-        // For now, owners view the manager-level shift swaps in their own dashboard, so they need to see manager swaps.
+        // Post-filter logic for Roles and Pool
+        if (authUser.role === 'employee') {
+            const employeeId = authUser.employee_id;
+            filteredSwaps = filteredSwaps.filter((swap: any) => {
+                const isPersonal = swap.requester_id === employeeId || swap.target_employee_id === employeeId;
+                const isOpenPool = !swap.target_employee_id && swap.status === 'pending_approval';
+
+                if (isOpenPool) {
+                    const reqRole = roleMap.get(swap.Requester?.user_id) || 'employee';
+                    return reqRole === 'employee' && swap.requester_id !== employeeId;
+                }
+                return isPersonal;
+            });
+        } else if (authUser.role === 'manager') {
+            const employeeId = authUser.employee_id;
+            filteredSwaps = filteredSwaps.filter((swap: any) => {
+                const reqRole = roleMap.get(swap.Requester?.user_id) || 'employee';
+                const isOwnSwap = employeeId && (swap.requester_id === employeeId || swap.target_employee_id === employeeId);
+                const isOpenForManagers = !swap.target_employee_id && reqRole === 'manager' && swap.requester_id !== employeeId;
+                
+                return reqRole === 'employee' || isOwnSwap || isOpenForManagers;
+            });
+        }
 
         return successResponse(filteredSwaps);
     } catch (err) {
@@ -69,13 +88,6 @@ export async function GET(request: NextRequest) {
  * 
  * Initiate a shift swap or drop
  * Access: Employee, Manager, Owner
- * 
- * Body:
- * {
- *   "shift_id": "uuid",
- *   "target_employee_id": "uuid" (optional, for direct swap/invite),
- *   "target_shift_id": "uuid" (optional, for 1-for-1 swap)
- * }
  */
 export async function POST(request: NextRequest) {
     try {
@@ -89,37 +101,61 @@ export async function POST(request: NextRequest) {
         const { shift_id, target_employee_id, target_shift_id } = body;
         const employeeId = authUser.employee_id;
 
-        // Note: for owners/managers, they might not have an employee_id if they aren't rostered.
-        // In our system, Managers HAVE an employee record. Owners might not.
         if (!employeeId && authUser.role === 'employee') {
             return errorResponse('You do not have an employee profile linked to your account.', 403);
         }
 
         const supabase = await createClient();
 
-        // 1. Verify ownership of the shift
+        // 1. Verify ownership of the shift (No join to User here to avoid PGRST200)
         const { data: shift, error: shiftError } = await supabase
             .from('Shift')
-            .select('*, Employee:employee_id(user_id, User:user_id(role))')
+            .select('*')
             .eq('shift_id', shift_id)
             .eq('business_id', authUser.business_id)
             .single();
 
-        if (shiftError || !shift) return errorResponse('Shift not found', 404);
+        if (shiftError || !shift) {
+            console.error('Shift query error:', shiftError);
+            return errorResponse('Shift not found or access denied.', 404);
+        }
 
-        // --- ROLE VALIDATIONS ---
-        const requesterRole = shift.Employee?.User?.[0]?.role || authUser.role;
+        // Fetch the employee linked to the shift separately to avoid join errors
+        const { data: shiftEmployee } = await supabase
+            .from('Employee')
+            .select('user_id')
+            .eq('employee_id', shift.employee_id)
+            .single();
+
+        // --- ROLE VALIDATIONS (Manual Lookups) ---
+        let requesterRole = 'employee';
+        if (shiftEmployee?.user_id) {
+            const { data: userData } = await supabase
+                .from('User')
+                .select('role')
+                .eq('user_id', shiftEmployee.user_id)
+                .single();
+            if (userData) requesterRole = userData.role;
+        }
 
         if (target_employee_id) {
-            const { data: targetEmployee, error: targetError } = await supabase
+            const { data: targetEmployee } = await supabase
                 .from('Employee')
-                .select('user_id, User:user_id(role)')
+                .select('user_id')
                 .eq('employee_id', target_employee_id)
                 .single();
 
-            if (targetError || !targetEmployee) return errorResponse('Target employee not found.', 404);
+            if (!targetEmployee) return errorResponse('Target employee not found.', 404);
 
-            const targetRole = targetEmployee.User?.[0]?.role || 'employee';
+            let targetRole = 'employee';
+            if (targetEmployee.user_id) {
+                const { data: userData } = await supabase
+                    .from('User')
+                    .select('role')
+                    .eq('user_id', targetEmployee.user_id)
+                    .single();
+                if (userData) targetRole = userData.role;
+            }
 
             if (requesterRole === 'employee' && targetRole !== 'employee') {
                 return errorResponse('Employees can only swap shifts with other Employees.', 403);
@@ -145,7 +181,6 @@ export async function POST(request: NextRequest) {
         }
         // -----------------------
 
-        // Safety: typically only the employee who owns the shift can offer it
         if (shift.employee_id !== employeeId && authUser.role === 'employee') {
             return errorResponse('You can only offer your own shifts.', 403);
         }
@@ -155,7 +190,7 @@ export async function POST(request: NextRequest) {
             .from('ShiftSwapRequest')
             .insert({
                 business_id: authUser.business_id,
-                requester_id: employeeId || shift.employee_id, // fallback if owner is acting on someone's behalf
+                requester_id: employeeId || shift.employee_id,
                 shift_id,
                 target_employee_id: target_employee_id || null,
                 target_shift_id: target_shift_id || null,

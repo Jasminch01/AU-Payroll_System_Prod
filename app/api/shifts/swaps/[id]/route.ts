@@ -57,23 +57,66 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
             return successResponse(null, 'Request cancelled');
         }
 
-        // ACTION: Accept/Decline (by Target Employee)
+        // ACTION: Accept/Decline (by Target Employee or Pool Claimant)
         if (action === 'accept' || action === 'decline') {
-            if (swapRequest.target_employee_id !== employeeId) {
+            const isPoolClaim = !swapRequest.target_employee_id && swapRequest.status === 'pending_approval';
+
+            if (!isPoolClaim && swapRequest.target_employee_id !== employeeId) {
                 return errorResponse('Only the target employee can respond to this invitation.', 403);
             }
-            if (swapRequest.status !== 'pending_acceptance') {
-                return errorResponse('This request is no longer awaiting acceptance.', 400);
+
+            // Conflict & Role Check for Pool Claims
+            if (isPoolClaim && action === 'accept') {
+                if (!employeeId) return errorResponse('Valid employee profile required to claim shifts.', 401);
+
+                // 1. Role Check
+                const { data: requesterEmp, error: reqEmpError } = await supabase
+                    .from('Employee')
+                    .select('user_id')
+                    .eq('employee_id', swapRequest.requester_id)
+                    .single();
+                
+                let reqRole = 'employee';
+                if (requesterEmp?.user_id) {
+                    const { data: userData } = await supabase
+                        .from('User')
+                        .select('role')
+                        .eq('user_id', requesterEmp.user_id)
+                        .single();
+                    if (userData) reqRole = userData.role;
+                }
+
+                if (reqRole !== authUser.role) {
+                    return errorResponse(`Only ${reqRole}s can claim this shift.`, 403);
+                }
+
+                // 2. Overlap Check (Safety Rail)
+                const { data: conflicts } = await supabase
+                    .from('Shift')
+                    .select('shift_id')
+                    .eq('employee_id', employeeId)
+                    .lt('start_time', swapRequest.Shift.end_time)
+                    .gt('end_time', swapRequest.Shift.start_time);
+
+                if (conflicts && conflicts.length > 0) {
+                    return errorResponse('You cannot claim this shift because you have an overlapping shift.', 400);
+                }
             }
 
             const newStatus = action === 'accept' ? 'pending_approval' : 'rejected';
+            const updateFields: any = { status: newStatus, updated_at: new Date().toISOString() };
+            
+            if (isPoolClaim && action === 'accept') {
+                updateFields.target_employee_id = employeeId;
+            }
+
             const { error } = await supabase
                 .from('ShiftSwapRequest')
-                .update({ status: newStatus, updated_at: new Date().toISOString() })
+                .update(updateFields)
                 .eq('request_id', id);
 
             if (error) return errorResponse(error.message, 400);
-            return successResponse(null, action === 'accept' ? 'Accepted. Awaiting manager approval.' : 'Invitation declined.');
+            return successResponse(null, action === 'accept' ? 'Shift claimed / accepted. Awaiting manager approval.' : 'Invitation declined.');
         }
 
         // ACTION: Approve/Reject (by Manager/Owner)
@@ -88,14 +131,21 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 
             // --- ROLE VALIDATION FOR APPROVAL ---
             // If the requester is a manager, only an owner can approve it.
-            const { data: requester, error: reqError } = await supabase
+            const { data: requesterEmp, error: reqEmpError } = await supabase
                 .from('Employee')
-                .select('user_id, User:user_id(role)')
+                .select('user_id')
                 .eq('employee_id', swapRequest.requester_id)
                 .single();
 
-            if (reqError) console.error("Could not verify requester role for swap approval:", reqError);
-            const reqRole = requester?.User?.[0]?.role || 'employee';
+            let reqRole = 'employee';
+            if (requesterEmp?.user_id) {
+                const { data: userData } = await supabase
+                    .from('User')
+                    .select('role')
+                    .eq('user_id', requesterEmp.user_id)
+                    .single();
+                if (userData) reqRole = userData.role;
+            }
 
             if (reqRole === 'manager' && authUser.role !== 'owner') {
                 return errorResponse('Only an owner can approve a manager\'s shift swap request.', 403);

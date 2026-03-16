@@ -16,7 +16,7 @@ import { useAuth } from "@/hooks/use-auth";
 
 import { ShiftSwapDialog } from "@/components/shifts/swap-dialog";
 
-export default function EmployeeShiftsPage() {
+export default function ManagerShiftsPage() {
     const queryClient = useQueryClient();
     const [swapDialogOpen, setSwapDialogOpen] = useState(false);
     const [selectedShift, setSelectedShift] = useState<any>(null);
@@ -69,7 +69,7 @@ export default function EmployeeShiftsPage() {
 
     return (
         <DashboardLayout
-            role="employee"
+            role="manager"
             pageTitle="My Shifts"
             pageDescription={`${upcoming.length} upcoming shifts`}
         >
@@ -237,7 +237,7 @@ export default function EmployeeShiftsPage() {
                 open={swapDialogOpen} 
                 onOpenChange={setSwapDialogOpen} 
                 shift={selectedShift} 
-                role="employee"
+                role="manager"
             />
         </DashboardLayout>
     );
