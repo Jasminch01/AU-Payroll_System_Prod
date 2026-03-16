@@ -103,8 +103,8 @@ export default function OwnerDashboardPage() {
 
 
 
-            {/* Metric Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+            {/* Metric Cards — Row 1: Core stats */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
                 <MetricCard
                     title="Active Employees"
                     value={isLoading ? "—" : summary?.active_employees ?? 0}
@@ -125,28 +125,26 @@ export default function OwnerDashboardPage() {
                     value={isLoading ? "—" : summary?.pending_leave ?? 0}
                     icon={<Palmtree size={24} />}
                 />
-                <MetricCard
-                    title="Pending Swaps"
-                    value={isLoading ? "—" : shiftSwaps.length ?? 0}
-                    icon={<ArrowLeftRight size={24} />}
-                />
             </div>
 
-            {/* Second Row */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
+            {/* Metric Cards — Row 2: Financial + Swaps */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
                 <MetricCard
                     title="Est. Labour Cost Today"
                     value={isLoading ? "—" : `$${(summary?.estimated_labour_cost_today ?? 0).toLocaleString()}`}
                     icon={<DollarSign size={24} />}
                 />
-                {labourData && (
-                    <MetricCard
-                        title="Labour %"
-                        value={`${labourData?.labour_percentage?.toFixed(1) ?? "—"}%`}
-                        description={`Target: ${labourData?.threshold_min ?? 25}% – ${labourData?.threshold_max ?? 35}%`}
-                        icon={<AlertTriangle size={24} />}
-                    />
-                )}
+                <MetricCard
+                    title="Labour %"
+                    value={labourData ? `${labourData?.labour_percentage?.toFixed(1) ?? "—"}%` : (isLoading ? "—" : "N/A")}
+                    description={labourData ? `Target: ${labourData?.threshold_min ?? 25}% – ${labourData?.threshold_max ?? 35}%` : undefined}
+                    icon={<TrendingUp size={24} />}
+                />
+                <MetricCard
+                    title="Pending Swaps"
+                    value={isLoading ? "—" : shiftSwaps.length ?? 0}
+                    icon={<ArrowLeftRight size={24} />}
+                />
             </div>
 
             {/* Analytics Section */}
@@ -204,75 +202,81 @@ export default function OwnerDashboardPage() {
                     </div>
                 </div>
 
-                <div className="rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-6 shadow-sm flex flex-col space-y-4">
-                    <div className="flex items-center gap-4">
-                        <div className={cn(
-                            "flex h-12 w-12 items-center justify-center rounded-full shrink-0",
-                            compliance?.status === 'healthy' ? "bg-[hsl(var(--success-light))] text-[hsl(var(--success))]" :
-                            compliance?.status === 'warning' ? "bg-[hsl(var(--warning-light))] text-[hsl(var(--warning))]" :
-                            "bg-[hsl(var(--danger-light))] text-[hsl(var(--danger))]"
-                        )}>
-                            <ShieldCheck size={28} />
+                <div className={cn(
+                    "rounded-2xl border p-6 flex flex-col transition-all duration-300 shadow-sm",
+                    compliance?.score === 100 
+                        ? "border-[hsl(var(--success))]/20 bg-[hsl(var(--success-light))]/30 shadow-[0_0_20px_-12px_hsl(var(--success))]" 
+                        : "border-[hsl(var(--border))] bg-[hsl(var(--card))]"
+                )}>
+                    {compliance?.score === 100 ? (
+                        <div className="flex flex-col items-center text-center justify-center h-full space-y-4 py-4">
+                            <div className="relative">
+                                <div className="h-16 w-16 rounded-full bg-[hsl(var(--success))] text-white flex items-center justify-center shadow-lg shadow-[hsl(var(--success))]/20 animate-in zoom-in-50 duration-500">
+                                    <ShieldCheck size={32} />
+                                </div>
+                                <div className="absolute -right-1 -bottom-1 h-6 w-6 rounded-full bg-white border-2 border-[hsl(var(--success))] text-[hsl(var(--success))] flex items-center justify-center">
+                                    <CheckCircle size={14} />
+                                </div>
+                            </div>
+                            <div>
+                                <h3 className="text-xl font-bold text-[hsl(var(--success))]">Fully Compliant</h3>
+                                <p className="text-sm text-[hsl(var(--success))]/70 font-medium max-w-[200px] mt-1 leading-relaxed">
+                                    Your business is 100% ready for Australian payroll.
+                                </p>
+                            </div>
+                            <div className="w-full h-1.5 bg-[hsl(var(--success))]/10 rounded-full overflow-hidden mt-2">
+                                <div className="h-full bg-[hsl(var(--success))] w-full rounded-full" />
+                            </div>
                         </div>
-                        <div>
-                            <h3 className="text-lg font-bold">Payroll Compliance</h3>
-                            <p className={cn(
-                                "text-sm font-medium",
-                                compliance?.status === 'healthy' ? "text-[hsl(var(--success))]" :
-                                compliance?.status === 'warning' ? "text-[hsl(var(--warning))]" :
-                                "text-[hsl(var(--danger))]"
-                            )}>
-                                {isComplianceLoading ? "Checking..." : `${compliance?.score}% Ready`}
-                            </p>
-                        </div>
-                    </div>
+                    ) : (
+                        <>
+                            <div className="flex items-center gap-4 mb-4">
+                                <div className={cn(
+                                    "flex h-12 w-12 items-center justify-center rounded-full shrink-0",
+                                    compliance?.status === 'warning' ? "bg-[hsl(var(--warning-light))] text-[hsl(var(--warning))]" :
+                                    "bg-[hsl(var(--danger-light))] text-[hsl(var(--danger))]"
+                                )}>
+                                    <ShieldCheck size={28} />
+                                </div>
+                                <div>
+                                    <h3 className="text-lg font-bold">Payroll Compliance</h3>
+                                    <p className={cn(
+                                        "text-sm font-medium",
+                                        compliance?.status === 'warning' ? "text-[hsl(var(--warning))]" :
+                                        "text-[hsl(var(--danger))]"
+                                    )}>
+                                        {isComplianceLoading ? "Checking..." : `${compliance?.score}% Ready`}
+                                    </p>
+                                </div>
+                            </div>
 
-                    <div className="flex-1">
-                        {compliance?.alerts?.length > 0 ? (
-                            <ul className="space-y-2">
-                                {compliance.alerts.map((alert: string, idx: number) => (
-                                    <li key={idx} className="flex items-start gap-2 text-xs text-[hsl(var(--muted-foreground))]">
-                                        <div className="h-1.5 w-1.5 rounded-full bg-[hsl(var(--warning))] mt-1 shrink-0" />
-                                        {alert}
-                                    </li>
-                                ))}
-                            </ul>
-                        ) : (
-                            <p className="text-sm text-[hsl(var(--muted-foreground))]">Your business settings and employee records are fully compliant with Australian standards.</p>
-                        )}
-                    </div>
-                    
-                    <Button variant="outline" className="w-full mt-2" asChild>
-                        <Link href="/owner/settings">
-                            {compliance?.score < 100 ? "Fix Issues" : "View Compliance Report"}
-                        </Link>
-                    </Button>
+                            <div className="flex-1 max-h-[120px] overflow-y-auto pr-2 custom-scrollbar">
+                                {compliance?.alerts?.length > 0 ? (
+                                    <ul className="space-y-3">
+                                        {compliance.alerts.map((alert: string, idx: number) => (
+                                            <li key={idx} className="flex items-start gap-3 p-2.5 rounded-lg bg-[hsl(var(--muted))]/30 border border-[hsl(var(--border))]/50">
+                                                <div className="h-1.5 w-1.5 rounded-full bg-[hsl(var(--danger))] mt-1.5 shrink-0" />
+                                                <span className="text-xs text-[hsl(var(--foreground))] font-medium leading-tight">{alert}</span>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                ) : (
+                                    <p className="text-sm text-[hsl(var(--muted-foreground))]">Settings audit required.</p>
+                                )}
+                            </div>
+                            
+                            <Button variant="outline" className="w-full mt-4 border-[hsl(var(--border))] hover:bg-[hsl(var(--muted))] font-bold h-10 rounded-xl" asChild>
+                                <Link href="/owner/settings">
+                                    Fix Issues
+                                </Link>
+                            </Button>
+                        </>
+                    )}
                 </div>
 
             </div>
 
 
-            {/* Quick Actions */}
-            <div className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-6">
-                <h2 className="text-lg font-semibold mb-4">Quick Actions</h2>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    {[
-                        { label: "Invite Employee", href: "/owner/employees", icon: <Users size={18} /> },
-                        { label: "Create Roster", href: "/owner/roster", icon: <CalendarDays size={18} /> },
-                        { label: "Approvals Hub", href: "/owner/approvals", icon: <ShieldCheck size={18} /> },
-                        { label: "Run Payroll", href: "/owner/payroll", icon: <DollarSign size={18} /> },
-                    ].map((action) => (
-                        <Link
-                            key={action.label}
-                            href={action.href}
-                            className="flex flex-col items-center gap-2 rounded-xl border border-[hsl(var(--border))] p-4 text-center text-sm font-medium text-[hsl(var(--muted-foreground))] transition-all hover:border-[hsl(var(--brand))] hover:text-[hsl(var(--brand))] hover:shadow-sm"
-                        >
-                            {action.icon}
-                            {action.label}
-                        </Link>
-                    ))}
-                </div>
-            </div>
         </DashboardLayout>
     );
 }

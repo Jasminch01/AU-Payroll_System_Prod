@@ -40,7 +40,7 @@ function Badge({ className, variant, ...props }: BadgeProps) {
 /**
  * Helper: Map common status strings to badge variants
  */
-function StatusBadge({ status, label }: { status: string; label?: string }) {
+function StatusBadge({ status, label, className }: { status: string; label?: string; className?: string }) {
     const statusMap: Record<string, { variant: BadgeProps["variant"]; label: string }> = {
         active: { variant: "success", label: "Active" },
         inactive: { variant: "secondary", label: "Inactive" },
@@ -68,7 +68,7 @@ function StatusBadge({ status, label }: { status: string; label?: string }) {
 
     const config = statusMap[status?.toLowerCase()] || { variant: "secondary" as const, label: status };
 
-    return <Badge variant={config.variant}>{label || config.label}</Badge>;
+    return <Badge variant={config.variant} className={className}>{label || config.label}</Badge>;
 }
 
 export { Badge, badgeVariants, StatusBadge };

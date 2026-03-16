@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { requireRole } from '@/lib/auth';
 import { successResponse, errorResponse } from '@/lib/api-helpers';
 
@@ -14,7 +14,9 @@ export async function GET(request: NextRequest) {
         const authUser = await requireRole('owner');
         if (!authUser) return errorResponse('Unauthorized', 401);
 
-        const supabase = await createClient();
+        // Use admin client to bypass RLS for server-side data reads
+        // (auth is already verified above via requireRole)
+        const supabase = createAdminClient();
         const businessId = authUser.business_id;
         const alerts: string[] = [];
         let score = 100;
@@ -38,7 +40,7 @@ export async function GET(request: NextRequest) {
             score -= 30;
             alerts.push('ABN/ACN missing from business profile.');
         }
-        
+
         if (!xeroConfig?.tenant_id) {
             score -= 10;
             alerts.push('Xero integration not connected.');
@@ -47,20 +49,27 @@ export async function GET(request: NextRequest) {
 
 
         // 2. Check Employee Data
-        const { data: employees } = await supabase
+        const { data: employees, error: empError } = await supabase
             .from('Employee')
-            .select('first_name, last_name, award_category, base_rate')
+            .select('employee_id, first_name, last_name')
             .eq('business_id', businessId)
             .eq('status', 'active');
 
-        if (employees && employees.length > 0) {
-            const missingAward = employees.filter(e => !e.award_category);
-            const missingRate = employees.filter(e => !e.base_rate);
+        if (empError) {
+            console.error('Compliance employee check error:', empError.message);
+        }
 
-            if (missingAward.length > 0) {
-                score -= 20;
-                alerts.push(`${missingAward.length} employees missing Fair Work Award categories.`);
-            }
+        if (employees && employees.length > 0) {
+            // Check if these employees have an entry in EmployeeRateHistory
+            const { data: rates } = await supabase
+                .from('EmployeeRateHistory')
+                .select('employee_id')
+                .in('employee_id', employees.map(e => e.employee_id))
+                .eq('business_id', businessId);
+            
+            const rateMap = new Set(rates?.map(r => r.employee_id) || []);
+            const missingRate = employees.filter(e => !rateMap.has(e.employee_id));
+
             if (missingRate.length > 0) {
                 score -= 20;
                 alerts.push(`${missingRate.length} employees missing base pay rates.`);
@@ -73,7 +82,7 @@ export async function GET(request: NextRequest) {
         // 3. Check Operational Health (e.g., stale timesheets)
         const sevenDaysAgo = new Date();
         sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-        
+
         const { count: overdueTimesheets } = await supabase
             .from('TimeSheet')
             .select('*', { count: 'exact', head: true })

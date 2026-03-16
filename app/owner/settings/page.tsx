@@ -40,10 +40,10 @@ export default function OwnerSettingsPage() {
         const height = 700;
         const left = window.screenX + (window.outerWidth - width) / 2;
         const top = window.screenY + (window.outerHeight - height) / 2;
-        
+
         window.open(
-            "/api/xero/auth", 
-            "XeroConnect", 
+            "/api/xero/auth",
+            "XeroConnect",
             `width=${width},height=${height},left=${left},top=${top},status=no,menubar=no,toolbar=no`
         );
     };
@@ -64,7 +64,6 @@ export default function OwnerSettingsPage() {
 
     // ✅ Fix Bug 3 — safely unwrap in case apiGet wraps in { data: ... }
     const xeroConnected = xeroStatus?.data?.connected ?? xeroStatus?.connected ?? false;
-    const xeroTenantId = xeroStatus?.data?.tenant_id ?? xeroStatus?.tenant_id;
 
     return (
         <DashboardLayout
@@ -89,10 +88,6 @@ export default function OwnerSettingsPage() {
                                     <CheckCircle size={20} className="text-[hsl(var(--success))]" />
                                     <div>
                                         <p className="font-medium text-[hsl(var(--success))]">Connected</p>
-                                        <p className="text-sm text-[hsl(var(--muted-foreground))]">
-                                            {/* ✅ Fix Bug 3 — use unwrapped value */}
-                                            Tenant ID: {xeroTenantId?.slice(0, 8)}...
-                                        </p>
                                     </div>
                                 </>
                             ) : (

@@ -56,22 +56,22 @@ export async function POST(request: NextRequest) {
         });
 
         if (inviteError) {
-            return errorResponse(`Failed to resend invitation email: ${inviteError.message}`, 500);
-        }
-
-        inviteSent = true;
-
-        // 3. Also generate a link for manual copying
-        const { data: linkData, error: linkError } = await adminClient.auth.admin.generateLink({
-            type: 'invite',
-            email: employee.email,
-            options: {
-                redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/onboarding`,
+            // If email failed, try to at least get a manual link
+            const { data: linkData } = await adminClient.auth.admin.generateLink({
+                type: 'invite',
+                email: employee.email,
+                options: {
+                    redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/onboarding`,
+                }
+            });
+            
+            if (linkData?.properties?.action_link) {
+                actionLink = linkData.properties.action_link;
+            } else {
+                return errorResponse(`Failed to resend invitation: ${inviteError.message}`, 500);
             }
-        });
-
-        if (!linkError && linkData?.properties?.action_link) {
-            actionLink = linkData.properties.action_link;
+        } else {
+            inviteSent = true;
         }
 
         return successResponse({

@@ -17,8 +17,14 @@ export default function OnboardingPage() {
     // Context Data
     const [employeeName, setEmployeeName] = useState("");
     const [businessName, setBusinessName] = useState("");
+    const [joinMode, setJoinMode] = useState(false);
+    const [businessCode, setBusinessCode] = useState<string | null>(null);
+    const [prefilledPhone, setPrefilledPhone] = useState(false);
 
-    // Minimal Form fields (as required by the new screenshot)
+    // Minimal Form fields
+    const [firstName, setFirstName] = useState("");
+    const [lastName, setLastName] = useState("");
+    const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [phone, setPhone] = useState("");
     const [dob, setDob] = useState("");
@@ -27,7 +33,12 @@ export default function OnboardingPage() {
     const [emergencyPhone, setEmergencyPhone] = useState("");
     const [kioskPin, setKioskPin] = useState("");
 
+    const initialized = React.useRef(false);
+
     useEffect(() => {
+        if (initialized.current) return;
+        initialized.current = true;
+
         const supabase = createClient();
         let hasChecked = false;
 
@@ -38,17 +49,14 @@ export default function OnboardingPage() {
             try {
                 const res = await fetch("/api/onboarding/status");
                 if (res.status === 401) {
-                    // Not authenticated yet - this can happen during token processing
-                    // We don't redirect here; we let initialize resolve the session
-                    hasChecked = false; // Allow retry
+                    // Not authenticated yet
+                    hasChecked = false;
                     return;
                 }
 
                 const data = await res.json();
 
                 if (!data.success) {
-                    // Only redirect to dashboard if we are SURE they don't need onboarding 
-                    // AND they are actually logged in.
                     if (data.data?.is_owner) {
                         router.push("/owner/dashboard");
                     } else if (data.data && !data.data.needs_onboarding) {
@@ -64,6 +72,11 @@ export default function OnboardingPage() {
 
                 setEmployeeName(`${data.data.employee.first_name || ""} ${data.data.employee.last_name || ""}`.trim());
                 setBusinessName(data.data.business_name);
+                
+                if (data.data.employee.phone) {
+                    setPhone(data.data.employee.phone);
+                    setPrefilledPhone(true);
+                }
 
                 if (data.data?.is_existing_user) {
                     setIsExistingUser(true);
@@ -82,22 +95,47 @@ export default function OnboardingPage() {
                 const token_hash = params.get('token_hash');
                 const type = params.get('type') as any;
 
-                // 1. Check for PKCE token_hash (invite or magiclink)
+                // 0. Check for error in hash (e.g. otp_expired)
+                // BUT: Only show error if we aren't already logged in. 
+                // Sometimes Supabase redirects with an error even if the session was technically created.
+                if (window.location.hash.includes('error=')) {
+                    const { data: { session } } = await supabase.auth.getSession();
+                    if (session) {
+                        // We have a session, ignore the hash error (likely a double-trigger)
+                        window.history.replaceState({}, document.title, window.location.pathname);
+                        await checkStatus();
+                        return;
+                    }
+
+                    const hashParams = new URLSearchParams(window.location.hash.substring(1));
+                    const errorDesc = hashParams.get('error_description') || hashParams.get('error') || 'Invitation error';
+                    toast.error(errorDesc.replace(/\+/g, ' '));
+                    setCheckingStatus(false);
+                    setTimeout(() => router.push('/login'), 3000);
+                    return;
+                }
+
+                // 1. Check for PKCE token_hash
                 if (token_hash && type) {
                     const { error } = await supabase.auth.verifyOtp({ token_hash, type });
                     if (error) {
-                        toast.error('Invalid or expired invitation link.');
+                        // Check if we are actually logged in despite the error (double-request issue)
+                        const { data: { session } } = await supabase.auth.getSession();
+                        if (session) {
+                             window.history.replaceState({}, document.title, window.location.pathname);
+                             await checkStatus();
+                             return;
+                        }
+                        toast.error(error.message || 'Invalid or expired invitation link.');
                         router.push('/login');
                         return;
                     }
-                    // Strip the ugly token from URL
                     window.history.replaceState({}, document.title, window.location.pathname);
-                    // Session should be established now, checkStatus will be triggered by onAuthStateChange or manual call
                     await checkStatus();
                     return;
                 }
 
-                // 2. Check for implicit flow hash (admin.generateLink defaults to this)
+                // 2. Check for implicit flow hash
                 if (window.location.hash.includes('access_token')) {
                     const hashParams = new URLSearchParams(window.location.hash.substring(1));
                     const access_token = hashParams.get('access_token');
@@ -110,7 +148,6 @@ export default function OnboardingPage() {
                             router.push('/login');
                             return;
                         }
-                        // Clean up URL
                         window.history.replaceState({}, document.title, window.location.pathname);
                         await checkStatus();
                         return;
@@ -123,14 +160,29 @@ export default function OnboardingPage() {
                 if (session) {
                     await checkStatus();
                 } else {
-                    // Give it a tiny moment to see if an onAuthStateChange fires 
-                    // (useful if Supabase is still initializing)
-                    setTimeout(async () => {
-                        const { data: { session: delayedSession } } = await supabase.auth.getSession();
-                        if (!delayedSession && !window.location.hash && !window.location.search) {
-                            router.push('/login');
+                    const bCode = params.get('business');
+                    if (bCode) {
+                        setBusinessCode(bCode);
+                        setJoinMode(true);
+                        setCheckingStatus(false);
+                        
+                        try {
+                            const bRes = await fetch(`/api/business/preview?code=${bCode}`);
+                            const bData = await bRes.json();
+                            if (bData.success) {
+                                setBusinessName(bData.data.business_name);
+                            }
+                        } catch (e) {
+                            console.error("Failed to fetch business preview", e);
                         }
-                    }, 1000);
+                    } else {
+                        setTimeout(async () => {
+                            const { data: { session: delayedSession } } = await supabase.auth.getSession();
+                            if (!delayedSession && !window.location.hash && !window.location.search) {
+                                router.push('/login');
+                            }
+                        }, 1500);
+                    }
                 }
             } catch (err) {
                 console.error("Initialization error:", err);
@@ -150,6 +202,47 @@ export default function OnboardingPage() {
             subscription.unsubscribe();
         };
     }, [router]);
+
+    const handleJoin = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setLoading(true);
+        try {
+            const res = await fetch("/api/employees/join", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ 
+                    email, 
+                    password, 
+                    first_name: firstName, 
+                    last_name: lastName, 
+                    join_code: businessCode,
+                    phone,
+                    dob,
+                    bank_details: bankDetails,
+                    emergency_contact_name: emergencyName,
+                    emergency_contact_phone: emergencyPhone,
+                    kiosk_pin: kioskPin
+                }),
+            });
+            const data = await res.json();
+            if (!data.success) return toast.error(data.error || "Join failed");
+
+            // Now log in
+            const supabase = createClient();
+            const { error: loginError } = await supabase.auth.signInWithPassword({ email, password });
+            if (loginError) {
+                toast.success("Joined successfully! Please log in now.");
+                router.push("/login");
+            } else {
+                toast.success("Welcome aboard! 🎉");
+                router.push("/employee/dashboard");
+            }
+        } catch {
+            toast.error("Something went wrong");
+        } finally {
+            setLoading(false);
+        }
+    };
 
     const handleComplete = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -233,161 +326,143 @@ export default function OnboardingPage() {
                 </div>
             </div>
 
-            {/* Right Panel - Form (Extremely Minimalist) */}
+            {/* Right Panel - Form */}
             <div className="lg:w-1/2 w-full bg-white flex flex-col justify-center lg:h-screen lg:overflow-y-auto custom-scrollbar">
                 <div className="max-w-[400px] w-full mx-auto px-6 py-12 text-center text-slate-800">
                     {/* Header */}
                     <div className="mb-8 space-y-2">
                         <div className="flex justify-center mb-6">
-                            {/* Deputy-style red windmill logo approximation */}
                             <Fan className="text-[#FF4A4A] h-[42px] w-[42px] stroke-[2.5]" />
                         </div>
                         <h1 className="text-[20px] font-semibold tracking-tight text-[#261C7F]">
-                            Join {businessName} on<br />AU Payroll System
+                            {joinMode ? "Join Your Team" : `Join ${businessName} on`} <br />AU Payroll System
                         </h1>
                         <p className="text-[#4B5563] text-[13.5px] leading-[1.6] pt-3 px-2">
-                            Your manager from <span className="font-semibold text-[#1F2937]">{businessName}</span> has invited you to start using AU Payroll System to simplify scheduling.
+                            {joinMode
+                                ? "Enter your details below to create an account and join your business."
+                                : `Your manager has invited you to start using AU Payroll System to simplify scheduling.`}
                         </p>
                     </div>
 
-                    <form onSubmit={handleComplete} className="space-y-[18px] text-left">
-                        {/* Name Field */}
-                        <div className="space-y-[6px]">
-                            <label className="text-[12px] font-bold text-slate-800 ml-1">Full name</label>
-                            <Input
-                                value={employeeName || ""}
-                                disabled
-                                className="bg-[#F9FAFB] text-slate-600 focus-visible:ring-0 focus-visible:ring-offset-0 border-slate-300 h-10 shadow-none text-sm"
-                            />
-                            <p className="text-[11px] text-[#6B7280] text-center px-1 leading-tight pt-1">
-                                Your name should match your payroll details to ensure pay is always on time
-                            </p>
-                        </div>
-
-                        {/* Mobile Field */}
-                        <div className="space-y-[6px]">
-                            <label className="text-[12px] font-bold text-slate-800 ml-1">Mobile number</label>
-                            <Input
-                                type="tel"
-                                placeholder="0412 345 678"
-                                value={phone}
-                                onChange={(e) => setPhone(e.target.value)}
-                                required
-                                className="focus-visible:ring-0 focus-visible:ring-offset-0 border-[#D1D5DB] h-10 shadow-none text-sm placeholder:text-[#9CA3AF]"
-                            />
-                        </div>
-
-                        {/* DOB Field */}
-                        <div className="space-y-[6px]">
-                            <label className="text-[12px] font-bold text-slate-800 ml-1">Date of Birth</label>
-                            <Input
-                                type="date"
-                                value={dob}
-                                onChange={(e) => setDob(e.target.value)}
-                                required
-                                className="focus-visible:ring-0 focus-visible:ring-offset-0 border-[#D1D5DB] h-10 shadow-none text-sm"
-                            />
-                        </div>
-
-                        {/* Bank Details Field */}
-                        <div className="space-y-[6px]">
-                            <label className="text-[12px] font-bold text-slate-800 ml-1">Bank Details (BSB & Acc)</label>
-                            <Input
-                                placeholder="BSB: 000-000, Acc: 00000000"
-                                value={bankDetails}
-                                onChange={(e) => setBankDetails(e.target.value)}
-                                required
-                                className="focus-visible:ring-0 focus-visible:ring-offset-0 border-[#D1D5DB] h-10 shadow-none text-sm placeholder:text-[#9CA3AF]"
-                            />
-                        </div>
-
-                        {/* Emergency Contact */}
-                        <div className="grid grid-cols-2 gap-3">
-                            <div className="space-y-[6px]">
-                                <label className="text-[12px] font-bold text-slate-800 ml-1">Emergency Name</label>
-                                <Input
-                                    placeholder="Name"
-                                    value={emergencyName}
-                                    onChange={(e) => setEmergencyName(e.target.value)}
-                                    required
-                                    className="focus-visible:ring-0 focus-visible:ring-offset-0 border-[#D1D5DB] h-10 shadow-none text-sm placeholder:text-[#9CA3AF]"
-                                />
+                    {joinMode ? (
+                        <form onSubmit={handleJoin} className="space-y-[18px] text-left">
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="space-y-[6px]">
+                                    <label className="text-[12px] font-bold text-slate-800 ml-1">First name</label>
+                                    <Input placeholder="Jane" value={firstName} onChange={e => setFirstName(e.target.value)} required className="h-10 text-sm" />
+                                </div>
+                                <div className="space-y-[6px]">
+                                    <label className="text-[12px] font-bold text-slate-800 ml-1">Last name</label>
+                                    <Input placeholder="Doe" value={lastName} onChange={e => setLastName(e.target.value)} required className="h-10 text-sm" />
+                                </div>
                             </div>
                             <div className="space-y-[6px]">
-                                <label className="text-[12px] font-bold text-slate-800 ml-1">Emergency Phone</label>
-                                <Input
-                                    type="tel"
-                                    placeholder="Phone"
-                                    value={emergencyPhone}
-                                    onChange={(e) => setEmergencyPhone(e.target.value)}
-                                    required
-                                    className="focus-visible:ring-0 focus-visible:ring-offset-0 border-[#D1D5DB] h-10 shadow-none text-sm placeholder:text-[#9CA3AF]"
-                                />
+                                <label className="text-[12px] font-bold text-slate-800 ml-1">Email address</label>
+                                <Input type="email" placeholder="jane@email.com" value={email} onChange={e => setEmail(e.target.value)} required className="h-10 text-sm" />
                             </div>
-                        </div>
-
-                        {/* Kiosk PIN */}
-                        <div className="space-y-[6px]">
-                            <label className="text-[12px] font-bold text-slate-800 ml-1">Kiosk PIN (4 digits)</label>
-                            <Input
-                                type="text"
-                                inputMode="numeric"
-                                pattern="[0-9]*"
-                                maxLength={4}
-                                placeholder="e.g. 1234"
-                                value={kioskPin}
-                                onChange={(e) => setKioskPin(e.target.value.replace(/\D/g, ''))}
-                                required
-                                className="focus-visible:ring-0 focus-visible:ring-offset-0 border-[#D1D5DB] h-10 shadow-none text-sm placeholder:text-[#9CA3AF]"
-                            />
-                            <p className="text-[11px] text-[#6B7280] ml-1">
-                                Use this PIN to clock in/out at the kiosk
-                            </p>
-                        </div>
-
-                        {/* Password Field */}
-                        {!isExistingUser && (
                             <div className="space-y-[6px]">
                                 <label className="text-[12px] font-bold text-slate-800 ml-1">Set Password</label>
-                                <Input
-                                    type="password"
-                                    placeholder="Minimum 6 characters"
-                                    value={password}
-                                    onChange={(e) => setPassword(e.target.value)}
-                                    required
-                                    className="focus-visible:ring-0 focus-visible:ring-offset-0 border-[#D1D5DB] h-10 shadow-none text-sm placeholder:text-[#9CA3AF]"
-                                />
-                                {password && (
-                                    <div className="flex gap-1 pt-0.5 opacity-80">
-                                        <div className={`h-[5px] flex-1 rounded-sm ${password.length > 0 ? 'bg-slate-300' : 'bg-slate-100'} ${password.length > 2 ? 'bg-[#FF4A4A]' : ''}`}></div>
-                                        <div className={`h-[5px] flex-1 rounded-sm ${password.length >= 6 ? 'bg-orange-400' : 'bg-slate-100'}`}></div>
-                                        <div className={`h-[5px] flex-1 rounded-sm ${password.length >= 8 ? 'bg-[#10B981]' : 'bg-slate-100'}`}></div>
-                                    </div>
-                                )}
+                                <Input type="password" placeholder="6+ characters" value={password} onChange={e => setPassword(e.target.value)} required className="h-10 text-sm" />
                             </div>
-                        )}
 
-                        {/* Submit Actions */}
-                        <div className="pt-2 flex flex-col items-center">
-                            <Button
-                                type="submit"
-                                className="w-full h-11 text-[14px] font-medium bg-[#3724B3] hover:bg-[#261C7F] rounded-[8px] transition-colors shadow-none"
-                                loading={loading}
-                            >
-                                Join {businessName}
+                            <hr className="my-4 border-slate-100" />
+                            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Payroll Details</p>
+
+                            <div className="space-y-[6px]">
+                                <label className="text-[12px] font-bold text-slate-800 ml-1">Mobile number</label>
+                                <Input type="tel" placeholder="0412 345 678" value={phone} onChange={(e) => setPhone(e.target.value)} required className="h-10 text-sm" />
+                            </div>
+
+                            <div className="space-y-[6px]">
+                                <label className="text-[12px] font-bold text-slate-800 ml-1">Date of Birth</label>
+                                <Input type="date" value={dob} onChange={(e) => setDob(e.target.value)} required className="h-10 text-sm" />
+                            </div>
+
+                            <div className="space-y-[6px]">
+                                <label className="text-[12px] font-bold text-slate-800 ml-1">Bank Details (BSB & Acc)</label>
+                                <Input placeholder="BSB: 000-000, Acc: 00000000" value={bankDetails} onChange={(e) => setBankDetails(e.target.value)} required className="h-10 text-sm" />
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="space-y-[6px]">
+                                    <label className="text-[12px] font-bold text-slate-800 ml-1">Emergency Name</label>
+                                    <Input placeholder="Name" value={emergencyName} onChange={(e) => setEmergencyName(e.target.value)} required className="h-10 text-sm" />
+                                </div>
+                                <div className="space-y-[6px]">
+                                    <label className="text-[12px] font-bold text-slate-800 ml-1">Emergency Phone</label>
+                                    <Input type="tel" placeholder="Phone" value={emergencyPhone} onChange={(e) => setEmergencyPhone(e.target.value)} required className="h-10 text-sm" />
+                                </div>
+                            </div>
+
+                            <div className="space-y-[6px]">
+                                <label className="text-[12px] font-bold text-slate-800 ml-1">Kiosk PIN (4 digits)</label>
+                                <Input maxLength={4} placeholder="e.g. 1234" value={kioskPin} onChange={(e) => setKioskPin(e.target.value.replace(/\D/g, ''))} required className="h-10 text-sm" />
+                            </div>
+
+                            <Button type="submit" className="w-full h-11 text-[14px] font-medium bg-[#3724B3] hover:bg-[#261C7F] rounded-[8px] mt-4" loading={loading}>
+                                Join & Complete Onboarding
                             </Button>
+                        </form>
+                    ) : (
+                        <form onSubmit={handleComplete} className="space-y-[18px] text-left">
+                            {/* We skip Name and Mobile if pre-filled, as per user requirement */}
+                            {!employeeName && (
+                                <div className="space-y-[6px]">
+                                    <label className="text-[12px] font-bold text-slate-800 ml-1">Full name</label>
+                                    <Input value={employeeName || ""} disabled className="bg-[#F9FAFB] text-slate-600 h-10 shadow-none text-sm" />
+                                </div>
+                            )}
 
-                            <div className="mt-5 space-y-4 text-center px-2">
-                                <p className="text-[11px] text-[#6B7280]">
-                                    By signing up you are accepting the <span className="text-[#3724B3] hover:underline cursor-pointer font-medium">User Terms of Service</span> and <span className="text-[#3724B3] hover:underline cursor-pointer font-medium">Privacy Policy</span>
-                                </p>
+                            {!prefilledPhone && (
+                                <div className="space-y-[6px]">
+                                    <label className="text-[12px] font-bold text-slate-800 ml-1">Mobile number</label>
+                                    <Input type="tel" placeholder="0412 345 678" value={phone} onChange={(e) => setPhone(e.target.value)} required className="h-10 text-sm" />
+                                </div>
+                            )}
 
-                                <p className="text-[11px] text-[#9CA3AF] leading-relaxed">
-                                    By signing up you agree to receive shift notifications and updates. Message frequency may vary. Message and data rates may apply. Reply HELP for help & STOP to cancel.
+                            <div className="space-y-[6px]">
+                                <label className="text-[12px] font-bold text-slate-800 ml-1">Date of Birth</label>
+                                <Input type="date" value={dob} onChange={(e) => setDob(e.target.value)} required className="h-10 text-sm" />
+                            </div>
+
+                            <div className="space-y-[6px]">
+                                <label className="text-[12px] font-bold text-slate-800 ml-1">Bank Details (BSB & Acc)</label>
+                                <Input placeholder="BSB: 000-000, Acc: 00000000" value={bankDetails} onChange={(e) => setBankDetails(e.target.value)} required className="h-10 text-sm" />
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="space-y-[6px]">
+                                    <label className="text-[12px] font-bold text-slate-800 ml-1">Emergency Name</label>
+                                    <Input placeholder="Name" value={emergencyName} onChange={(e) => setEmergencyName(e.target.value)} required className="h-10 text-sm" />
+                                </div>
+                                <div className="space-y-[6px]">
+                                    <label className="text-[12px] font-bold text-slate-800 ml-1">Emergency Phone</label>
+                                    <Input type="tel" placeholder="Phone" value={emergencyPhone} onChange={(e) => setEmergencyPhone(e.target.value)} required className="h-10 text-sm" />
+                                </div>
+                            </div>
+
+                            <div className="space-y-[6px]">
+                                <label className="text-[12px] font-bold text-slate-800 ml-1">Kiosk PIN (4 digits)</label>
+                                <Input maxLength={4} placeholder="e.g. 1234" value={kioskPin} onChange={(e) => setKioskPin(e.target.value.replace(/\D/g, ''))} required className="h-10 text-sm" />
+                            </div>
+
+                            {!isExistingUser && (
+                                <div className="space-y-[6px]">
+                                    <label className="text-[12px] font-bold text-slate-800 ml-1">Set Password</label>
+                                    <Input type="password" placeholder="Minimum 6 characters" value={password} onChange={(e) => setPassword(e.target.value)} required className="h-10 text-sm" />
+                                </div>
+                            )}
+
+                            <div className="pt-2 flex flex-col items-center">
+                                <Button type="submit" className="w-full h-11 text-[14px] font-medium bg-[#3724B3] hover:bg-[#261C7F] rounded-[8px]" loading={loading}>
+                                    Join {businessName}
+                                </Button>
+                                <p className="mt-5 text-[11px] text-[#6B7280] text-center">
+                                    By signing up you are accepting the User Terms and Privacy Policy
                                 </p>
                             </div>
-                        </div>
-                    </form>
+                        </form>
+                    )}
                 </div>
             </div>
         </div>

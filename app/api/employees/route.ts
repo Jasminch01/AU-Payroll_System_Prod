@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
             return errorResponse('Unauthorized. Owner or Manager access required.', 401);
         }
 
-        const supabase = await createClient();
+        const supabase = createAdminClient();
         const { searchParams } = new URL(request.url);
         const statusFilter = searchParams.get('status');
 
@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
             .eq('business_id', authUser.business_id)
             .order('created_at', { ascending: false });
 
-        if (statusFilter && (statusFilter === 'active' || statusFilter === 'inactive')) {
+        if (statusFilter && ['active', 'inactive', 'invited'].includes(statusFilter)) {
             query = query.eq('status', statusFilter);
         }
 
