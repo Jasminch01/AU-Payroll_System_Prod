@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
         // Look up the employee records
         const { data: employees, error: empError } = await supabase
             .from('Employee')
-            .select('employee_id, first_name, last_name, email, status, business_id, role_title')
+            .select('employee_id, first_name, last_name, email, status, business_id, role_title, phone')
             .eq('user_id', user.id);
 
         let employee = null;
@@ -52,11 +52,6 @@ export async function GET(request: NextRequest) {
             .eq('business_id', employee.business_id)
             .single();
 
-        // Check if user has an existing password (from auth.users).
-        // Since we can't easily query this, we assume if they have multiple employee records
-        // OR if they aren't 'invited', they might already have a password. 
-        // But let's let the frontend handle the password field.
-
         return successResponse({
             needs_onboarding: employee.status === 'invited',
             is_existing_user: employees && employees.length > 1,
@@ -67,6 +62,7 @@ export async function GET(request: NextRequest) {
                 email: employee.email,
                 role_title: employee.role_title,
                 status: employee.status,
+                phone: employee.phone,
             },
             business_name: business?.business_name || 'Your Business',
         });

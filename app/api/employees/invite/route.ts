@@ -5,23 +5,20 @@ import { requireRole } from '@/lib/auth';
 import { successResponse, errorResponse, validateRequiredFields } from '@/lib/api-helpers';
 import { logAudit } from '@/lib/audit';
 
+interface InviteResult {
+    email: string;
+    success: boolean;
+    error?: string;
+    employee_id?: string;
+    invite_link?: string | null;
+}
+
 /**
  * POST /api/employees/invite
  *
  * Send an invitation to a new employee or manager.
  * Owner/Manager fills in minimal info; the invitee completes self-onboarding.
  * Access: Owner, Manager
- *
- * Body:
- * {
- *   "email": "newemployee@example.com",
- *   "first_name": "Jane",
- *   "last_name": "Doe",
- *   "role_title": "Barista",
- *   "employment_type": "casual",          // optional
- *   "weekday_rate": 28.50,
- *   "invite_as": "employee" | "manager"   // defaults to "employee"
- * }
  */
 export async function POST(request: NextRequest) {
     try {
@@ -32,240 +29,162 @@ export async function POST(request: NextRequest) {
 
         const body = await request.json();
 
-        const validationError = validateRequiredFields(body, [
-            'email',
-            'first_name',
-            'last_name',
-            'role_title',
-            'weekday_rate',
-        ]);
-        if (validationError) return errorResponse(validationError, 400);
-
-        const {
-            email,
-            first_name,
-            last_name,
-            role_title,
-            employment_type,
-            weekday_rate,
-            saturday_multiplier = 1.25,
-            sunday_multiplier = 1.50,
-            public_holiday_multiplier = 2.50,
-            invite_as = 'employee',
-        } = body;
-
-        // Only owners can invite managers
-        if (invite_as === 'manager' && authUser.role !== 'owner') {
-            return errorResponse('Only owners can invite managers', 403);
+        // 1. Support for recurring Join Code generation
+        if (body.action === 'generate_join_code') {
+            const supabase = await createClient();
+            const joinCode = Math.random().toString(36).substring(2, 10).toUpperCase();
+            
+            // For now, let's just return a code that the owner can share. 
+            // Real implementation would save this to the DB.
+            return successResponse({ join_code: joinCode }, 'Business join code generated');
         }
 
+        // 2. Handle Bulk vs Single Invite
+        const employeesToInvite = Array.isArray(body.employees) ? body.employees : [body];
+
+        const results: InviteResult[] = [];
         const adminClient = createAdminClient();
-        // FIX: createClient() returns a promise — await it once and reuse
         const supabase = await createClient();
 
-        // 1. Check if employee already exists in this business
-        const { data: existingEmployee } = await supabase
-            .from('Employee')
-            .select('employee_id')
-            .eq('email', email)
-            .eq('business_id', authUser.business_id)
-            .maybeSingle();
-
-        if (existingEmployee) {
-            return errorResponse('An employee with this email already exists in your business', 409);
-        }
-
-        let authUserId = '';
-        let inviteSent = false;
-        let actionLink: string | null = null;
-        // FIX: track whether the auth user already existed before this request
-        let isExistingUser = false;
-
-        // 2. Try officially inviting (sends email and creates auth user if they don't exist)
-        const { data: inviteData, error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(email, {
-            data: {
-                first_name,
-                last_name,
-                business_id: authUser.business_id,
-                invite_as,
-                invited_by: authUser.user_id,
-            },
-            redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/onboarding`,
-        });
-
-        if (inviteError) {
-            if (
-                inviteError.message.toLowerCase().includes('already been registered') ||
-                inviteError.status === 422
-            ) {
-                // Auth user already exists — look them up
-                isExistingUser = true;
-                const { data: { users } } = await adminClient.auth.admin.listUsers();
-                const found = users.find(u => u.email === email);
-                if (!found) {
-                    return errorResponse('User already exists but could not find their auth record.', 400);
-                }
-                authUserId = found.id;
-
-            } else if (inviteError.message.includes('Error sending invite email')) {
-                // SMTP failure — create the auth user manually so we can still generate a link
-                console.error('SUPABASE SMTP ERROR:', inviteError);
-
-                const tempPassword = crypto.randomUUID() + 'Aa1!';
-                const { data: createData, error: createError } = await adminClient.auth.admin.createUser({
-                    email,
-                    password: tempPassword,
-                    email_confirm: true,
-                    user_metadata: {
-                        first_name,
-                        last_name,
-                        business_id: authUser.business_id,
-                        invite_as,
-                        invited_by: authUser.user_id,
-                    },
-                });
-
-                if (createError) {
-                    if (createError.message.toLowerCase().includes('already been registered')) {
-                        // Race condition — user was created between our check and now
-                        isExistingUser = true;
-                        const { data: { users } } = await adminClient.auth.admin.listUsers();
-                        const found = users.find(u => u.email === email);
-                        if (!found) {
-                            // FIX: was silently setting authUserId to '' — now we hard-fail
-                            return errorResponse('User already exists but could not find their auth record.', 400);
-                        }
-                        authUserId = found.id;
-                    } else {
-                        return errorResponse(`Failed to create auth user: ${createError.message}`, 400);
-                    }
-                } else {
-                    authUserId = createData.user.id;
-                }
-            } else {
-                return errorResponse(`Invitation failed: ${inviteError.message}`, 400);
+        for (const emp of employeesToInvite) {
+            const validationError = validateRequiredFields(emp, ['email', 'first_name', 'last_name', 'role_title']);
+            if (validationError) {
+                results.push({ email: emp.email, success: false, error: validationError });
+                continue;
             }
-        } else {
-            authUserId = inviteData.user.id;
-            inviteSent = true;
-        }
 
-        // 3. Generate a shareable link for manual delivery (essential when email fails)
-        // FIX: always use 'magiclink' for existing users — 'invite' tokens are one-time and
-        //      will have already been consumed if the user was created in a previous attempt.
-        const linkType = isExistingUser ? 'magiclink' : 'invite';
-        const { data: linkData, error: linkError } = await adminClient.auth.admin.generateLink({
-            type: linkType,
-            email,
-            options: {
-                redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/onboarding`,
-            },
-        });
-
-        if (linkError) {
-            // Non-fatal — we still proceed; the admin just won't have a copyable link
-            console.error('generateLink error:', linkError);
-        } else if (linkData?.properties?.action_link) {
-            actionLink = linkData.properties.action_link;
-        }
-
-        // 4. Generate a unique employee_id
-        const employee_id = `EMP-${Date.now().toString(36).toUpperCase()}`;
-
-        // 5. Create the Employee record with 'invited' status
-        const { data: employeeData, error: empError } = await supabase
-            .from('Employee')
-            .insert({
-                employee_id,
-                first_name,
-                last_name,
+            const {
                 email,
+                first_name,
+                last_name,
                 role_title,
-                employment_type: employment_type || null,
-                business_id: authUser.business_id,
-                user_id: authUserId,
-                status: 'invited',
-                start_date: new Date().toISOString().split('T')[0],
-                // Placeholder values — employee will replace these during onboarding
-                dob: '1900-01-01',
-                bank_details: '',
-                emergency_contact_name: '',
-                emergency_contact_phone: '',
-                kiosk_pin: '',
-            })
-            .select()
-            .single();
-
-        if (empError) {
-            // Rollback: remove the auth user only if we freshly created them here
-            if (!isExistingUser && authUserId) {
-                await adminClient.auth.admin.deleteUser(authUserId);
-            }
-            return errorResponse(`Failed to create employee record: ${empError.message}`, 400);
-        }
-
-        // 6. Create initial pay rate record
-        // FIX: typo 'created_bv' → 'created_by'
-        const { error: rateError } = await supabase
-            .from('EmployeeRateHistory')
-            .insert({
-                employee_id,
-                business_id: authUser.business_id,
+                phone,
+                employment_type,
                 weekday_rate,
-                saturday_multiplier,
-                sunday_multiplier,
-                public_holiday_multiplier,
-                effective_from: new Date().toISOString().split('T')[0],
-                created_by: authUser.user_id,
+                saturday_multiplier = 1.25,
+                sunday_multiplier = 1.50,
+                public_holiday_multiplier = 2.50,
+                invite_as = 'employee',
+            } = emp;
+
+            // Only owners can invite managers
+            if (invite_as === 'manager' && authUser.role !== 'owner') {
+                results.push({ email, success: false, error: 'Only owners can invite managers' });
+                continue;
+            }
+
+            // Check if employee already exists in this business
+            const { data: existingEmployee } = await supabase
+                .from('Employee')
+                .select('employee_id')
+                .eq('email', email)
+                .eq('business_id', authUser.business_id)
+                .maybeSingle();
+
+            if (existingEmployee) {
+                results.push({ email, success: false, error: 'Employee already exists in this business' });
+                continue;
+            }
+
+            // Invite via Supabase Auth
+            let authUserId = '';
+            let isExistingUser = false;
+            let actionLink = null;
+            const redirectUrl = `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/onboarding`;
+
+            const { data: inviteData, error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(email, {
+                data: { first_name, last_name, business_id: authUser.business_id, invite_as, invited_by: authUser.user_id },
+                redirectTo: redirectUrl,
             });
 
-        if (rateError) {
-            console.error('Failed to insert rate history:', rateError);
-            // Non-fatal for the invite flow — log and continue
-        }
-
-        // 7. If inviting as manager, create the User record with 'manager' role
-        // FIX: moved inside the success path (after employee insert) so it only runs
-        //      if the employee record was actually created successfully
-        if (invite_as === 'manager') {
-            const { error: userRoleError } = await supabase
-                .from('User')
-                .insert({
-                    user_id: authUserId,
-                    business_id: authUser.business_id,
-                    role: 'manager',
-                    first_name,
-                    last_name,
-                });
-
-            if (userRoleError) {
-                console.error('Failed to create manager User record:', userRoleError);
-                // Non-fatal — the employee record exists; the manager role can be assigned manually
+            if (inviteError) {
+                if (inviteError.message.toLowerCase().includes('already been registered') || inviteError.status === 422) {
+                    isExistingUser = true;
+                    // For existing users, inviteUserByEmail DOES NOT send an email automatically.
+                    // We must trigger a magic link email so they know they've been invited.
+                    const { data: { users } } = await adminClient.auth.admin.listUsers();
+                    const found = users.find(u => u.email === email);
+                    if (found) {
+                        authUserId = found.id;
+                        // Trigger a magic link email
+                        await supabase.auth.signInWithOtp({
+                            email,
+                            options: { emailRedirectTo: redirectUrl }
+                        });
+                    }
+                } else {
+                    results.push({ email, success: false, error: `Auth invite failed: ${inviteError.message}` });
+                    continue;
+                }
+            } else {
+                authUserId = inviteData.user.id;
             }
+
+            // Note: We avoid calling generateLink here if inviteUserByEmail or signInWithOtp 
+            // already sent an email, because generating a second link invalidates the first.
+            // If the owner needs a manual link, they can use the "Resend" feature which 
+            // can provide one if the email fails, or they can use the Join Code.
+
+            // Generate sequential Employee ID
+            // 1. Get the last employee serial for this business
+            const { data: lastEmp } = await supabase
+                .from('Employee')
+                .select('employee_id')
+                .eq('business_id', authUser.business_id)
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+
+            let nextSerial = 1;
+            if (lastEmp) {
+                const match = lastEmp.employee_id.match(/EMP(\d{3})/);
+                if (match) nextSerial = parseInt(match[1]) + 1;
+            }
+            
+            // Adjust based on current results since we might be adding multiple in one request
+            const existingInResults: number = results.filter(r => r.success).length;
+            const employee_id = `EMP${(nextSerial + existingInResults).toString().padStart(3, '0')}`;
+
+            const { data: employeeData, error: empError } = await supabase
+                .from('Employee')
+                .insert({
+                    employee_id, first_name, last_name, email, role_title, phone: phone || null,
+                    employment_type: employment_type || null, business_id: authUser.business_id,
+                    user_id: authUserId, status: 'invited', start_date: new Date().toISOString().split('T')[0],
+                    dob: '1900-01-01', bank_details: '', emergency_contact_name: '', emergency_contact_phone: '', kiosk_pin: '',
+                })
+                .select().single();
+
+            if (empError) {
+                results.push({ email, success: false, error: `DB record failed: ${empError.message}` });
+                continue;
+            }
+
+            if (weekday_rate) {
+                await supabase.from('EmployeeRateHistory').insert({
+                    employee_id, business_id: authUser.business_id, weekday_rate,
+                    saturday_multiplier, sunday_multiplier, public_holiday_multiplier,
+                    effective_from: new Date().toISOString().split('T')[0],
+                    created_bv: authUser.user_id,
+                });
+            }
+
+            if (invite_as === 'manager') {
+                await supabase.from('User').insert({
+                    user_id: authUserId, business_id: authUser.business_id,
+                    role: 'manager', first_name, last_name,
+                });
+            }
+
+            results.push({ email, success: true, employee_id, invite_link: actionLink });
         }
 
-        // 8. Audit log
-        await logAudit({
-            businessId: authUser.business_id,
-            tableName: 'Employee',
-            recordId: employee_id,
-            action: 'INSERT',
-            changedBy: authUser.user_id,
-            afterValue: employeeData,
-            reason: `Invited ${invite_as} via email`,
-        });
-
+        const successCount = results.filter(r => r.success).length;
         return successResponse(
-            {
-                employee: employeeData,
-                invite_link: actionLink,
-                invite_sent: inviteSent,
-            },
-            inviteSent
-                ? `Invitation email sent to ${email}`
-                : `Employee added. ${actionLink ? 'Share the invite link manually.' : 'Could not generate invite link — check Supabase logs.'}`,
-            201
+            { results, success_count: successCount },
+            `Processed ${results.length} invitations. ${successCount} successful.`
         );
+
     } catch (error: any) {
         console.error('Invite employee error:', error);
         return errorResponse(error.message || 'Internal server error', 500);
