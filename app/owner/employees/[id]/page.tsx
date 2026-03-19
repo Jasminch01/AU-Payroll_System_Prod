@@ -143,9 +143,9 @@ export default function OwnerEmployeeDetailPage() {
 
     const handleSave = () => {
         if (!formData) return;
-        
+
         console.log("Form data before save:", formData);
-        
+
         // Prepare the data object with proper field names
         const dataToSend = {
             first_name: formData.first_name,
@@ -165,7 +165,7 @@ export default function OwnerEmployeeDetailPage() {
             status: formData.status,
             kiosk_pin: formData.kiosk_pin,
         };
-        
+
         console.log("Data being sent to API:", dataToSend);
         updateMutation.mutate(dataToSend);
     };
@@ -278,8 +278,8 @@ export default function OwnerEmployeeDetailPage() {
                                     <Button
                                         variant="outline"
                                         className="rounded-lg px-4 h-9 text-xs"
-                                        onClick={() => { 
-                                            setEditing(false); 
+                                        onClick={() => {
+                                            setEditing(false);
                                             // Reset to original employee data
                                             const normalizedData = {
                                                 ...employee,
@@ -289,7 +289,7 @@ export default function OwnerEmployeeDetailPage() {
                                                 bank_account_number: employee.bank_account_number || "",
                                                 "ABN/TFN/ACN": employee["ABN/TFN/ACN"] || "",
                                             };
-                                            setFormData(normalizedData); 
+                                            setFormData(normalizedData);
                                         }}
                                     >
                                         Cancel
@@ -479,9 +479,9 @@ export default function OwnerEmployeeDetailPage() {
                                                     onChange={(e) => updateField("pay_cycle", e.target.value)}
                                                     className="flex h-10 w-full rounded-md border border-[hsl(var(--input))] bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--brand))]/20 appearance-none"
                                                 >
-                                                    <option value="weekly">Every Week</option>
-                                                    <option value="fortnightly">Every 2 Weeks</option>
-                                                    <option value="monthly">Monthly</option>
+                                                    <option value="weekly">weekly</option>
+                                                    <option value="fortnightly">fortnightly</option>
+                                                    <option value="monthly">monthly</option>
                                                 </select>
                                             </div>
                                             <div className="space-y-1.5">
