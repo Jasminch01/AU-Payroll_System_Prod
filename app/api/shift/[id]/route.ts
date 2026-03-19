@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { requireRole } from '@/lib/auth';
 import { successResponse, errorResponse } from '@/lib/api-helpers';
 import { checkShiftConflictWithLeave } from '@/lib/leave-logic';
+import { logAudit } from '@/lib/audit';
 
 interface RouteParams {
     params: Promise<{ id: string }>;
@@ -140,6 +141,40 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 
         if (error) return errorResponse(error.message, 400);
 
+        // SYNC ROSTER STATUS: If roster is published, revert it to draft.
+        // Also handle Union Expansion if current view is wider than roster bounds.
+        if (existing.roster_id) {
+            const { data: roster } = await supabase
+                .from('Roster')
+                .select('status, business_id, start_date, end_date')
+                .eq('roster_id', existing.roster_id)
+                .single();
+
+            const rosterStart = body.roster_start;
+            const rosterEnd = body.roster_end;
+
+            if (roster) {
+                // FIXED Logic: Only expand if the NEW DATE is genuinely outside existing roster bounds.
+                // Do NOT expand just because the UI view (rosterStart/End) is wider.
+                const newShiftDate = updateData.shift_date as string || (existing.shift_date as string);
+                const new_start = newShiftDate < roster.start_date ? rosterStart : roster.start_date;
+                const new_end = newShiftDate > roster.end_date ? rosterEnd : roster.end_date;
+                
+                const needsExpansion = new_start !== roster.start_date || new_end !== roster.end_date;
+
+                if (needsExpansion) {
+                    await supabase
+                        .from('Roster')
+                        .update({ 
+                            start_date: new_start, 
+                            end_date: new_end, 
+                            updated_at: new Date().toISOString() 
+                        })
+                        .eq('roster_id', existing.roster_id);
+                }
+            }
+        }
+
         return successResponse(updated, 'Shift updated successfully');
     } catch (err) {
         console.error('Update shift error:', err);
@@ -184,6 +219,26 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
             .eq('shift_id', id);
 
         if (deleteError) return errorResponse(deleteError.message, 400);
+
+        // (Refined Delete Logic): 
+        // If this was the LAST shift in a published roster, revert it to draft.
+        // Otherwise, keep it published (for real-time editing).
+        if (shift.roster_id) {
+            const { count, error: countError } = await supabase
+                .from('Shift')
+                .select('shift_id', { count: 'exact', head: true })
+                .eq('roster_id', shift.roster_id);
+
+            if (!countError && count === 0) {
+                await supabase
+                    .from('Roster')
+                    .update({ 
+                        status: 'draft', 
+                        updated_at: new Date().toISOString() 
+                    })
+                    .eq('roster_id', shift.roster_id);
+            }
+        }
 
         return successResponse(null, 'Shift deleted successfully');
     } catch (err) {
