@@ -35,6 +35,8 @@ export default function OwnerEmployeeDetailPage() {
 
     const [editing, setEditing] = useState(false);
     const [formData, setFormData] = useState<any>(null);
+    const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+    const [deleteConfirmText, setDeleteConfirmText] = useState("");
 
     // Rate update state
     const [rateOpen, setRateOpen] = useState(false);
@@ -439,9 +441,8 @@ export default function OwnerEmployeeDetailPage() {
                                                 variant="danger"
                                                 className="shrink-0 rounded-lg px-6 h-10 font-bold text-xs"
                                                 onClick={() => {
-                                                    if (confirm(`CRITICAL WARNING: You are about to permanently delete ${employee.first_name} ${employee.last_name}. Type 'DELETE' to confirm.`)) {
-                                                        deleteMutation.mutate();
-                                                    }
+                                                    setDeleteConfirmText("");
+                                                    setDeleteModalOpen(true);
                                                 }}
                                                 loading={deleteMutation.isPending}
                                             >
@@ -685,6 +686,31 @@ export default function OwnerEmployeeDetailPage() {
                             loading={updateRateMutation.isPending}
                         >
                             <Save size={16} className="mr-2" /> Save Rate
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Delete Confirmation Modal */}
+            <Dialog open={deleteModalOpen} onOpenChange={setDeleteModalOpen}>
+                <DialogContent className="max-w-sm">
+                    <DialogHeader>
+                        <DialogTitle className="text-xl font-bold">Confirm Deletion</DialogTitle>
+                        <DialogDescription className="text-sm text-[hsl(var(--muted-foreground))] pt-1">
+                            Are you sure you want to delete <span className="font-semibold text-[hsl(var(--foreground))]">{employee.first_name} {employee.last_name}</span>? This action cannot be undone.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter className="gap-2 pt-2">
+                        <Button variant="outline" className="flex-1" onClick={() => setDeleteModalOpen(false)}>
+                            Cancel
+                        </Button>
+                        <Button
+                            variant="danger"
+                            className="flex-1 font-bold"
+                            loading={deleteMutation.isPending}
+                            onClick={() => deleteMutation.mutate()}
+                        >
+                            Delete
                         </Button>
                     </DialogFooter>
                 </DialogContent>
