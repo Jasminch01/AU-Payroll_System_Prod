@@ -53,6 +53,18 @@ export default function OwnerEmployeesPage() {
     const [joinCode, setJoinCode] = useState<string | null>(null);
     const [isGeneratingJoinCode, setIsGeneratingJoinCode] = useState(false);
 
+    // Manual Add state
+    const [manualAddOpen, setManualAddOpen] = useState(false);
+    const [manualData, setManualData] = useState<any>({
+        first_name: '', last_name: '', email: '', phone: '', dob: '',
+        emergency_contact_name: '', emergency_contact_phone: '',
+        role_title: '', employment_type: 'full_time', pay_cycle: 'hourly',
+        start_date: new Date().toISOString().split('T')[0],
+        weekday_rate: '', kiosk_pin: '',
+        password: '',
+        bank_account_name: '', bank_bsb: '', bank_account_number: '', "ABN/TFN/ACN": ''
+    });
+
     const { data: employees = [], isLoading } = useQuery({
         queryKey: ["employees"],
         queryFn: () => apiGet<Employee[]>("/employees"),
@@ -75,16 +87,25 @@ export default function OwnerEmployeesPage() {
         onSuccess: (response: any) => {
             if (response?.results) {
                 const count = response.success_count;
-                toast.success(`Successfully processed ${count} invitation(s)!`);
-                // If there's at least one link, show the last one? 
-                // Better yet, for bulk we might need a summary.
+                const total = response.results.length;
+                if (count === 0) {
+                    // All failed — show the first error
+                    const firstError = response.results[0]?.error || "Invitation failed. Please try again.";
+                    toast.error(firstError);
+                    return;
+                } else if (count < total) {
+                    // Partial success in bulk
+                    toast.warning(`${count} of ${total} invitations sent. Some failed.`);
+                } else {
+                    toast.success(`Successfully sent ${count} invitation(s)!`);
+                }
                 const firstLink = response.results.find((r: any) => r.invite_link)?.invite_link;
                 if (firstLink) setGeneratedLink(firstLink);
             } else {
                 toast.success("Employee invitation sent successfully!");
                 if (response?.invite_link) setGeneratedLink(response.invite_link);
             }
-            
+
             queryClient.invalidateQueries({ queryKey: ["employees"] });
             setInviteOpen(false);
             setBulkInviteOpen(false);
@@ -103,6 +124,37 @@ export default function OwnerEmployeesPage() {
         },
         onError: (err: Error) => toast.error(err.message),
     });
+
+    const addManualMutation = useMutation({
+        mutationFn: (data: any) => apiPost("/employees", data),
+        onSuccess: () => {
+            toast.success("Employee added successfully!");
+            queryClient.invalidateQueries({ queryKey: ["employees"] });
+            setManualAddOpen(false);
+            setManualData({
+                first_name: '', last_name: '', email: '', phone: '', dob: '',
+                emergency_contact_name: '', emergency_contact_phone: '',
+                role_title: '', employment_type: 'full_time', pay_cycle: 'hourly',
+                start_date: new Date().toISOString().split('T')[0],
+                weekday_rate: '', kiosk_pin: '',
+                password: '',
+                bank_account_name: '', bank_bsb: '', bank_account_number: '', "ABN/TFN/ACN": ''
+            });
+        },
+        // consol.log
+        onError: (err: Error) => toast.error(err.message),
+    });
+
+    const handleManualAdd = () => {
+        if (!manualData.email || !manualData.password || !manualData.first_name || !manualData.last_name || !manualData.dob || !manualData.role_title || !manualData.kiosk_pin || !manualData.start_date) {
+            return toast.error("Please fill in all required (*) fields.");
+        }
+        addManualMutation.mutate({
+            ...manualData,
+            employee_id: `EMP-${Math.floor(1000 + Math.random() * 9000)}`,
+            weekday_rate: manualData.weekday_rate ? parseFloat(manualData.weekday_rate) : undefined
+        });
+    };
 
 
 
@@ -275,11 +327,11 @@ export default function OwnerEmployeesPage() {
                             ))}
                         </DropdownMenuContent>
                     </DropdownMenu>
-                    
+
                     {statusFilter !== "all" && (
-                        <Button 
-                            variant="ghost" 
-                            size="sm" 
+                        <Button
+                            variant="ghost"
+                            size="sm"
                             onClick={() => setStatusFilter("all")}
                             className="h-8 text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] px-2"
                         >
@@ -320,6 +372,13 @@ export default function OwnerEmployeesPage() {
                                 <div className="flex flex-col">
                                     <span className="font-medium">Multiple Invitations</span>
                                     <span className="text-[10px] text-[hsl(var(--muted-foreground))]">Add many people at once</span>
+                                </div>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => setManualAddOpen(true)} className="py-2.5">
+                                <Briefcase size={16} className="mr-2 text-[hsl(var(--muted-foreground))]" />
+                                <div className="flex flex-col">
+                                    <span className="font-medium">Add Employee Manually</span>
+                                    <span className="text-[10px] text-[hsl(var(--muted-foreground))]">Complete setup right now</span>
                                 </div>
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
@@ -594,7 +653,7 @@ export default function OwnerEmployeesPage() {
                             Share this recurring link with any employee to let them join your business and start onboarding.
                         </DialogDescription>
                     </DialogHeader>
-                    
+
                     <div className="flex flex-col gap-4 py-4">
                         <div className="flex items-center gap-2 p-3 bg-[hsl(var(--success-light))]/10 border border-[hsl(var(--success))]/20 rounded-xl">
                             <div className="h-10 w-10 rounded-full bg-[hsl(var(--success-light))] text-[hsl(var(--success))] flex items-center justify-center shrink-0">
@@ -620,7 +679,7 @@ export default function OwnerEmployeesPage() {
                                 {copied ? <Check size={16} className="text-[hsl(var(--success))]" /> : <Copy size={16} />}
                             </Button>
                         </div>
-                        
+
                         <div className="bg-[hsl(var(--muted))] p-3 rounded-lg flex items-start gap-2">
                             <AlertTriangle size={14} className="text-[hsl(var(--warning))] mt-0.5 shrink-0" />
                             <p className="text-[11px] text-[hsl(var(--muted-foreground))] leading-relaxed">
@@ -635,6 +694,82 @@ export default function OwnerEmployeesPage() {
                 </DialogContent>
             </Dialog>
 
+            {/* Manual Add Dialog */}
+            <Dialog open={manualAddOpen} onOpenChange={setManualAddOpen}>
+                <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+                    <DialogHeader>
+                        <DialogTitle>Add Employee Manually</DialogTitle>
+                        <DialogDescription>
+                            Create a complete employee profile instantly.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="space-y-6 py-4">
+                        <section>
+                            <h3 className="text-sm font-bold border-b pb-2 mb-3">Identity & Account</h3>
+                            <div className="grid grid-cols-2 gap-3 mb-3">
+                                <Input label="First Name *" value={manualData.first_name} onChange={(e) => setManualData({ ...manualData, first_name: e.target.value })} />
+                                <Input label="Last Name *" value={manualData.last_name} onChange={(e) => setManualData({ ...manualData, last_name: e.target.value })} />
+                                <Input label="Email *" type="email" value={manualData.email} onChange={(e) => setManualData({ ...manualData, email: e.target.value })} />
+                                <Input label="Temporary Password *" type="password" value={manualData.password} onChange={(e) => setManualData({ ...manualData, password: e.target.value })} />
+                                <Input label="Phone" type="tel" value={manualData.phone} onChange={(e) => setManualData({ ...manualData, phone: e.target.value })} />
+                                <Input label="Date of Birth *" type="date" value={manualData.dob} onChange={(e) => setManualData({ ...manualData, dob: e.target.value })} />
+                            </div>
+                        </section>
+
+                        <section>
+                            <h3 className="text-sm font-bold border-b pb-2 mb-3">Employment Details</h3>
+                            <div className="grid grid-cols-2 gap-3 mb-3">
+                                <Input label="Role Title *" value={manualData.role_title} onChange={(e) => setManualData({ ...manualData, role_title: e.target.value })} />
+                                <div className="space-y-1.5">
+                                    <label className="text-xs font-semibold ml-0.5">Employment Type</label>
+                                    <select value={manualData.employment_type} onChange={(e) => setManualData({ ...manualData, employment_type: e.target.value })} className="flex h-10 w-full rounded-md border border-[hsl(var(--input))] bg-transparent px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]/20">
+                                        <option value="full_time">Full Time</option>
+                                        <option value="part_time">Part Time</option>
+                                        <option value="casual">Casual</option>
+                                    </select>
+                                </div>
+                                <div className="space-y-1.5">
+                                    <label className="text-xs font-semibold ml-0.5">Pay Cycle</label>
+                                    <select value={manualData.pay_cycle} onChange={(e) => setManualData({ ...manualData, pay_cycle: e.target.value })} className="flex h-10 w-full rounded-md border border-[hsl(var(--input))] bg-transparent px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]/20">
+                                        <option value="hourly">hourly</option>
+                                        <option value="fortnightly">fortnightly</option>
+                                        <option value="monthly">monthly</option>
+                                    </select>
+                                </div>
+                                <Input label="Base Hourly Rate ($)" type="number" step="0.01" value={manualData.weekday_rate} onChange={(e) => setManualData({ ...manualData, weekday_rate: e.target.value })} />
+                                <Input label="Start Date *" type="date" value={manualData.start_date} onChange={(e) => setManualData({ ...manualData, start_date: e.target.value })} />
+                                <Input label="Kiosk PIN (4-digits) *" maxLength={4} value={manualData.kiosk_pin} onChange={(e) => setManualData({ ...manualData, kiosk_pin: e.target.value.replace(/[^0-9]/g, '') })} />
+                            </div>
+                        </section>
+
+                        <section>
+                            <h3 className="text-sm font-bold border-b pb-2 mb-3">Emergency Contact</h3>
+                            <div className="grid grid-cols-2 gap-3">
+                                <Input label="Contact Name" value={manualData.emergency_contact_name} onChange={(e) => setManualData({ ...manualData, emergency_contact_name: e.target.value })} />
+                                <Input label="Contact Phone" type="tel" value={manualData.emergency_contact_phone} onChange={(e) => setManualData({ ...manualData, emergency_contact_phone: e.target.value })} />
+                            </div>
+                        </section>
+
+                        <section>
+                            <h3 className="text-sm font-bold border-b pb-2 mb-3">Bank Details</h3>
+                            <div className="grid grid-cols-2 gap-3">
+                                <Input label="Account Name" value={manualData.bank_account_name} onChange={(e) => setManualData({ ...manualData, bank_account_name: e.target.value })} />
+                                <Input label="BSB Number" value={manualData.bank_bsb} onChange={(e) => setManualData({ ...manualData, bank_bsb: e.target.value })} />
+                                <Input label="Account Number" value={manualData.bank_account_number} onChange={(e) => setManualData({ ...manualData, bank_account_number: e.target.value })} />
+                                <Input label="ABN / TFN / ACN" value={manualData["ABN/TFN/ACN"]} onChange={(e) => setManualData({ ...manualData, "ABN/TFN/ACN": e.target.value })} />
+                            </div>
+                        </section>
+                    </div>
+
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setManualAddOpen(false)}>Cancel</Button>
+                        <Button onClick={handleManualAdd} loading={addManualMutation.isPending}>
+                            <UserPlus size={16} className="mr-2" /> Save Employee
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
 
         </DashboardLayout>
     );

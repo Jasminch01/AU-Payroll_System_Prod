@@ -98,19 +98,30 @@ export async function POST(request: NextRequest) {
             });
 
             if (inviteError) {
-                if (inviteError.message.toLowerCase().includes('already been registered') || inviteError.status === 422) {
+                console.error(`[invite] inviteUserByEmail failed for ${email}:`, inviteError.status, inviteError.message);
+                // Supabase 422 = user already has an auth account (wording can vary)
+                const isAlreadyRegistered = inviteError.status === 422 ||
+                    inviteError.message.toLowerCase().includes('already') ||
+                    inviteError.message.toLowerCase().includes('registered');
+
+                if (isAlreadyRegistered) {
                     isExistingUser = true;
-                    // For existing users, inviteUserByEmail DOES NOT send an email automatically.
-                    // We must trigger a magic link email so they know they've been invited.
-                    const { data: { users } } = await adminClient.auth.admin.listUsers();
+                    const { data: { users }, error: listErr } = await adminClient.auth.admin.listUsers();
+                    if (listErr) {
+                        results.push({ email, success: false, error: `Could not look up existing user: ${listErr.message}` });
+                        continue;
+                    }
                     const found = users.find(u => u.email === email);
                     if (found) {
                         authUserId = found.id;
-                        // Trigger a magic link email
+                        // Send them a magic link so they know they've been invited
                         await supabase.auth.signInWithOtp({
                             email,
                             options: { emailRedirectTo: redirectUrl }
                         });
+                    } else {
+                        results.push({ email, success: false, error: 'User not found in auth system after 422 error' });
+                        continue;
                     }
                 } else {
                     results.push({ email, success: false, error: `Auth invite failed: ${inviteError.message}` });
@@ -120,30 +131,35 @@ export async function POST(request: NextRequest) {
                 authUserId = inviteData.user.id;
             }
 
+            // Guard: ensure we have a valid auth user ID before inserting DB record
+            if (!authUserId) {
+                results.push({ email, success: false, error: 'Could not resolve auth user ID' });
+                continue;
+            }
+
             // Note: We avoid calling generateLink here if inviteUserByEmail or signInWithOtp 
             // already sent an email, because generating a second link invalidates the first.
             // If the owner needs a manual link, they can use the "Resend" feature which 
             // can provide one if the email fails, or they can use the Join Code.
 
-            // Generate sequential Employee ID
-            // 1. Get the last employee serial for this business
-            const { data: lastEmp } = await supabase
+            // Generate a unique Employee ID by finding the true max serial across ALL employees
+            const { data: allEmps } = await supabase
                 .from('Employee')
                 .select('employee_id')
-                .eq('business_id', authUser.business_id)
-                .order('created_at', { ascending: false })
-                .limit(1)
-                .maybeSingle();
+                .eq('business_id', authUser.business_id);
 
-            let nextSerial = 1;
-            if (lastEmp) {
-                const match = lastEmp.employee_id.match(/EMP(\d{3})/);
-                if (match) nextSerial = parseInt(match[1]) + 1;
+            let maxSerial = 0;
+            for (const e of allEmps || []) {
+                // Match any EMPxxx or EMP-xxx numeric portion
+                const match = e.employee_id.match(/EMP-?(\d+)/i);
+                if (match) {
+                    const num = parseInt(match[1]);
+                    if (num > maxSerial) maxSerial = num;
+                }
             }
-            
-            // Adjust based on current results since we might be adding multiple in one request
+            // Account for employees already successfully added in this bulk request
             const existingInResults: number = results.filter(r => r.success).length;
-            const employee_id = `EMP${(nextSerial + existingInResults).toString().padStart(3, '0')}`;
+            const employee_id = `EMP${(maxSerial + 1 + existingInResults).toString().padStart(3, '0')}`;
 
             const { data: employeeData, error: empError } = await supabase
                 .from('Employee')
@@ -156,6 +172,7 @@ export async function POST(request: NextRequest) {
                 .select().single();
 
             if (empError) {
+                console.error(`[invite] Employee DB insert failed for ${email}:`, empError.code, empError.message, empError.details);
                 results.push({ email, success: false, error: `DB record failed: ${empError.message}` });
                 continue;
             }

@@ -65,6 +65,10 @@ export interface Employee {
   email: string;
   dob: string;
   bank_details: string;
+  bank_account_name: string | null;
+  bank_bsb: string | null;
+  bank_account_number: string | null;
+  "ABN/TFN/ACN": string | null;
   emergency_contact_name: string;
   emergency_contact_phone: string;
   employment_type: EmployeeType | null;
