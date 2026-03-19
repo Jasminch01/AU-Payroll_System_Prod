@@ -10,9 +10,9 @@ import { Input } from "@/components/ui/input";
 import { StatusBadge } from "@/components/ui/badge";
 import { apiGet, apiPut, apiPost, apiDelete, apiPatch } from "@/lib/api-client";
 import { toast } from "sonner";
-import { 
-    ArrowLeft, Save, Trash2, User, Phone, Mail, DollarSign, Shield, FileText, 
-    Plus, Lock, Clock, Calendar, Briefcase, CalendarClock, X, Edit3 
+import {
+    ArrowLeft, Save, Trash2, User, Phone, Mail, DollarSign, Shield, FileText,
+    Plus, Lock, Clock, Calendar, Briefcase, CalendarClock, X, Edit3
 } from "lucide-react";
 import {
     Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter
@@ -28,13 +28,15 @@ export default function OwnerEmployeeDetailPage() {
     const searchParams = useSearchParams();
     const queryClient = useQueryClient();
     const employeeId = params.id as string;
-    
+
     // Get initial tab from search params
     const initialTab = searchParams.get('tab') || 'overview';
     const [activeTab, setActiveTab] = useState(initialTab);
 
     const [editing, setEditing] = useState(false);
     const [formData, setFormData] = useState<any>(null);
+    const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+    const [deleteConfirmText, setDeleteConfirmText] = useState("");
 
     // Rate update state
     const [rateOpen, setRateOpen] = useState(false);
@@ -53,6 +55,8 @@ export default function OwnerEmployeeDetailPage() {
         queryFn: () => apiGet<any>(`/employees/${employeeId}`),
         enabled: !!employeeId,
     });
+    console.log("Employee data:", employee);
+
 
     const { data: rateHistory, isLoading: isLoadingRates } = useQuery({
         queryKey: ["employeeRates", employeeId],
@@ -63,7 +67,19 @@ export default function OwnerEmployeeDetailPage() {
     // Initialize form data when employee loads
     useEffect(() => {
         if (employee && !formData) {
-            setFormData({ ...employee });
+            // Normalize the employee data to handle both old and new field names
+            const normalizedData = {
+                ...employee,
+                // Handle date_of_birth vs dob
+                date_of_birth: employee.date_of_birth || employee.dob || "",
+                // Handle bank details - split old bank_details or use new fields
+                bank_account_name: employee.bank_account_name || "",
+                bank_bsb: employee.bank_bsb || "",
+                bank_account_number: employee.bank_account_number || "",
+                "ABN/TFN/ACN": employee["ABN/TFN/ACN"] || "",
+            };
+            console.log("Normalized employee data:", normalizedData);
+            setFormData(normalizedData);
         }
     }, [employee, formData]);
 
@@ -74,7 +90,10 @@ export default function OwnerEmployeeDetailPage() {
     }, [searchParams]);
 
     const updateMutation = useMutation({
-        mutationFn: (data: any) => apiPut(`/employees/${employeeId}`, data),
+        mutationFn: (data: any) => {
+            console.log("Sending to API:", data);
+            return apiPut(`/employees/${employeeId}`, data);
+        },
         onSuccess: () => {
             toast.success("Employee updated");
             queryClient.invalidateQueries({ queryKey: ["employee", employeeId] });
@@ -82,7 +101,10 @@ export default function OwnerEmployeeDetailPage() {
             setEditing(false);
             setFormData(null); // Will reload from query
         },
-        onError: (err: Error) => toast.error(err.message),
+        onError: (err: Error) => {
+            console.error("Update error:", err);
+            toast.error(err.message);
+        },
     });
 
     const deleteMutation = useMutation({
@@ -121,25 +143,40 @@ export default function OwnerEmployeeDetailPage() {
 
     const handleSave = () => {
         if (!formData) return;
-        updateMutation.mutate({
+        
+        console.log("Form data before save:", formData);
+        
+        // Prepare the data object with proper field names
+        const dataToSend = {
             first_name: formData.first_name,
             last_name: formData.last_name,
             email: formData.email,
             phone: formData.phone,
-            dob: formData.dob,
-            bank_details: formData.bank_details,
+            date_of_birth: formData.date_of_birth,
             emergency_contact_name: formData.emergency_contact_name,
             emergency_contact_phone: formData.emergency_contact_phone,
+            bank_account_name: formData.bank_account_name,
+            bank_bsb: formData.bank_bsb,
+            bank_account_number: formData.bank_account_number,
+            "ABN/TFN/ACN": formData["ABN/TFN/ACN"],
             role_title: formData.role_title,
             employment_type: formData.employment_type,
             pay_cycle: formData.pay_cycle,
             status: formData.status,
             kiosk_pin: formData.kiosk_pin,
-        });
+        };
+        
+        console.log("Data being sent to API:", dataToSend);
+        updateMutation.mutate(dataToSend);
     };
 
     const updateField = (field: string, value: any) => {
+        console.log(`Updating field: ${field} with value:`, value);
         setFormData((prev: any) => ({ ...prev, [field]: value }));
+        // Enable editing mode when any field is touched
+        if (!editing) {
+            setEditing(true);
+        }
     };
 
     if (isLoadingEmployee) {
@@ -168,6 +205,7 @@ export default function OwnerEmployeeDetailPage() {
     }
 
     const data = formData || employee;
+    console.log("Current display data:", data);
 
     return (
         <DashboardLayout role="owner" pageTitle="" pageDescription="" actions={null}>
@@ -177,16 +215,16 @@ export default function OwnerEmployeeDetailPage() {
                     <div className="w-64 bg-[hsl(var(--muted))]/20 flex flex-col shrink-0 border-r border-[hsl(var(--border))]">
                         {/* Profile Info Section */}
                         <div className="p-6">
-                            <Button 
-                                variant="ghost" 
-                                size="sm" 
-                                onClick={() => router.push("/owner/employees")} 
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => router.push("/owner/employees")}
                                 className="flex items-center gap-2 text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] p-0 h-auto mb-8"
                             >
                                 <ArrowLeft size={16} />
                                 <span className="text-xs font-medium">Back to Team</span>
                             </Button>
-                            
+
                             <div className="flex flex-col items-center text-center space-y-4 mb-8">
                                 <div className="relative">
                                     <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-[hsl(var(--brand))] text-white text-3xl font-bold shadow-sm">
@@ -208,23 +246,23 @@ export default function OwnerEmployeeDetailPage() {
                         <div className="px-3 flex-1 space-y-1">
                             <TabsList className="flex flex-col h-auto bg-transparent p-0 gap-1 items-stretch">
                                 <TabsTrigger value="overview" className="justify-start px-4 py-2.5 rounded-lg data-[state=active]:bg-[hsl(var(--background))] data-[state=active]:text-[hsl(var(--brand))] data-[state=active]:border-[hsl(var(--border))] transition-all text-sm font-medium gap-3 hover:bg-[hsl(var(--muted))]/30 border border-transparent">
-                                    <User size={18} className="shrink-0" /> 
+                                    <User size={18} className="shrink-0" />
                                     <span>Personal</span>
                                 </TabsTrigger>
                                 <TabsTrigger value="employment" className="justify-start px-4 py-2.5 rounded-lg data-[state=active]:bg-[hsl(var(--background))] data-[state=active]:text-[hsl(var(--brand))] data-[state=active]:border-[hsl(var(--border))] transition-all text-sm font-medium gap-3 hover:bg-[hsl(var(--muted))]/30 border border-transparent">
-                                    <Briefcase size={18} className="shrink-0" /> 
+                                    <Briefcase size={18} className="shrink-0" />
                                     <span>Employment</span>
                                 </TabsTrigger>
                                 <TabsTrigger value="shifts" className="justify-start px-4 py-2.5 rounded-lg data-[state=active]:bg-[hsl(var(--background))] data-[state=active]:text-[hsl(var(--brand))] data-[state=active]:border-[hsl(var(--border))] transition-all text-sm font-medium gap-3 hover:bg-[hsl(var(--muted))]/30 border border-transparent">
-                                    <CalendarClock size={18} className="shrink-0" /> 
+                                    <CalendarClock size={18} className="shrink-0" />
                                     <span>Roster</span>
                                 </TabsTrigger>
                                 <TabsTrigger value="timesheets" className="justify-start px-4 py-2.5 rounded-lg data-[state=active]:bg-[hsl(var(--background))] data-[state=active]:text-[hsl(var(--brand))] data-[state=active]:border-[hsl(var(--border))] transition-all text-sm font-medium gap-3 hover:bg-[hsl(var(--muted))]/30 border border-transparent">
-                                    <Clock size={18} className="shrink-0" /> 
+                                    <Clock size={18} className="shrink-0" />
                                     <span>Timesheets</span>
                                 </TabsTrigger>
                                 <TabsTrigger value="leave" className="justify-start px-4 py-2.5 rounded-lg data-[state=active]:bg-[hsl(var(--background))] data-[state=active]:text-[hsl(var(--brand))] data-[state=active]:border-[hsl(var(--border))] transition-all text-sm font-medium gap-3 hover:bg-[hsl(var(--muted))]/30 border border-transparent">
-                                    <Calendar size={18} className="shrink-0" /> 
+                                    <Calendar size={18} className="shrink-0" />
                                     <span>Leave</span>
                                 </TabsTrigger>
                             </TabsList>
@@ -235,40 +273,40 @@ export default function OwnerEmployeeDetailPage() {
                     <div className="flex-1 flex flex-col overflow-hidden bg-[hsl(var(--background))] relative">
                         {/* Simple Actions Bar */}
                         <div className="absolute top-6 right-8 z-50 flex items-center gap-3">
-                            {(activeTab === 'overview' || activeTab === 'employment') && (
-                                <>
-                                    {!editing ? (
-                                        <Button 
-                                            onClick={() => setEditing(true)} 
-                                            className="rounded-lg bg-[hsl(var(--brand))] text-white h-10 px-6 font-semibold text-sm flex items-center gap-2"
-                                        >
-                                            <Edit3 size={16} /> 
-                                            <span>Edit Details</span>
-                                        </Button>
-                                    ) : (
-                                        <div className="flex gap-2">
-                                            <Button 
-                                                variant="outline" 
-                                                className="rounded-lg px-4 h-9 text-xs" 
-                                                onClick={() => { setEditing(false); setFormData({ ...employee }); }}
-                                            >
-                                                Cancel
-                                            </Button>
-                                            <Button 
-                                                className="rounded-lg px-4 h-9 font-bold bg-[hsl(var(--brand))] text-white text-xs" 
-                                                onClick={handleSave} 
-                                                loading={updateMutation.isPending}
-                                            >
-                                                Save
-                                            </Button>
-                                        </div>
-                                    )}
-                                </>
+                            {(activeTab === 'overview' || activeTab === 'employment') && editing && (
+                                <div className="flex gap-2">
+                                    <Button
+                                        variant="outline"
+                                        className="rounded-lg px-4 h-9 text-xs"
+                                        onClick={() => { 
+                                            setEditing(false); 
+                                            // Reset to original employee data
+                                            const normalizedData = {
+                                                ...employee,
+                                                date_of_birth: employee.date_of_birth || employee.dob || "",
+                                                bank_account_name: employee.bank_account_name || "",
+                                                bank_bsb: employee.bank_bsb || "",
+                                                bank_account_number: employee.bank_account_number || "",
+                                                "ABN/TFN/ACN": employee["ABN/TFN/ACN"] || "",
+                                            };
+                                            setFormData(normalizedData); 
+                                        }}
+                                    >
+                                        Cancel
+                                    </Button>
+                                    <Button
+                                        className="rounded-lg px-4 h-9 font-bold bg-[hsl(var(--brand))] text-white text-xs"
+                                        onClick={handleSave}
+                                        loading={updateMutation.isPending}
+                                    >
+                                        Save
+                                    </Button>
+                                </div>
                             )}
-                            <Button 
-                                variant="ghost" 
-                                size="icon" 
-                                onClick={() => router.push("/owner/employees")} 
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => router.push("/owner/employees")}
                                 className="rounded-lg h-10 w-10 hover:bg-[hsl(var(--muted))]/50 text-[hsl(var(--muted-foreground))] border border-[hsl(var(--border))]"
                             >
                                 <X size={20} />
@@ -296,11 +334,11 @@ export default function OwnerEmployeeDetailPage() {
                                                 </div>
                                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                                                     <Input label="Employee ID" value={data.employee_id || ""} disabled={true} />
-                                                    <Input label="First Name" value={data.first_name || ""} onChange={(e) => updateField("first_name", e.target.value)} disabled={!editing} />
-                                                    <Input label="Last Name" value={data.last_name || ""} onChange={(e) => updateField("last_name", e.target.value)} disabled={!editing} />
-                                                    <Input label="Email Address" type="email" value={data.email || ""} onChange={(e) => updateField("email", e.target.value)} disabled={!editing} />
-                                                    <Input label="Phone Number" value={data.phone || ""} onChange={(e) => updateField("phone", e.target.value)} disabled={!editing} />
-                                                    <Input label="Date of Birth" type="date" value={data.date_of_birth || ""} onChange={(e) => updateField("date_of_birth", e.target.value)} disabled={!editing} />
+                                                    <Input label="First Name" value={data.first_name || ""} onChange={(e) => updateField("first_name", e.target.value)} />
+                                                    <Input label="Last Name" value={data.last_name || ""} onChange={(e) => updateField("last_name", e.target.value)} />
+                                                    <Input label="Email Address" type="email" value={data.email || ""} onChange={(e) => updateField("email", e.target.value)} />
+                                                    <Input label="Phone Number" value={data.phone || ""} onChange={(e) => updateField("phone", e.target.value)} />
+                                                    <Input label="Date of Birth" type="date" value={data.date_of_birth || ""} onChange={(e) => updateField("date_of_birth", e.target.value)} />
                                                 </div>
                                             </section>
 
@@ -310,9 +348,10 @@ export default function OwnerEmployeeDetailPage() {
                                                     <p className="text-sm text-[hsl(var(--muted-foreground))]">Required for payroll processing.</p>
                                                 </div>
                                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                                                    <Input label="Account Name" value={data.bank_account_name || ""} onChange={(e) => updateField("bank_account_name", e.target.value)} disabled={!editing} />
-                                                    <Input label="BSB Number" value={data.bank_bsb || ""} onChange={(e) => updateField("bank_bsb", e.target.value)} disabled={!editing} />
-                                                    <Input label="Account Number" value={data.bank_account_number || ""} onChange={(e) => updateField("bank_account_number", e.target.value)} disabled={!editing} />
+                                                    <Input label="Account Name" value={data.bank_account_name || ""} onChange={(e) => updateField("bank_account_name", e.target.value)} />
+                                                    <Input label="BSB Number" value={data.bank_bsb || ""} onChange={(e) => updateField("bank_bsb", e.target.value)} />
+                                                    <Input label="Account Number" value={data.bank_account_number || ""} onChange={(e) => updateField("bank_account_number", e.target.value)} />
+                                                    <Input label="ABN / TFN / ACN" value={data["ABN/TFN/ACN"] || ""} onChange={(e) => updateField("ABN/TFN/ACN", e.target.value)} />
                                                 </div>
                                             </section>
 
@@ -322,8 +361,8 @@ export default function OwnerEmployeeDetailPage() {
                                                     <p className="text-sm text-[hsl(var(--muted-foreground))]">Contacts to reach in case of emergency.</p>
                                                 </div>
                                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                                    <Input label="Primary Contact Name" value={data.emergency_contact_name || ""} onChange={(e) => updateField("emergency_contact_name", e.target.value)} disabled={!editing} />
-                                                    <Input label="Primary Contact Phone" value={data.emergency_contact_phone || ""} onChange={(e) => updateField("emergency_contact_phone", e.target.value)} disabled={!editing} />
+                                                    <Input label="Primary Contact Name" value={data.emergency_contact_name || ""} onChange={(e) => updateField("emergency_contact_name", e.target.value)} />
+                                                    <Input label="Primary Contact Phone" value={data.emergency_contact_phone || ""} onChange={(e) => updateField("emergency_contact_phone", e.target.value)} />
                                                 </div>
                                             </section>
                                         </TabsContent>
@@ -342,11 +381,10 @@ export default function OwnerEmployeeDetailPage() {
                                                     <div className="max-w-xs">
                                                         <Input
                                                             label="4-Digit PIN"
-                                                            type={editing ? "text" : "password"}
+                                                            type="text"
                                                             maxLength={4}
                                                             value={data.kiosk_pin || ""}
                                                             onChange={(e) => updateField("kiosk_pin", e.target.value.replace(/[^0-9]/g, ''))}
-                                                            disabled={!editing}
                                                             placeholder="----"
                                                             className="text-center font-mono tracking-widest"
                                                         />
@@ -403,9 +441,8 @@ export default function OwnerEmployeeDetailPage() {
                                                 variant="danger"
                                                 className="shrink-0 rounded-lg px-6 h-10 font-bold text-xs"
                                                 onClick={() => {
-                                                    if (confirm(`CRITICAL WARNING: You are about to permanently delete ${employee.first_name} ${employee.last_name}. Type 'DELETE' to confirm.`)) {
-                                                        deleteMutation.mutate();
-                                                    }
+                                                    setDeleteConfirmText("");
+                                                    setDeleteModalOpen(true);
                                                 }}
                                                 loading={deleteMutation.isPending}
                                             >
@@ -422,13 +459,12 @@ export default function OwnerEmployeeDetailPage() {
                                             <p className="text-sm text-[hsl(var(--muted-foreground))]">Role and contractual details.</p>
                                         </div>
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                            <Input label="Position / Role" value={data.role_title || ""} onChange={(e) => updateField("role_title", e.target.value)} disabled={!editing} />
+                                            <Input label="Position / Role" value={data.role_title || ""} onChange={(e) => updateField("role_title", e.target.value)} />
                                             <div className="space-y-1.5">
                                                 <label className="text-xs font-semibold text-[hsl(var(--muted-foreground))] ml-0.5">Employment Basis</label>
                                                 <select
                                                     value={data.employment_type || "full_time"}
                                                     onChange={(e) => updateField("employment_type", e.target.value)}
-                                                    disabled={!editing}
                                                     className="flex h-10 w-full rounded-md border border-[hsl(var(--input))] bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--brand))]/20 appearance-none"
                                                 >
                                                     <option value="full_time">Full Time</option>
@@ -441,7 +477,6 @@ export default function OwnerEmployeeDetailPage() {
                                                 <select
                                                     value={data.pay_cycle || "weekly"}
                                                     onChange={(e) => updateField("pay_cycle", e.target.value)}
-                                                    disabled={!editing}
                                                     className="flex h-10 w-full rounded-md border border-[hsl(var(--input))] bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--brand))]/20 appearance-none"
                                                 >
                                                     <option value="weekly">Every Week</option>
@@ -454,7 +489,7 @@ export default function OwnerEmployeeDetailPage() {
                                                 <select
                                                     value={data.status || "active"}
                                                     onChange={(e) => updateField("status", e.target.value)}
-                                                    disabled={!editing || data.status === 'invited'}
+                                                    disabled={data.status === 'invited'}
                                                     className="flex h-10 w-full rounded-md border border-[hsl(var(--input))] bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--brand))]/20 appearance-none"
                                                 >
                                                     <option value="active">Active Service</option>
@@ -472,10 +507,10 @@ export default function OwnerEmployeeDetailPage() {
                                                 <h3 className="text-lg font-bold text-[hsl(var(--foreground))]">Pay Scale History</h3>
                                                 <p className="text-sm text-[hsl(var(--muted-foreground))]">Historical record of hourly rates.</p>
                                             </div>
-                                            <Button 
-                                                size="sm" 
+                                            <Button
+                                                size="sm"
                                                 variant="outline"
-                                                className="rounded-lg px-4" 
+                                                className="rounded-lg px-4"
                                                 onClick={() => {
                                                     setEditingRateId(null);
                                                     setNewRate("");
@@ -487,8 +522,7 @@ export default function OwnerEmployeeDetailPage() {
                                                     setEveningStartTime("");
                                                     setEveningEndTime("");
                                                     setRateOpen(true);
-                                                }} 
-                                                disabled={editing}
+                                                }}
                                             >
                                                 <Plus size={14} className="mr-2" /> Add Rate
                                             </Button>
@@ -530,14 +564,14 @@ export default function OwnerEmployeeDetailPage() {
                                                                     <td className="px-6 py-4 text-xs">{rate.public_holiday_multiplier}x</td>
                                                                     <td className="px-6 py-4 text-xs">{rate.evening_rate ? `$${rate.evening_rate.toFixed(2)}` : "—"}</td>
                                                                     <td className="px-6 py-4 text-xs">
-                                                                        {rate.evening_start_time !== null && rate.evening_end_time !== null 
-                                                                            ? `${rate.evening_start_time}:00 - ${rate.evening_end_time}:00` 
+                                                                        {rate.evening_start_time !== null && rate.evening_end_time !== null
+                                                                            ? `${rate.evening_start_time}:00 - ${rate.evening_end_time}:00`
                                                                             : "—"}
                                                                     </td>
                                                                     <td className="px-6 py-4 text-right">
-                                                                        <Button 
-                                                                            variant="ghost" 
-                                                                            size="sm" 
+                                                                        <Button
+                                                                            variant="ghost"
+                                                                            size="sm"
                                                                             className="h-8 w-8 p-0"
                                                                             onClick={() => {
                                                                                 setEditingRateId(rate.rate_history_id);
@@ -590,8 +624,8 @@ export default function OwnerEmployeeDetailPage() {
                     <DialogHeader>
                         <DialogTitle>{editingRateId ? "Edit Pay Rate" : "Add New Pay Rate"}</DialogTitle>
                         <DialogDescription>
-                            {editingRateId 
-                                ? "Update the details of this existing rate record." 
+                            {editingRateId
+                                ? "Update the details of this existing rate record."
                                 : "Set a new base hourly rate and advanced multipliers."}
                         </DialogDescription>
                     </DialogHeader>
@@ -632,7 +666,7 @@ export default function OwnerEmployeeDetailPage() {
                     </div>
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setRateOpen(false)}>Cancel</Button>
-                        <Button 
+                        <Button
                             onClick={() => {
                                 if (!newRate || !effectiveFrom) {
                                     toast.error("Please fill base rate and effective date");
@@ -652,6 +686,31 @@ export default function OwnerEmployeeDetailPage() {
                             loading={updateRateMutation.isPending}
                         >
                             <Save size={16} className="mr-2" /> Save Rate
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Delete Confirmation Modal */}
+            <Dialog open={deleteModalOpen} onOpenChange={setDeleteModalOpen}>
+                <DialogContent className="max-w-sm">
+                    <DialogHeader>
+                        <DialogTitle className="text-xl font-bold">Confirm Deletion</DialogTitle>
+                        <DialogDescription className="text-sm text-[hsl(var(--muted-foreground))] pt-1">
+                            Are you sure you want to delete <span className="font-semibold text-[hsl(var(--foreground))]">{employee.first_name} {employee.last_name}</span>? This action cannot be undone.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter className="gap-2 pt-2">
+                        <Button variant="outline" className="flex-1" onClick={() => setDeleteModalOpen(false)}>
+                            Cancel
+                        </Button>
+                        <Button
+                            variant="danger"
+                            className="flex-1 font-bold"
+                            loading={deleteMutation.isPending}
+                            onClick={() => deleteMutation.mutate()}
+                        >
+                            Delete
                         </Button>
                     </DialogFooter>
                 </DialogContent>

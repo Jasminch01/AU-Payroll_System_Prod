@@ -67,7 +67,7 @@ export function DashboardLayout({
             </AnimatePresence>
 
             {/* Main Content Area — offset by sidebar width */}
-            <div className="flex flex-1 flex-col lg:ml-[260px]">
+            <div className="flex flex-1 flex-col lg:ml-[260px] min-w-0">
                 <TopNav
                     onMenuClick={() => setMobileMenuOpen(!mobileMenuOpen)}
                 />
