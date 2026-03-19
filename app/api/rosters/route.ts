@@ -99,8 +99,9 @@ export async function POST(request: NextRequest) {
                 business_id: authUser.business_id,
                 start_date,
                 end_date,
-                status: 'draft',
+                status: body.status || 'draft',
                 created_by: authUser.user_id,
+                published_at: body.status === 'published' ? new Date().toISOString() : null
             })
             .select()
             .single();

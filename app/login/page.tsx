@@ -58,8 +58,12 @@ export default function LoginPage() {
                 initial={{ opacity: 0, x: -30 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ duration: 0.5 }}
-                className="hidden lg:flex lg:w-1/2 flex-col justify-between bg-[hsl(var(--sidebar))] text-white p-12"
+                className="hidden lg:flex lg:w-1/2 flex-col justify-between bg-[hsl(var(--brand))] text-white p-12 relative overflow-hidden"
             >
+                {/* Decorative Background Elements */}
+                <div className="absolute top-0 right-0 -translate-y-1/2 translate-x-1/2 w-96 h-96 bg-white/10 rounded-full blur-3xl" />
+                <div className="absolute bottom-0 left-0 translate-y-1/2 -translate-x-1/2 w-96 h-96 bg-white/10 rounded-full blur-3xl" />
+
                 <div>
                     <div className="flex items-center gap-3">
                         <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[hsl(var(--sidebar-accent))] font-bold text-lg">
@@ -116,7 +120,9 @@ export default function LoginPage() {
                     </div>
 
                     <div className="space-y-2">
-                        <h1 className="text-3xl font-bold tracking-tight">Welcome back</h1>
+                        <h1 className="text-3xl font-bold tracking-tight bg-linear-to-br from-[hsl(var(--foreground))] to-[hsl(var(--brand))] bg-clip-text text-transparent">
+                            Welcome back
+                        </h1>
                         <p className="text-[hsl(var(--muted-foreground))]">
                             Sign in to your account to continue
                         </p>

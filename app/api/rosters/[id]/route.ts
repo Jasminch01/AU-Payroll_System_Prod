@@ -3,6 +3,8 @@ import { createClient } from '@/lib/supabase/server';
 import { requireRole } from '@/lib/auth';
 import { successResponse, errorResponse } from '@/lib/api-helpers';
 
+import { notifyRosterPublished } from '@/lib/notifications';
+
 interface RouteParams {
     params: Promise<{ id: string }>;
 }
@@ -100,6 +102,11 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
             .single();
 
         if (error) return errorResponse(error.message, 400);
+
+        // If published, trigger notification
+        if (updateData.status === 'published') {
+            await notifyRosterPublished(id, authUser.business_id, authUser.user_id);
+        }
 
         return successResponse(updated, 'Roster updated successfully');
     } catch (err) {

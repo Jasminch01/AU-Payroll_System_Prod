@@ -24,6 +24,8 @@ export async function GET(request: NextRequest) {
         const to = searchParams.get('to');
 
         // Query shifts assigned to this employee
+        // LOGIC: Show shifts from rosters that HAVE a published_at timestamp.
+        // HIDE shifts created AFTER the most recent published_at (these are draft additions).
         let query = supabase
             .from('Shift')
             .select(`
@@ -32,11 +34,13 @@ export async function GET(request: NextRequest) {
                     roster_id,
                     status,
                     start_date,
-                    end_date
+                    end_date,
+                    published_at
                 )
             `)
             .eq('employee_id', authUser.employee_id)
             .eq('business_id', authUser.business_id)
+            .not('Roster.published_at', 'is', null) // Must have been published at least once
             .order('shift_date', { ascending: true });
 
         if (from) query = query.gte('shift_date', from);
@@ -46,7 +50,25 @@ export async function GET(request: NextRequest) {
 
         if (error) return errorResponse(error.message, 400);
 
-        return successResponse(shifts, `Found ${shifts.length} upcoming shift(s)`);
+        // Client-side filtering
+        const visibleShifts = (shifts || []).filter((s: any) => {
+            const roster = s.Roster;
+            if (!roster?.published_at) return false; // Never published = Never visible
+            
+            // If the roster is currently LIVE (published), show ALL its shifts.
+            // This enables the "Real-time" feature the user requested.
+            if (roster.status === 'published') return true;
+
+            // If the roster is currently in DRAFT mode, only show the snapshot of what was 
+            // present during the last explicit publication event.
+            const createdAt = new Date(s.created_at);
+            const publishedAt = new Date(roster.published_at);
+            
+            // Allow a 2-second grace period for sync issues
+            return createdAt.getTime() <= (publishedAt.getTime() + 2000);
+        });
+
+        return successResponse(visibleShifts, `Found ${visibleShifts.length} published shift(s)`);
     } catch (err) {
         console.error('My shifts error:', err);
         return errorResponse('Internal server error', 500);
