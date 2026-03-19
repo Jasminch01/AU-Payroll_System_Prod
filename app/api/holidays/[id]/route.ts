@@ -18,7 +18,6 @@ export async function DELETE(
         const authUser = await requireRole('owner', 'manager');
         if (!authUser) return errorResponse('Unauthorized', 401);
 
-
         const supabase = await createClient();
 
         const { error } = await supabase
