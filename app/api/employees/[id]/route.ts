@@ -105,6 +105,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
         const { id } = await params;
         const body = await request.json();
         const supabase = await createClient();
+        const adminClient = createAdminClient();
 
         // Whitelist updatable fields
         const allowedFields = [
@@ -151,7 +152,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
             .eq('business_id', authUser.business_id)
             .single();
 
-        const { data: updatedEmployee, error } = await supabase
+        const { data: updatedEmployee, error } = await adminClient
             .from('Employee')
             .update(updateData)
             .eq('employee_id', id)
@@ -160,6 +161,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
             .single();
 
         if (error || !updatedEmployee) {
+            console.error('Employee update failed:', error?.message, error?.details);
             return errorResponse('Employee not found or update failed', 404);
         }
 
