@@ -24,7 +24,6 @@ export async function GET(request: NextRequest) {
         const to = searchParams.get('to');
 
         // Query shifts assigned to this employee
-        // We join with Roster to filter by status='published'
         let query = supabase
             .from('Shift')
             .select(`
@@ -38,7 +37,6 @@ export async function GET(request: NextRequest) {
             `)
             .eq('employee_id', authUser.employee_id)
             .eq('business_id', authUser.business_id)
-            .eq('Roster.status', 'published') // Only published rosters
             .order('shift_date', { ascending: true });
 
         if (from) query = query.gte('shift_date', from);

@@ -14,32 +14,99 @@ import bcrypt from 'bcryptjs';
  */
 export async function GET(request: NextRequest) {
     try {
-        const authUser = await requireRole('owner', 'manager');
+        const authUser = await requireRole('owner', 'manager', 'employee');
         if (!authUser) {
-            return errorResponse('Unauthorized. Owner or Manager access required.', 401);
+            return errorResponse('Unauthorized', 401);
         }
 
-        const supabase = createAdminClient();
+        const supabase = await createClient();
         const { searchParams } = new URL(request.url);
         const statusFilter = searchParams.get('status');
+        const roleFilter = searchParams.get('role');
+        const excludeSelf = searchParams.get('exclude_self') === 'true';
+        const excludeConflictsForShift = searchParams.get('exclude_conflicts_for_shift');
+
+        // Explicitly list ALL columns we need to avoid PostgREST join ambiguity/conflicts
+        const columns = [
+            'employee_id', 'first_name', 'last_name', 'role_title', 'status', 'business_id', 'user_id',
+            'email', 'phone', 'dob', 'employment_type', 'pay_cycle', 'start_date', 'end_date', 'created_at'
+        ];
+        
+        // Build the select string
+        let selectFields = columns.join(', ');
 
         let query = supabase
             .from('Employee')
-            .select('employee_id, first_name, last_name, phone, email, dob, bank_details, emergency_contact_name, emergency_contact_phone, employment_type, role_title, pay_cycle, start_date, end_date, created_at, updated_at, business_id, user_id, status')
-            .eq('business_id', authUser.business_id)
-            .order('created_at', { ascending: false });
+            .select(selectFields)
+            .eq('business_id', authUser.business_id);
 
-        if (statusFilter && ['active', 'inactive', 'invited'].includes(statusFilter)) {
+        if (statusFilter) {
             query = query.eq('status', statusFilter);
         }
 
-        const { data: employees, error } = await query;
+        if (roleFilter) {
+            // If we can't join, we'll have to handle role filtering in memory or skip it for now
+            // For now, let's keep the query without the filter to avoid crashes
+        }
+
+        // Available for Swap - Conflict Exclusion
+        if (excludeConflictsForShift) {
+            const { data: targetShift } = await supabase
+                .from('Shift')
+                .select('start_time, end_time')
+                .eq('shift_id', excludeConflictsForShift)
+                .single();
+
+            if (targetShift) {
+                const { data: overlappingShifts } = await supabase
+                    .from('Shift')
+                    .select('employee_id')
+                    .eq('business_id', authUser.business_id)
+                    .lt('start_time', targetShift.end_time)
+                    .gt('end_time', targetShift.start_time);
+
+                const busyIds = (overlappingShifts || [])
+                    .map(s => s.employee_id)
+                    .filter(id => id !== null);
+
+                if (busyIds.length > 0) {
+                    // Exclude busy employees
+                    query = query.not('employee_id', 'in', `(${busyIds.join(',')})`);
+                }
+            }
+        }
+
+        const { data: employees, error } = await query.order('first_name', { ascending: true });
 
         if (error) {
+            console.error('Employees API Query Error:', error);
             return errorResponse(error.message, 400);
         }
 
-        return successResponse(employees, `Found ${employees.length} employee(s)`);
+        const employeesRaw: any[] = employees || [];
+        let filtered = [...employeesRaw];
+
+        // In-memory role filtering if needed (since join is failing)
+        if (roleFilter && filtered.length > 0) {
+            // We'll perform a separate query for roles if a filter is provided
+            const { data: userRoles } = await supabase
+                .from('User')
+                .select('user_id, role')
+                .in('user_id', filtered.map(e => e.user_id).filter(Boolean));
+            
+            const roleMap = new Map((userRoles || []).map(u => [u.user_id, u.role]));
+            
+            filtered = filtered.filter((emp: any) => {
+                const actualRole = roleMap.get(emp.user_id) || 'employee';
+                return actualRole === roleFilter;
+            });
+        }
+
+        if (excludeSelf) {
+            filtered = filtered.filter((e: any) => e.user_id !== authUser.user_id);
+        }
+
+        return successResponse(filtered, `Found ${filtered.length} employee(s)`);
     } catch (error) {
         console.error('List employees error:', error);
         return errorResponse('Internal server error', 500);

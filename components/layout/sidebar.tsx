@@ -50,6 +50,7 @@ const managerNav: NavItem[] = [
     { label: "Dashboard", href: "/manager/dashboard", icon: <LayoutDashboard size={20} /> },
     { label: "Team", href: "/manager/team", icon: <Users size={20} /> },
     { label: "Roster", href: "/manager/roster", icon: <CalendarDays size={20} /> },
+    { label: "My Shifts", href: "/manager/shifts", icon: <CalendarDays size={20} /> },
     { label: "Attendance", href: "/manager/attendance", icon: <Clock size={20} /> },
     { label: "Timesheets", href: "/manager/timesheets", icon: <FileText size={20} /> },
     { label: "Leave", href: "/manager/leave", icon: <Palmtree size={20} /> },

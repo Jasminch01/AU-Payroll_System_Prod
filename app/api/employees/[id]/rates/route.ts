@@ -15,9 +15,9 @@ interface RouteParams {
  */
 export async function GET(request: NextRequest, { params }: RouteParams) {
     try {
-        const authUser = await requireRole('owner');
+        const authUser = await requireRole('owner', 'manager');
         if (!authUser) {
-            return errorResponse('Unauthorized. Owner access required.', 401);
+            return errorResponse('Unauthorized. Access required.', 401);
         }
 
         const { id } = await params;
@@ -61,9 +61,9 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
  */
 export async function POST(request: NextRequest, { params }: RouteParams) {
     try {
-        const authUser = await requireRole('owner');
+        const authUser = await requireRole('owner', 'manager');
         if (!authUser) {
-            return errorResponse('Unauthorized. Owner access required.', 401);
+            return errorResponse('Unauthorized. Access required.', 401);
         }
 
         const { id } = await params;
@@ -142,9 +142,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
  */
 export async function PATCH(request: NextRequest, { params }: RouteParams) {
     try {
-        const authUser = await requireRole('owner');
+        const authUser = await requireRole('owner', 'manager');
         if (!authUser) {
-            return errorResponse('Unauthorized. Owner access required.', 401);
+            return errorResponse('Unauthorized. Access required.', 401);
         }
 
         const { id } = await params;

@@ -13,7 +13,7 @@ import { successResponse, errorResponse } from '@/lib/api-helpers';
  */
 export async function GET(request: NextRequest) {
     try {
-        const authUser = await requireRole('owner');
+        const authUser = await requireRole('owner', 'manager');
         if (!authUser) return errorResponse('Unauthorized', 401);
 
         const { searchParams } = new URL(request.url);
