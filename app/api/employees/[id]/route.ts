@@ -29,7 +29,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         // Get employee
         const { data: employee, error } = await supabase
             .from('Employee')
-            .select('employee_id, first_name, last_name, phone, email, dob, bank_details, emergency_contact_name, emergency_contact_phone, employment_type, role_title, pay_cycle, start_date, end_date, created_at, updated_at, business_id, user_id, status')
+            .select('employee_id, first_name, last_name, phone, email, dob, bank_details, bank_account_name, bank_bsb, bank_account_number, "ABN/TFN/ACN", emergency_contact_name, emergency_contact_phone, employment_type, role_title, pay_cycle, start_date, end_date, created_at, updated_at, business_id, user_id, status')
             .eq('employee_id', id)
             .eq('business_id', authUser.business_id)
             .single();
@@ -123,7 +123,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 
         // Only owners (or the employee themselves, if we supported it) can update bank details and pin via this endpoint
         if (authUser.role === 'owner') {
-            allowedFields.push('bank_details', 'kiosk_pin');
+            allowedFields.push('bank_details', 'kiosk_pin', 'bank_account_name', 'bank_bsb', 'bank_account_number', 'ABN/TFN/ACN');
         }
 
         const updateData: Record<string, unknown> = {};
