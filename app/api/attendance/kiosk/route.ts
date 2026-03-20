@@ -42,6 +42,15 @@ export async function POST(request: NextRequest) {
         const { employee_id, pin, device_info } = body;
         let { event_type } = body;
 
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        const hours = String(now.getHours()).padStart(2, '0');
+        const minutes = String(now.getMinutes()).padStart(2, '0');
+        const seconds = String(now.getSeconds()).padStart(2, '0');
+        const localTimestamp = `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
+
         // 1. Find employee by their unique employee_id string
         const supabase = createAdminClient();
         const { data: employee, error: empError } = await supabase
@@ -80,13 +89,13 @@ export async function POST(request: NextRequest) {
         if (!event_type) {
             event_type = getNextAttendanceEvent(
                 lastLog as { event_type: EventType, timestamp: string } | null,
-                body.timestamp || new Date().toISOString()
+                body.timestamp || localTimestamp
             );
         } else {
             const transitionError = validateAttendanceTransition(
                 lastLog as { event_type: EventType, timestamp: string } | null,
                 event_type as EventType,
-                body.timestamp || new Date().toISOString()
+                body.timestamp || localTimestamp
             );
             if (transitionError) return errorResponse(transitionError, 400);
         }
@@ -99,7 +108,7 @@ export async function POST(request: NextRequest) {
                 employee_id: employee.employee_id,
                 event_type: event_type as EventType,
                 device_info: device_info || 'Kiosk',
-                timestamp: body.timestamp || new Date().toISOString()
+                timestamp: body.timestamp || localTimestamp
             })
             .select()
             .single();

@@ -41,10 +41,20 @@ export default function KioskPage() {
         setStatusMessage(null);
 
         try {
+            // Create a local timestamp string: YYYY-MM-DDTHH:mm:ss
+            const now = new Date();
+            const year = now.getFullYear();
+            const month = String(now.getMonth() + 1).padStart(2, '0');
+            const day = String(now.getDate()).padStart(2, '0');
+            const hours = String(now.getHours()).padStart(2, '0');
+            const minutes = String(now.getMinutes()).padStart(2, '0');
+            const seconds = String(now.getSeconds()).padStart(2, '0');
+            const localTimestamp = `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
+
             const res: any = await apiPost("/attendance/kiosk", {
                 employee_id: employeeId,
                 pin: pin,
-                // Optional: let the backend auto-detect event_type based on history
+                timestamp: localTimestamp,
             });
 
             // Assuming standard API helper response { data: { log: {}, employee_name: "" }, message: "" }

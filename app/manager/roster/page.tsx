@@ -13,10 +13,18 @@ import {
 import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/api-client";
 import { useEffect } from "react";
 import { toast } from "sonner";
-import { Plus, ChevronLeft, ChevronRight, Clock, Trash2, CheckCircle2, FileText, RefreshCcw, Copy, Bell } from "lucide-react";
+import { Plus, ChevronLeft, ChevronRight, Clock, Trash2, CheckCircle2, FileText, RefreshCcw, Copy, Bell, CalendarDays } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
+import { 
+    Popover, PopoverTrigger, PopoverContent 
+} from "@/components/ui/popover";
+import { 
+    format, addMonths, subMonths, startOfMonth, endOfMonth, 
+    startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, 
+    isSameDay, addDays, differenceInWeeks, differenceInDays
+} from "date-fns";
 
 type RosterPeriod = "weekly" | "fortnightly" | "monthly";
 
@@ -66,6 +74,30 @@ function formatDate(d: Date | string) {
     return `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, "0")}-${String(dateObj.getDate()).padStart(2, "0")}`;
 }
 
+function getPeriodOptions(period: RosterPeriod, count: number = 12): { label: string, start: string, end: string, offset: number }[] {
+    const options: { label: string, start: string, end: string, offset: number }[] = [];
+    
+    for (let i = -Math.floor(count/3); i <= count - Math.floor(count/3); i++) {
+        const dates = getRosterDates(i, period);
+        const start = dates[0];
+        const end = dates[dates.length - 1];
+        
+        let prefix = "";
+        if (i === 0) prefix = period === "weekly" ? "This week, " : period === "fortnightly" ? "This fortnight, " : "This month, ";
+        else if (i === 1) prefix = period === "weekly" ? "Next week, " : period === "fortnightly" ? "Next fortnight, " : "Next month, ";
+        else if (i === -1) prefix = period === "weekly" ? "Last week, " : period === "fortnightly" ? "Last fortnight, " : "Last month, ";
+        
+        const label = `${prefix}${format(start, "MMM d")} - ${format(end, "MMM d")}`;
+        options.push({
+            label,
+            start: formatDate(start),
+            end: formatDate(end),
+            offset: i
+        });
+    }
+    return options;
+}
+
 export default function ManagerRosterPage() {
     const queryClient = useQueryClient();
     const [offset, setOffset] = useState(0);
@@ -89,6 +121,19 @@ export default function ManagerRosterPage() {
     const rosterDates = useMemo(() => getRosterDates(offset, rosterPeriod), [offset, rosterPeriod]);
     const rangeStart = formatDate(rosterDates[0]);
     const rangeEnd = formatDate(rosterDates[rosterDates.length - 1]);
+
+    // Copy Shifts state
+    const [copyOption, setCopyOption] = useState<'next_week' | 'prev_week'>('next_week');
+    
+    // Copy Review & Undo state
+    const [copyResult, setCopyResult] = useState<{ 
+        copiedCount: number, overlapCount: number, overlapDetails: string[] 
+    } | null>(null);
+    const [resultModalOpen, setResultModalOpen] = useState(false);
+    const [lastNewShiftIds, setLastNewShiftIds] = useState<string[]>([]);
+    const [undoConfirmOpen, setUndoConfirmOpen] = useState(false);
+
+    const periodOptions = useMemo(() => getPeriodOptions(rosterPeriod), [rosterPeriod]);
 
     const { data: employees = [] } = useQuery({
         queryKey: ["employees"],
@@ -208,17 +253,39 @@ export default function ManagerRosterPage() {
 
     const [duplicateOpen, setDuplicateOpen] = useState(false);
     const [targetDuplicateDate, setTargetDuplicateDate] = useState("");
+
     const duplicateRosterMutation = useMutation({
-        mutationFn: (data: { rosterId: string; target_start: string }) => 
-            apiPost(`/rosters/${data.rosterId}/duplicate`, { target_start: data.target_start }),
-        onSuccess: (newRoster: any) => {
-            toast.success("Roster duplicated successfully");
+        mutationFn: (data: { source_from: string; source_to: string; target_start: string }) => 
+            apiPost(`/rosters/copy-shifts`, data),
+        onSuccess: (res: any) => {
+            setCopyResult({
+                copiedCount: res.copiedCount,
+                overlapCount: res.overlapCount,
+                overlapDetails: res.overlapDetails
+            });
+            setLastNewShiftIds(res.newShiftIds || []);
+            setResultModalOpen(true);
+            
             queryClient.invalidateQueries({ queryKey: ["rosters"] });
             queryClient.invalidateQueries({ queryKey: ["shifts"] });
             setDuplicateOpen(false);
             
-            // Navigate to the new roster date?
-            // Actually, just let the manager refresh or move manually
+            // Auto-jump to the target period
+            setOffset(offset + 1);
+        },
+        onError: (err: Error) => toast.error(err.message),
+    });
+
+    const undoLastCopyMutation = useMutation({
+        mutationFn: () => apiPost("/shift/delete-many", { ids: lastNewShiftIds }),
+        onSuccess: () => {
+            toast.success("Last copy operation undone successfully");
+            queryClient.invalidateQueries({ queryKey: ["shifts"] });
+            queryClient.invalidateQueries({ queryKey: ["rosters"] });
+            setUndoConfirmOpen(false);
+            setResultModalOpen(false);
+            // Optionally jump back?
+            setOffset(offset - 1);
         },
         onError: (err: Error) => toast.error(err.message),
     });
@@ -407,6 +474,34 @@ export default function ManagerRosterPage() {
         };
     }, [shifts, rangeStart, rangeEnd]);
 
+    const [calendarMonth, setCalendarMonth] = useState(new Date());
+    const [isCalendarOpen, setIsCalendarOpen] = useState(false);
+
+    const handleDateSelect = (date: Date) => {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        
+        // Find Monday of today's week
+        const day = today.getDay();
+        const diffToMonday = (day === 0 ? -6 : 1 - day);
+        const todayMonday = new Date(today);
+        todayMonday.setDate(today.getDate() + diffToMonday);
+
+        let newOffset = 0;
+        if (rosterPeriod === "weekly") {
+            const diffDays = Math.floor((date.getTime() - todayMonday.getTime()) / (1000 * 60 * 60 * 24));
+            newOffset = Math.floor(diffDays / 7);
+        } else if (rosterPeriod === "fortnightly") {
+            const diffDays = Math.floor((date.getTime() - todayMonday.getTime()) / (1000 * 60 * 60 * 24));
+            newOffset = Math.floor(diffDays / 14);
+        } else {
+            newOffset = (date.getFullYear() - today.getFullYear()) * 12 + (date.getMonth() - today.getMonth());
+        }
+        
+        setOffset(newOffset);
+        setIsCalendarOpen(false);
+    };
+
     return (
         <DashboardLayout
             role="manager"
@@ -437,11 +532,105 @@ export default function ManagerRosterPage() {
         >
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 gap-4 min-h-[44px]">
                 <div className="flex items-center gap-2">
-                    <Button variant="outline" size="icon" onClick={() => setOffset(offset - 1)}>
+                    <Button variant="outline" size="icon" className="h-9 w-9 rounded-lg" onClick={() => setOffset(offset - 1)}>
                         <ChevronLeft size={18} />
                     </Button>
-                    <Button variant="ghost" onClick={() => setOffset(0)}>Current</Button>
-                    <Button variant="outline" size="icon" onClick={() => setOffset(offset + 1)}>
+                    
+                    <Popover open={isCalendarOpen} onOpenChange={setIsCalendarOpen}>
+                        <PopoverTrigger asChild>
+                            <button
+                                className={cn(
+                                    "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all border",
+                                    offset === 0
+                                        ? "bg-[hsl(var(--brand))]/10 text-[hsl(var(--brand))] border-[hsl(var(--brand))]/20"
+                                        : "bg-white text-[hsl(var(--foreground))] border-[hsl(var(--border))] hover:bg-[hsl(var(--brand))]/5"
+                                )}
+                            >
+                                <CalendarDays size={14} />
+                                <span>
+                                    {rosterDates[0].toLocaleDateString("en-AU", { month: "short", day: "numeric" })}
+                                    {" – "}
+                                    {rosterDates[rosterDates.length - 1].toLocaleDateString("en-AU", { month: "short", day: "numeric" })}
+                                </span>
+                            </button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-80 p-0 overflow-hidden rounded-xl shadow-2xl border-[hsl(var(--border))]" align="start">
+                            <div className="p-4 bg-white">
+                                <div className="flex items-center justify-between mb-4 px-1">
+                                    <h4 className="font-bold text-[hsl(var(--foreground))] text-base">
+                                        {format(calendarMonth, "MMM yyyy")}
+                                    </h4>
+                                    <div className="flex gap-1">
+                                        <Button 
+                                            variant="ghost" 
+                                            size="icon" 
+                                            className="h-8 w-8 rounded-full" 
+                                            onClick={() => setCalendarMonth(subMonths(calendarMonth, 1))}
+                                        >
+                                            <ChevronLeft size={16} />
+                                        </Button>
+                                        <Button 
+                                            variant="ghost" 
+                                            size="icon" 
+                                            className="h-8 w-8 rounded-full" 
+                                            onClick={() => setCalendarMonth(addMonths(calendarMonth, 1))}
+                                        >
+                                            <ChevronRight size={16} />
+                                        </Button>
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-7 gap-1 mb-2">
+                                    {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
+                                        <div key={day} className="text-center text-[10px] font-bold uppercase tracking-wider text-[hsl(var(--muted-foreground))] py-2">
+                                            {day[0]}
+                                        </div>
+                                    ))}
+                                    {(() => {
+                                        const start = startOfWeek(startOfMonth(calendarMonth));
+                                        const end = endOfWeek(endOfMonth(calendarMonth));
+                                        const days = eachDayOfInterval({ start, end });
+                                        
+                                        return days.map((day) => {
+                                            const isSelected = rosterDates.some(d => isSameDay(d, day));
+                                            const inMonth = isSameMonth(day, calendarMonth);
+                                            const isToday = isSameDay(day, new Date());
+                                            
+                                            return (
+                                                <button
+                                                    key={day.toISOString()}
+                                                    onClick={() => handleDateSelect(day)}
+                                                    className={cn(
+                                                        "h-9 w-9 text-xs rounded-full flex items-center justify-center transition-all",
+                                                        !inMonth && "text-[hsl(var(--muted-foreground))]/30 hover:bg-transparent",
+                                                        inMonth && !isSelected && "hover:bg-[hsl(var(--brand))]/10 text-[hsl(var(--foreground))]",
+                                                        isSelected && "bg-[hsl(var(--brand))] text-white font-bold shadow-lg shadow-[hsl(var(--brand))]/20",
+                                                        isToday && !isSelected && "border-2 border-[hsl(var(--brand))]/40"
+                                                    )}
+                                                >
+                                                    {format(day, "d")}
+                                                </button>
+                                            );
+                                        });
+                                    })()}
+                                </div>
+                                <div className="mt-4 pt-4 border-t flex justify-center">
+                                    <Button 
+                                        variant="outline" 
+                                        className="w-full bg-[hsl(var(--brand))]/5 border-[hsl(var(--brand))]/20 text-[hsl(var(--brand))] font-bold hover:bg-[hsl(var(--brand))]/10 transition-colors py-5"
+                                        onClick={() => {
+                                            setOffset(0);
+                                            setCalendarMonth(new Date());
+                                            setIsCalendarOpen(false);
+                                        }}
+                                    >
+                                        Jump to Current Week
+                                    </Button>
+                                </div>
+                            </div>
+                        </PopoverContent>
+                    </Popover>
+
+                    <Button variant="outline" size="icon" className="h-9 w-9 rounded-lg" onClick={() => setOffset(offset + 1)}>
                         <ChevronRight size={18} />
                     </Button>
                 </div>
@@ -793,35 +982,225 @@ export default function ManagerRosterPage() {
             </Dialog>
 
             <Dialog open={duplicateOpen} onOpenChange={setDuplicateOpen}>
-                <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle>Duplicate Roster</DialogTitle>
-                        <DialogDescription>
-                            Select the **Start Date** for the duplicated roster. 
-                            All current shifts will be copied and shifted accordingly.
+                <DialogContent className="max-w-md p-0 overflow-hidden rounded-2xl border-none shadow-2xl">
+                    <div className="bg-white p-6">
+                        <DialogHeader className="mb-6">
+                            <div className="flex items-center justify-between">
+                                <DialogTitle className="text-2xl font-bold text-[hsl(var(--foreground))]">Copy shifts</DialogTitle>
+                            </div>
+                        </DialogHeader>
+
+                        <div className="space-y-6">
+                            <div>
+                                <h3 className="text-sm font-bold text-[hsl(var(--muted-foreground))] uppercase tracking-wider mb-4">Dates</h3>
+                                <div className="space-y-3">
+                                    {[
+                                        { 
+                                            id: 'next_week', 
+                                            label: `Copy to next ${rosterPeriod === 'weekly' ? 'week' : rosterPeriod === 'fortnightly' ? 'fortnight' : 'month'}` 
+                                        },
+                                        { 
+                                            id: 'prev_week', 
+                                            label: `Copy from previous ${rosterPeriod === 'weekly' ? 'week' : rosterPeriod === 'fortnightly' ? 'fortnight' : 'month'}` 
+                                        }
+                                    ].map((opt) => (
+                                        <label 
+                                            key={opt.id}
+                                            className={cn(
+                                                "flex items-center gap-3 p-3 rounded-xl border-2 transition-all cursor-pointer",
+                                                copyOption === opt.id 
+                                                    ? "border-[hsl(var(--brand))] bg-[hsl(var(--brand))]/5" 
+                                                    : "border-[hsl(var(--border))] hover:border-[hsl(var(--brand))]/30"
+                                            )}
+                                        >
+                                            <div className={cn(
+                                                "w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all",
+                                                copyOption === opt.id ? "border-[hsl(var(--brand))]" : "border-[hsl(var(--border))]"
+                                            )}>
+                                                {copyOption === opt.id && <div className="w-2.5 h-2.5 rounded-full bg-[hsl(var(--brand))]" />}
+                                            </div>
+                                            <input 
+                                                type="radio" 
+                                                className="hidden" 
+                                                name="copyOption" 
+                                                value={opt.id} 
+                                                checked={copyOption === opt.id}
+                                                onChange={() => setCopyOption(opt.id as any)}
+                                            />
+                                            <span className="font-semibold text-sm">{opt.label}</span>
+                                        </label>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Advanced removed by request */}
+                        </div>
+
+                        <div className="flex justify-end mt-8">
+                            <Button
+                                className="px-8 py-6 rounded-xl bg-[hsl(var(--brand))] text-white hover:bg-[hsl(var(--brand-hover))] font-bold text-lg shadow-lg shadow-[hsl(var(--brand))]/20"
+                                onClick={() => {
+                                    let payload: any = { source_from: "", source_to: "", target_start: "" };
+                                    
+                                    if (copyOption === 'next_week') {
+                                        let daysToAdd = 7;
+                                        if (rosterPeriod === 'fortnightly') daysToAdd = 14;
+                                        
+                                        if (rosterPeriod === 'monthly') {
+                                            const dSource = new Date(rangeStart + 'T00:00:00Z');
+                                            const dTarget = new Date(dSource);
+                                            dTarget.setMonth(dTarget.getUTCMonth() + 1);
+                                            
+                                            payload = {
+                                                source_from: rangeStart,
+                                                source_to: rangeEnd,
+                                                target_start: formatDate(dTarget)
+                                            };
+                                        } else {
+                                            payload = {
+                                                source_from: rangeStart,
+                                                source_to: rangeEnd,
+                                                target_start: formatDate(addDays(new Date(rangeStart + 'T00:00:00Z'), daysToAdd))
+                                            };
+                                        }
+                                    } else {
+                                        let daysToSub = 7;
+                                        if (rosterPeriod === 'fortnightly') daysToSub = 14;
+
+                                        if (rosterPeriod === 'monthly') {
+                                            const dSource = new Date(rangeStart + 'T00:00:00Z');
+                                            const dTarget = new Date(dSource);
+                                            dTarget.setMonth(dTarget.getUTCMonth() - 1);
+                                            
+                                            // Source is prev month, target is current
+                                            const dPrevEnd = new Date(dSource);
+                                            dPrevEnd.setUTCDate(dPrevEnd.getUTCDate() - 1);
+                                            
+                                            payload = {
+                                                source_from: formatDate(dTarget),
+                                                source_to: formatDate(dPrevEnd),
+                                                target_start: rangeStart
+                                            };
+                                        } else {
+                                            payload = {
+                                                source_from: formatDate(addDays(new Date(rangeStart + 'T00:00:00Z'), -daysToSub)),
+                                                source_to: formatDate(addDays(new Date(rangeEnd + 'T00:00:00Z'), -daysToSub)),
+                                                target_start: rangeStart
+                                            };
+                                        }
+                                    }
+                                    
+                                    duplicateRosterMutation.mutate(payload);
+                                }}
+                                loading={duplicateRosterMutation.isPending}
+                            >
+                                Copy
+                            </Button>
+                        </div>
+                    </div>
+                </DialogContent>
+            </Dialog>
+            {/* Copy Result / Conflict Review Modal */}
+            <Dialog open={resultModalOpen} onOpenChange={setResultModalOpen}>
+                <DialogContent className="max-w-md rounded-2xl border-none shadow-2xl p-0 overflow-hidden bg-white">
+                    <DialogHeader className="p-6 pb-2 bg-[hsl(var(--brand))]/5">
+                        <DialogTitle className="flex items-center gap-2 text-xl font-bold text-[hsl(var(--brand))]">
+                            <CheckCircle2 className="w-6 h-6" />
+                            Copy Shifts Result
+                        </DialogTitle>
+                        <DialogDescription className="text-sm font-medium">
+                            Review the outcome of your duplication
                         </DialogDescription>
                     </DialogHeader>
-                    <div className="space-y-4 py-4">
-                        <Input
-                            label="Target Start Date"
-                            type="date"
-                            value={targetDuplicateDate}
-                            onChange={(e) => setTargetDuplicateDate(e.target.value)}
-                        />
+                    
+                    <div className="p-6 space-y-4">
+                        <div className="grid grid-cols-2 gap-3">
+                            <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-100 text-center">
+                                <p className="text-2xl font-bold text-emerald-600">{copyResult?.copiedCount}</p>
+                                <p className="text-[10px] uppercase tracking-wider font-bold text-emerald-500">Copied Successfully</p>
+                            </div>
+                            <div className={cn(
+                                "p-4 rounded-xl text-center border",
+                                (copyResult?.overlapCount ?? 0) > 0 
+                                    ? "bg-amber-50 border-amber-100 text-amber-600" 
+                                    : "bg-gray-50 border-gray-100 text-gray-400"
+                            )}>
+                                <p className="text-2xl font-bold">{copyResult?.overlapCount}</p>
+                                <p className="text-[10px] uppercase tracking-wider font-bold">Issues / Overlaps</p>
+                            </div>
+                        </div>
+
+                        {(copyResult?.overlapCount ?? 0) > 0 && (
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest pl-1">Conflict Details</label>
+                                <div className="max-h-48 overflow-y-auto rounded-xl border border-gray-100 bg-gray-50/50 p-2 space-y-2">
+                                    {copyResult?.overlapDetails.map((detail, i) => (
+                                        <div key={i} className="flex gap-3 text-xs leading-relaxed text-gray-600 p-2 rounded-lg bg-white shadow-sm border border-gray-100/50">
+                                            <div className="mt-0.5 rounded-full bg-amber-100 p-1 shrink-0">
+                                                <RefreshCcw className="w-3 h-3 text-amber-600" />
+                                            </div>
+                                            {detail}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
                     </div>
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setDuplicateOpen(false)}>Cancel</Button>
-                        <Button
-                            className="bg-[hsl(var(--brand))] text-white hover:bg-[hsl(var(--brand-hover))]"
-                            onClick={() => currentRoster && duplicateRosterMutation.mutate({ 
-                                rosterId: currentRoster.roster_id, 
-                                target_start: targetDuplicateDate 
-                            })}
-                            loading={duplicateRosterMutation.isPending}
+
+                    <DialogFooter className="p-6 pt-0 bg-gray-50/50 flex flex-row gap-3">
+                        <Button 
+                            variant="outline" 
+                            className="flex-1 rounded-xl h-12 font-bold border-gray-200 hover:bg-amber-50 hover:text-amber-600 hover:border-amber-100 transition-all group"
+                            onClick={() => setUndoConfirmOpen(true)}
                         >
-                            Duplicate Roster
+                            <RefreshCcw className="w-4 h-4 mr-2 group-hover:rotate-180 transition-transform duration-500" />
+                            Undo Last Copy
+                        </Button>
+                        <Button 
+                            className="flex-1 rounded-xl h-12 font-bold bg-[hsl(var(--brand))] hover:bg-[hsl(var(--brand))]/90 shadow-lg shadow-[hsl(var(--brand))]/20"
+                            onClick={() => setResultModalOpen(false)}
+                        >
+                            Done
                         </Button>
                     </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Undo Confirmation Modal */}
+            <Dialog open={undoConfirmOpen} onOpenChange={setUndoConfirmOpen}>
+                <DialogContent className="max-w-sm rounded-2xl border-none shadow-2xl p-6 bg-white animate-in zoom-in-95 duration-200">
+                    <div className="space-y-4">
+                        <div className="w-12 h-12 rounded-2xl bg-amber-100 flex items-center justify-center mx-auto">
+                            <Clock className="w-6 h-6 text-amber-600" />
+                        </div>
+                        
+                        <div className="text-center space-y-2">
+                            <h3 className="text-lg font-bold text-gray-900">Undo Copy?</h3>
+                            <p className="text-sm text-gray-500 leading-relaxed px-2">
+                                Are you sure you want to undo the last copy? This will remove 
+                                <span className="font-bold text-gray-900 mx-1">{lastNewShiftIds.length}</span> 
+                                newly created shifts.
+                            </p>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3 pt-2">
+                            <Button 
+                                variant="outline" 
+                                className="rounded-xl h-11 font-bold border-gray-200"
+                                onClick={() => setUndoConfirmOpen(false)}
+                            >
+                                Cancel
+                            </Button>
+                            <Button 
+                                variant="danger"
+                                className="rounded-xl h-11 font-bold shadow-lg shadow-red-100"
+                                onClick={() => undoLastCopyMutation.mutate()}
+                                disabled={undoLastCopyMutation.isPending}
+                            >
+                                {undoLastCopyMutation.isPending ? "Undoing..." : "Yes, Undo IT"}
+                            </Button>
+                        </div>
+                    </div>
                 </DialogContent>
             </Dialog>
         </DashboardLayout>
