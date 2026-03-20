@@ -95,6 +95,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                     start_time: newStartTime,
                     end_time: newEndTime,
                     shift_type: s.shift_type,
+                    shift_status: 'draft',
                 };
             });
 

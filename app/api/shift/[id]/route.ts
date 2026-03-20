@@ -4,6 +4,7 @@ import { requireRole } from '@/lib/auth';
 import { successResponse, errorResponse } from '@/lib/api-helpers';
 import { checkShiftConflictWithLeave } from '@/lib/leave-logic';
 import { logAudit } from '@/lib/audit';
+import { notifyShiftUpdated, notifyShiftDeleted } from '@/lib/notifications';
 
 interface RouteParams {
     params: Promise<{ id: string }>;
@@ -141,8 +142,8 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 
         if (error) return errorResponse(error.message, 400);
 
-        // SYNC ROSTER STATUS: If roster is published, revert it to draft.
-        // Also handle Union Expansion if current view is wider than roster bounds.
+        // If shift was already published, keep it published (Deputy-style: edits are live)
+        // Also notify the employee of the change
         if (existing.roster_id) {
             const { data: roster } = await supabase
                 .from('Roster')
@@ -154,8 +155,6 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
             const rosterEnd = body.roster_end;
 
             if (roster) {
-                // FIXED Logic: Only expand if the NEW DATE is genuinely outside existing roster bounds.
-                // Do NOT expand just because the UI view (rosterStart/End) is wider.
                 const newShiftDate = updateData.shift_date as string || (existing.shift_date as string);
                 const new_start = newShiftDate < roster.start_date ? rosterStart : roster.start_date;
                 const new_end = newShiftDate > roster.end_date ? rosterEnd : roster.end_date;
@@ -173,6 +172,13 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
                         .eq('roster_id', existing.roster_id);
                 }
             }
+        }
+
+        // Deputy-style: if the shift was published, notify employee of the update (non-blocking)
+        if (existing.shift_status === 'published' && existing.employee_id) {
+            notifyShiftUpdated(id, existing.start_time, existing.end_time).catch(err =>
+                console.error(`[Notify] shift update email failed for ${id}:`, err)
+            );
         }
 
         return successResponse(updated, 'Shift updated successfully');
@@ -237,6 +243,23 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
                         updated_at: new Date().toISOString() 
                     })
                     .eq('roster_id', shift.roster_id);
+            }
+        }
+
+        // Deputy-style: if the shift was published, notify the employee it was removed (non-blocking)
+        if (shift.shift_status === 'published' && shift.employee_id) {
+            const supabaseClient = await createClient();
+            const { data: emp } = await supabaseClient
+                .from('Employee')
+                .select('email, first_name')
+                .eq('employee_id', shift.employee_id)
+                .single();
+
+            if (emp) {
+                const shiftTime = `${shift.start_time.split('T')[1]?.substring(0, 5)} - ${shift.end_time.split('T')[1]?.substring(0, 5)}`;
+                notifyShiftDeleted(emp.email, emp.first_name, shift.shift_date, shiftTime).catch(err =>
+                    console.error(`[Notify] shift delete email failed:`, err)
+                );
             }
         }
 

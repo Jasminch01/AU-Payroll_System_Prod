@@ -13,7 +13,7 @@ import {
 import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/api-client";
 import { useEffect } from "react";
 import { toast } from "sonner";
-import { Plus, ChevronLeft, ChevronRight, Clock, Trash2, CheckCircle2, FileText, RefreshCcw, Copy } from "lucide-react";
+import { Plus, ChevronLeft, ChevronRight, Clock, Trash2, CheckCircle2, FileText, RefreshCcw, Copy, Bell } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
@@ -197,6 +197,15 @@ export default function ManagerRosterPage() {
         onError: (err: Error) => toast.error(err.message),
     });
 
+    const notifyShiftMutation = useMutation({
+        mutationFn: (shiftId: string) => apiPost(`/shift/${shiftId}/notify`, {}),
+        onSuccess: () => {
+            toast.success("Shift published & employee notified!", { icon: "🔔" });
+            queryClient.invalidateQueries({ queryKey: ["shifts"] });
+        },
+        onError: (err: Error) => toast.error(err.message),
+    });
+
     const [duplicateOpen, setDuplicateOpen] = useState(false);
     const [targetDuplicateDate, setTargetDuplicateDate] = useState("");
     const duplicateRosterMutation = useMutation({
@@ -226,10 +235,11 @@ export default function ManagerRosterPage() {
     });
 
     const publishRosterMutation = useMutation({
-        mutationFn: (rosterId: string) => apiPut(`/rosters/${rosterId}`, { status: "published" }),
+        mutationFn: (rosterId: string) => apiPost(`/rosters/${rosterId}/publish`, {}),
         onSuccess: () => {
-            toast.success("Roster published successfully!");
+            toast.success("Shifts published and employees notified!");
             queryClient.invalidateQueries({ queryKey: ["rosters"] });
+            queryClient.invalidateQueries({ queryKey: ["shifts"] });
         },
         onError: (err: Error) => toast.error(err.message),
     });
@@ -367,47 +377,35 @@ export default function ManagerRosterPage() {
         );
     }, [rosters, rangeStart, rangeEnd]);
 
+    // Use explicit shift_status field for published check
     const isShiftPublished = useCallback((shift: any) => {
-        const roster = rosters.find((r: any) => r.roster_id === shift.roster_id);
-        return roster?.status === 'published';
-    }, [rosters]);
+        return shift.shift_status === 'published';
+    }, []);
 
     const statusSummary = useMemo(() => {
         let published = 0;
         let drafts = 0;
-        let modified = 0;
         let total = 0;
-
-        const pubAt = currentRoster?.published_at ? new Date(currentRoster.published_at) : null;
 
         for (const s of shifts) {
             const d = s.shift_date?.split('T')[0] || s.shift_date;
-            if (d < rangeStart || d > rangeEnd) continue; // Only count shifts within the current view range
+            if (d < rangeStart || d > rangeEnd) continue;
 
             total++;
-            const isPublished = isShiftPublished(s); // Pass the full shift object
-            if (isPublished) {
+            if (s.shift_status === 'published') {
                 published++;
             } else {
-                // If it's draft, check if it's "New" or "Modified"
-                const createdAt = new Date(s.created_at);
-                const updatedAt = new Date(s.updated_at);
-
-                if (pubAt && createdAt <= pubAt && updatedAt > pubAt) {
-                    modified++;
-                } else {
-                    drafts++;
-                }
+                drafts++;
             }
         }
         return { 
             total, 
             published, 
             drafts, 
-            modified, 
+            modified: 0, 
             allPublished: total > 0 && total === published 
         };
-    }, [shifts, isShiftPublished, currentRoster, rangeStart, rangeEnd]);
+    }, [shifts, rangeStart, rangeEnd]);
 
     return (
         <DashboardLayout
@@ -478,7 +476,7 @@ export default function ManagerRosterPage() {
                                                 </div>
                                             )}
                                         </Badge>
-                                        {currentRoster?.status === 'draft' && (
+                                        {currentRoster && (
                                             <div className="flex items-center gap-2">
                                                 <Button
                                                     size="sm"
@@ -493,38 +491,26 @@ export default function ManagerRosterPage() {
                                                 >
                                                     <Copy size={12} className="mr-1" /> Duplicate
                                                 </Button>
-                                                <Button
-                                                    size="sm"
-                                                    variant="outline"
-                                                    onClick={() => setDeleteRosterConfirmOpen(true)}
-                                                    className="h-7 px-3 text-xs text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 hover:border-red-300"
-                                                >
-                                                    <Trash2 size={12} className="mr-1" /> Delete Roster
-                                                </Button>
-                                                <Button
-                                                    size="sm"
-                                                    onClick={() => publishRosterMutation.mutate(currentRoster.roster_id)}
-                                                    className="h-7 px-3 text-xs bg-[hsl(var(--brand))] hover:bg-[hsl(var(--brand-hover))]"
-                                                >
-                                                    Publish Now
-                                                </Button>
+                                                {currentRoster.status === 'draft' && (
+                                                    <Button
+                                                        size="sm"
+                                                        variant="outline"
+                                                        onClick={() => setDeleteRosterConfirmOpen(true)}
+                                                        className="h-7 px-3 text-xs text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 hover:border-red-300"
+                                                    >
+                                                        <Trash2 size={12} className="mr-1" /> Delete
+                                                    </Button>
+                                                )}
+                                                {statusSummary.drafts > 0 && (
+                                                    <Button
+                                                        size="sm"
+                                                        onClick={() => publishRosterMutation.mutate(currentRoster.roster_id)}
+                                                        className="h-7 px-3 text-xs bg-[hsl(var(--brand))] hover:bg-[hsl(var(--brand-hover))]"
+                                                    >
+                                                        <Bell size={12} className="mr-1" /> Publish {statusSummary.drafts} Shift{statusSummary.drafts > 1 ? 's' : ''}
+                                                    </Button>
+                                                )}
                                             </div>
-                                        )}
-
-                                        {currentRoster?.status === 'published' && (
-                                            <Button
-                                                size="sm"
-                                                variant="outline"
-                                                onClick={() => {
-                                                    const nextDate = new Date(currentRoster.end_date);
-                                                    nextDate.setDate(nextDate.getDate() + 1);
-                                                    setTargetDuplicateDate(formatDate(nextDate));
-                                                    setDuplicateOpen(true);
-                                                }}
-                                                className="h-7 px-3 text-xs"
-                                            >
-                                                <Copy size={12} className="mr-1" /> Duplicate Roster
-                                            </Button>
                                         )}
                                     </div>
                                     <span className="text-[10px] text-[hsl(var(--muted-foreground))] uppercase tracking-wider font-medium mt-1">
@@ -609,12 +595,7 @@ export default function ManagerRosterPage() {
                                                     onClick={() => !isPast && openAddShift(dateStr, emp.employee_id)}
                                                 >
                                                     {dayShifts.map((s: any) => {
-                                                        const isPublished = isShiftPublished(s);
-                                                        const pubAt = currentRoster?.published_at ? new Date(currentRoster.published_at) : null;
-                                                        const updatedAt = new Date(s.updated_at);
-                                                        const createdAt = new Date(s.created_at);
-                                                        const isModified = !isPublished && pubAt && createdAt <= pubAt && updatedAt > pubAt;
-                                                        const isNew = !isPublished && (!pubAt || createdAt > pubAt);
+                                                        const isPublished = s.shift_status === 'published';
 
                                                         return (
                                                             <div
@@ -636,8 +617,6 @@ export default function ManagerRosterPage() {
                                                                     <span className="uppercase tracking-wider text-[10px]">{s.shift_type}</span>
                                                                     <div className="ml-auto flex items-center gap-1">
                                                                         {isPublished && <CheckCircle2 size={10} className="text-[hsl(var(--success))]" />}
-                                                                        {isModified && <RefreshCcw size={10} className="text-amber-500 animate-pulse" />}
-                                                                        {isNew && <Plus size={10} className="text-blue-500" />}
                                                                     </div>
                                                                 </div>
                                                                 <div className="flex flex-col items-start gap-0.5">

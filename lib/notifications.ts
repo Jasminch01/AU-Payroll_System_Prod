@@ -120,3 +120,90 @@ export async function notifyRosterPublished(rosterId: string, businessId: string
         });
     }
 }
+
+/**
+ * Notify a single employee that a specific shift has been assigned (published).
+ */
+export async function notifyShiftPublished(shiftId: string) {
+    const supabase = await createClient();
+
+    const { data: shift } = await supabase
+        .from('Shift')
+        .select('*, Employee:employee_id(email, first_name)')
+        .eq('shift_id', shiftId)
+        .single();
+
+    if (!shift || !shift.Employee) return;
+
+    const { email, first_name } = shift.Employee;
+    const time = `${shift.start_time.split('T')[1]?.substring(0, 5)} - ${shift.end_time.split('T')[1]?.substring(0, 5)}`;
+
+    await sendEmail({
+        to: email,
+        subject: 'New Shift Assigned',
+        html: `<div style="font-family:sans-serif;max-width:600px;margin:auto;padding:20px;border:1px solid #eee;border-radius:10px">
+            <h2 style="color:#4f46e5">AU Payroll System</h2>
+            <p>Hi ${first_name},</p>
+            <p>You have been assigned a <b>new shift</b>:</p>
+            <div style="background:#f9fafb;padding:15px;border-radius:8px;margin:20px 0">
+                <p style="margin:0"><strong>Date:</strong> ${shift.shift_date}</p>
+                <p style="margin:5px 0 0 0"><strong>Time:</strong> ${time}</p>
+            </div>
+            <a href="${process.env.NEXT_PUBLIC_APP_URL}/employee/shifts" style="display:inline-block;background:#4f46e5;color:white;padding:10px 20px;text-decoration:none;border-radius:6px">View Roster</a>
+        </div>`,
+        text: `Hi ${first_name}, new shift on ${shift.shift_date} (${time}).`,
+    });
+}
+
+/**
+ * Notify a single employee that a published shift has been updated.
+ */
+export async function notifyShiftUpdated(shiftId: string, previousStart: string, previousEnd: string) {
+    const supabase = await createClient();
+
+    const { data: shift } = await supabase
+        .from('Shift')
+        .select('*, Employee:employee_id(email, first_name)')
+        .eq('shift_id', shiftId)
+        .single();
+
+    if (!shift || !shift.Employee) return;
+
+    const { email, first_name } = shift.Employee;
+    const newTime = `${shift.start_time.split('T')[1]?.substring(0, 5)} - ${shift.end_time.split('T')[1]?.substring(0, 5)}`;
+    const oldTime = `${previousStart.split('T')[1]?.substring(0, 5)} - ${previousEnd.split('T')[1]?.substring(0, 5)}`;
+
+    await sendEmail({
+        to: email,
+        subject: 'Shift Updated',
+        html: `<div style="font-family:sans-serif;max-width:600px;margin:auto;padding:20px;border:1px solid #eee;border-radius:10px">
+            <h2 style="color:#4f46e5">AU Payroll System</h2>
+            <p>Hi ${first_name},</p>
+            <p>Your shift on <strong>${shift.shift_date}</strong> has been <b>updated</b>:</p>
+            <div style="background:#f9fafb;padding:15px;border-radius:8px;margin:20px 0">
+                <p style="margin:0"><strong>Previous Time:</strong> <s>${oldTime}</s></p>
+                <p style="margin:5px 0 0 0"><strong>New Time:</strong> ${newTime}</p>
+            </div>
+            <a href="${process.env.NEXT_PUBLIC_APP_URL}/employee/shifts" style="display:inline-block;background:#4f46e5;color:white;padding:10px 20px;text-decoration:none;border-radius:6px">View Roster</a>
+        </div>`,
+        text: `Hi ${first_name}, your shift on ${shift.shift_date} was updated to ${newTime}.`,
+    });
+}
+
+/**
+ * Notify a single employee their shift has been removed.
+ */
+export async function notifyShiftDeleted(employeeEmail: string, employeeName: string, shiftDate: string, shiftTime: string) {
+    await sendEmail({
+        to: employeeEmail,
+        subject: 'Shift Removed',
+        html: `<div style="font-family:sans-serif;max-width:600px;margin:auto;padding:20px;border:1px solid #eee;border-radius:10px">
+            <h2 style="color:#4f46e5">AU Payroll System</h2>
+            <p>Hi ${employeeName},</p>
+            <p>Your shift on <strong>${shiftDate} (${shiftTime})</strong> has been <b>removed</b> from the roster.</p>
+            <p>Please contact your manager if you have any questions.</p>
+            <a href="${process.env.NEXT_PUBLIC_APP_URL}/employee/shifts" style="display:inline-block;background:#4f46e5;color:white;padding:10px 20px;text-decoration:none;border-radius:6px">View Roster</a>
+        </div>`,
+        text: `Hi ${employeeName}, your shift on ${shiftDate} (${shiftTime}) has been removed.`,
+    });
+}

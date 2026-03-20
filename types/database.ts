@@ -124,6 +124,8 @@ export interface Roster {
   updated_at: string;
 }
 
+export type ShiftStatus = 'draft' | 'published';
+
 export interface Shift {
   shift_id: string;
   roster_id: string | null;
@@ -132,6 +134,7 @@ export interface Shift {
   start_time: string;
   end_time: string;
   shift_type: ShiftType;
+  shift_status: ShiftStatus;
   created_at: string;
   updated_at: string;
   business_id: string;
