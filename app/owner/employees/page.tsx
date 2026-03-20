@@ -58,7 +58,7 @@ export default function OwnerEmployeesPage() {
     const [manualData, setManualData] = useState<any>({
         first_name: '', last_name: '', email: '', phone: '', dob: '',
         emergency_contact_name: '', emergency_contact_phone: '',
-        role_title: '', employment_type: 'full_time', pay_cycle: 'hourly',
+        role_title: '', employment_type: 'full_time', pay_cycle: 'weekly',
         start_date: new Date().toISOString().split('T')[0],
         weekday_rate: '', kiosk_pin: '',
         password: '',
@@ -134,7 +134,7 @@ export default function OwnerEmployeesPage() {
             setManualData({
                 first_name: '', last_name: '', email: '', phone: '', dob: '',
                 emergency_contact_name: '', emergency_contact_phone: '',
-                role_title: '', employment_type: 'full_time', pay_cycle: 'hourly',
+                role_title: '', employment_type: 'full_time', pay_cycle: 'weekly',
                 start_date: new Date().toISOString().split('T')[0],
                 weekday_rate: '', kiosk_pin: '',
                 password: '',
@@ -732,7 +732,7 @@ export default function OwnerEmployeesPage() {
                                 <div className="space-y-1.5">
                                     <label className="text-xs font-semibold ml-0.5">Pay Cycle</label>
                                     <select value={manualData.pay_cycle} onChange={(e) => setManualData({ ...manualData, pay_cycle: e.target.value })} className="flex h-10 w-full rounded-md border border-[hsl(var(--input))] bg-transparent px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]/20">
-                                        <option value="hourly">hourly</option>
+                                        <option value="weekly">weekly</option>
                                         <option value="fortnightly">fortnightly</option>
                                         <option value="monthly">monthly</option>
                                     </select>
