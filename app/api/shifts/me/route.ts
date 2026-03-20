@@ -52,20 +52,8 @@ export async function GET(request: NextRequest) {
 
         // Client-side filtering
         const visibleShifts = (shifts || []).filter((s: any) => {
-            const roster = s.Roster;
-            if (!roster?.published_at) return false; // Never published = Never visible
-            
-            // If the roster is currently LIVE (published), show ALL its shifts.
-            // This enables the "Real-time" feature the user requested.
-            if (roster.status === 'published') return true;
-
-            // If the roster is currently in DRAFT mode, only show the snapshot of what was 
-            // present during the last explicit publication event.
-            const createdAt = new Date(s.created_at);
-            const publishedAt = new Date(roster.published_at);
-            
-            // Allow a 2-second grace period for sync issues
-            return createdAt.getTime() <= (publishedAt.getTime() + 2000);
+            // Only show shifts that have been explicitly published
+            return s.shift_status === 'published';
         });
 
         return successResponse(visibleShifts, `Found ${visibleShifts.length} published shift(s)`);
