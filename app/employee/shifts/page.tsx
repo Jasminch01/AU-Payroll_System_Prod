@@ -64,7 +64,22 @@ export default function EmployeeShiftsPage() {
                     queryClient.invalidateQueries({ queryKey: ["my-shifts"] });
                 }
             )
-            .subscribe();
+            .on(
+                'postgres_changes',
+                {
+                    event: '*',
+                    schema: 'public',
+                    table: 'ShiftSwapRequest'
+                },
+                (payload) => {
+                    console.log('Real-time ShiftSwapRequest change received:', payload);
+                    queryClient.invalidateQueries({ queryKey: ["my-swap-requests"] });
+                    queryClient.invalidateQueries({ queryKey: ["my-shifts"] });
+                }
+            )
+            .subscribe((status) => {
+                console.log('Supabase real-time subscription status:', status);
+            });
 
         return () => {
             supabase.removeChannel(channel);
@@ -497,7 +512,7 @@ export default function EmployeeShiftsPage() {
                                                                     {/* Cancel/Undo Button for Active Requests (Owned by user) */}
                                                                     {(swapRequests || []).find((sr: any) => 
                                                                         String(sr.shift_id) === String(shift.shift_id) && 
-                                                                        sr.requester_id === user?.employee_id &&
+                                                                        String(sr.requester_id) === String(user?.employee_id) &&
                                                                         ['pending_acceptance', 'pending_approval'].includes(sr.status)
                                                                     ) && (
                                                                         <Button
