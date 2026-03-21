@@ -25,6 +25,7 @@ export async function GET(request: NextRequest) {
         const roleFilter = searchParams.get('role');
         const excludeSelf = searchParams.get('exclude_self') === 'true';
         const excludeConflictsForShift = searchParams.get('exclude_conflicts_for_shift');
+        const onlyWithShifts = searchParams.get('only_with_shifts') === 'true';
 
         // Explicitly list ALL columns we need to avoid PostgREST join ambiguity/conflicts
         const columns = [
@@ -45,8 +46,7 @@ export async function GET(request: NextRequest) {
         }
 
         if (roleFilter) {
-            // If we can't join, we'll have to handle role filtering in memory or skip it for now
-            // For now, let's keep the query without the filter to avoid crashes
+            // Role filtering happens later in memory due to join complexity
         }
 
         // Available for Swap - Conflict Exclusion
@@ -76,6 +76,25 @@ export async function GET(request: NextRequest) {
             }
         }
 
+        // Filter for employees who HAVE upcoming shifts (for Swap)
+        if (onlyWithShifts) {
+            const now = new Date().toISOString();
+            const { data: employeesWithShifts } = await supabase
+                .from('Shift')
+                .select('employee_id')
+                .eq('business_id', authUser.business_id)
+                .gt('start_time', now);
+            
+            const eligibleIds = Array.from(new Set((employeesWithShifts || []).map(s => s.employee_id).filter(Boolean)));
+            
+            if (eligibleIds.length > 0) {
+                query = query.in('employee_id', eligibleIds);
+            } else {
+                // Return empty if no one has shifts
+                return successResponse([], 'No employees with upcoming shifts found');
+            }
+        }
+
         const { data: employees, error } = await query.order('first_name', { ascending: true });
 
         if (error) {
@@ -88,7 +107,6 @@ export async function GET(request: NextRequest) {
 
         // In-memory role filtering if needed (since join is failing)
         if (roleFilter && filtered.length > 0) {
-            // We'll perform a separate query for roles if a filter is provided
             const { data: userRoles } = await supabase
                 .from('User')
                 .select('user_id, role')
@@ -115,30 +133,6 @@ export async function GET(request: NextRequest) {
 
 /**
  * POST /api/employees
- * 
- * Create a new employee and auth account
- * Access: Owner, Manager
- * 
- * Body:
- * {
- *   "email": "employee@example.com",
- *   "password": "securepassword",
- *   "first_name": "Mike",
- *   "last_name": "Johnson",
- *   "phone": "0412345678",
- *   "dob": "1995-06-15",
- *   "bank_details": "BSB: 062000, Acc: 12345678",
- *   "emergency_contact_name": "Sarah Johnson",
- *   "emergency_contact_phone": "0498765432",
- *   "employment_type": "full_time",
- *   "role_title": "Barista",
- *   "pay_cycle": "fortnightly",
- *   "kiosk_pin": "1234",
- *   "start_date": "2026-03-01",
- *   "employee_id": "EMP001",
- *   "weekday_rate": 28.50,
- *   "opening_balances": { "LT_ID": 10.5 } (optional)
- * }
  */
 export async function POST(request: NextRequest) {
     try {
@@ -283,10 +277,9 @@ export async function POST(request: NextRequest) {
 
         if (rateError) {
             console.error('Rate history creation failed:', rateError.message);
-            // Don't fail the whole request — employee is created, rate can be added later
         }
 
-        // Step 4: Initialize Leave Balances for all active leave types
+        // Step 4: Initialize Leave Balances
         const { data: leaveTypes } = await supabase
             .from('LeaveType')
             .select('leave_type_id')
