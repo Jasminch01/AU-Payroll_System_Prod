@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Bell, Menu, User, Settings, LogOut, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
+import { NotificationBell } from "@/components/ui/notification-bell";
 import { motion, AnimatePresence } from "framer-motion";
 
 interface TopNavProps {
@@ -66,6 +67,7 @@ export function TopNav({
 
             {/* Right — Notifications + Profile */}
             <div className="flex items-center gap-2">
+                <NotificationBell />
                 {/* User Profile Dropdown */}
                 <div ref={dropdownRef} className="relative">
                     <button
@@ -77,7 +79,7 @@ export function TopNav({
                         title="Profile Menu"
                     >
                         {/* Avatar Only */}
-                        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-[hsl(var(--brand))] to-[hsl(var(--brand-dark,var(--brand)))] text-white text-[10px] sm:text-xs font-bold uppercase shadow-sm">
+                        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-linear-to-br from-[hsl(var(--brand))] to-[hsl(var(--brand-dark,var(--brand)))] text-white text-[10px] sm:text-xs font-bold uppercase shadow-sm">
                             {isLoading ? "…" : initials}
                         </div>
                     </button>
@@ -95,7 +97,7 @@ export function TopNav({
                                 {/* User Info Header */}
                                 <div className="border-b border-[hsl(var(--border))] px-4 py-3">
                                     <div className="flex items-center gap-3">
-                                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[hsl(var(--brand))] to-[hsl(var(--brand-dark,var(--brand)))] text-white text-sm font-bold uppercase">
+                                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-linear-to-br from-[hsl(var(--brand))] to-[hsl(var(--brand-dark,var(--brand)))] text-white text-sm font-bold uppercase">
                                             {initials}
                                         </div>
                                         <div className="min-w-0 flex-1">

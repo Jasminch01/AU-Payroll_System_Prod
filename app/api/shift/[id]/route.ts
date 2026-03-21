@@ -176,9 +176,13 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 
         // Deputy-style: if the shift was published, notify employee of the update (non-blocking)
         if (existing.shift_status === 'published' && existing.employee_id) {
-            notifyShiftUpdated(id, existing.start_time, existing.end_time).catch(err =>
-                console.error(`[Notify] shift update email failed for ${id}:`, err)
-            );
+            const supabaseClient = await createClient();
+            const { data: emp } = await supabaseClient.from('Employee').select('business_id, user_id').eq('employee_id', existing.employee_id).single();
+            if (emp) {
+                notifyShiftUpdated(id, existing.start_time, existing.end_time, emp.business_id, emp.user_id).catch(err =>
+                    console.error(`[Notify] shift update email failed for ${id}:`, err)
+                );
+            }
         }
 
         return successResponse(updated, 'Shift updated successfully');
@@ -251,13 +255,13 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
             const supabaseClient = await createClient();
             const { data: emp } = await supabaseClient
                 .from('Employee')
-                .select('email, first_name')
+                .select('email, first_name, user_id, business_id')
                 .eq('employee_id', shift.employee_id)
                 .single();
 
             if (emp) {
                 const shiftTime = `${shift.start_time.split('T')[1]?.substring(0, 5)} - ${shift.end_time.split('T')[1]?.substring(0, 5)}`;
-                notifyShiftDeleted(emp.email, emp.first_name, shift.shift_date, shiftTime).catch(err =>
+                notifyShiftDeleted(emp.email, emp.first_name, shift.shift_date, shiftTime, emp.business_id, emp.user_id).catch(err =>
                     console.error(`[Notify] shift delete email failed:`, err)
                 );
             }
