@@ -94,10 +94,10 @@ export default function EmployeeShiftsPage() {
     });
 
     const respondSwapMutation = useMutation({
-        mutationFn: ({ id, action }: { id: string; action: "accept" | "decline" }) =>
+        mutationFn: ({ id, action }: { id: string; action: "accept" | "decline" | "cancel" }) =>
             apiPut(`/shifts/swaps/${id}`, { action }),
-        onSuccess: () => {
-            toast.success("Response recorded!");
+        onSuccess: (data: any, variables: any) => {
+            toast.success(variables.action === 'cancel' ? "Request cancelled!" : "Response recorded!");
             queryClient.invalidateQueries({ queryKey: ["my-swap-requests"] });
             queryClient.invalidateQueries({ queryKey: ["my-shifts"] });
         },
@@ -186,6 +186,29 @@ export default function EmployeeShiftsPage() {
         }
         return days;
     }, [weekOffset, rosterPeriod]);
+    
+    const getShiftStatus = (shift: any) => {
+        const now = new Date();
+        const start = new Date(shift.start_time);
+        const end = new Date(shift.end_time);
+
+        // Check for active swap/transfer requests for THIS shift
+        const activeRequest = (swapRequests || []).find((sr: any) => 
+            String(sr.shift_id) === String(shift.shift_id) && 
+            ['pending_acceptance', 'pending_approval'].includes(sr.status)
+        );
+
+        if (activeRequest) {
+            if (!activeRequest.target_employee_id) {
+                return activeRequest.manager_note === 'swap' ? "pooled_swap" : "pooled_transfer";
+            }
+            return activeRequest.target_shift_id ? "swap_pending" : "transfer_pending";
+        }
+
+        if (end < now) return "completed";
+        if (start <= now && end >= now) return "ongoing";
+        return "upcoming";
+    };
 
     return (
         <DashboardLayout
@@ -280,7 +303,9 @@ export default function EmployeeShiftsPage() {
                                 <CardContent className="p-4">
                                     <div className="flex items-start justify-between mb-3">
                                         <div>
-                                            <p className="text-xs font-medium text-[hsl(var(--brand))] uppercase tracking-wider mb-1">Open Offer</p>
+                                            <p className="text-[10px] font-bold text-[hsl(var(--brand))] uppercase tracking-wider mb-1">
+                                                {pool.manager_note === 'swap' ? 'Swap Requested' : 'Open Transfer'}
+                                            </p>
                                             <p className="font-semibold text-sm">{pool.Requester?.first_name} {pool.Requester?.last_name}</p>
                                         </div>
                                         <div className="h-8 w-8 rounded-full bg-[hsl(var(--brand-light))] flex items-center justify-center">
@@ -311,7 +336,7 @@ export default function EmployeeShiftsPage() {
                 </div>
             )}
 
-            {/* Shift Pool and Content */}
+            {/* Main Roster/List Content */}
             <div className="mb-8">
                 <div className="flex items-center justify-between mb-4">
                     <h2 className="text-lg font-semibold flex items-center gap-2">
@@ -339,7 +364,6 @@ export default function EmployeeShiftsPage() {
 
                 {viewMode === "grid" ? (
                     <div className="w-full overflow-x-auto pb-4 scrollbar-thin scrollbar-thumb-[hsl(var(--brand))]/20">
-                        {/* Weekly grid content remains same */}
                         <div className={cn(
                             "flex flex-nowrap gap-2 bg-[hsl(var(--muted))]/10 p-2 rounded-2xl border border-[hsl(var(--border))] min-w-max",
                             rosterPeriod === "weekly" ? "md:grid md:grid-cols-7 md:w-full md:min-w-0" : ""
@@ -410,7 +434,7 @@ export default function EmployeeShiftsPage() {
                                                 <thead>
                                                     <tr className="border-b border-[hsl(var(--border))] bg-[hsl(var(--muted))]/30">
                                                         <th className="px-4 py-3 text-left font-medium text-[hsl(var(--muted-foreground))]">Date & Type</th>
-                                                        <th className="px-4 py-3 text-left font-medium text-[hsl(var(--muted-foreground)) hidden md:table-cell">Roster Period</th>
+                                                        <th className="px-4 py-3 text-left font-medium text-[hsl(var(--muted-foreground))] hidden md:table-cell">Roster Period</th>
                                                         <th className="px-4 py-3 text-left font-medium text-[hsl(var(--muted-foreground))]">Shift Hours</th>
                                                         <th className="px-4 py-3 text-center font-medium text-[hsl(var(--muted-foreground))]">Status</th>
                                                         <th className="px-4 py-3 text-right font-medium text-[hsl(var(--muted-foreground))]">Action</th>
@@ -451,19 +475,44 @@ export default function EmployeeShiftsPage() {
                                                                 </div>
                                                             </td>
                                                             <td className="px-4 py-4 text-center">
-                                                                <StatusBadge status={shift.status || "confirmed"} />
+                                                                <StatusBadge status={getShiftStatus(shift)} />
                                                             </td>
                                                             <td className="px-4 py-4 text-right">
-                                                                {tabKey !== 'history' && (
-                                                                    <Button
-                                                                        variant="outline"
-                                                                        size="sm"
-                                                                        className="h-8 text-[10px] gap-1 px-3 border-[hsl(var(--brand))]/20 text-[hsl(var(--brand))] hover:bg-[hsl(var(--brand-light))]"
-                                                                        onClick={() => { setSelectedShift(shift); setSwapDialogOpen(true); }}
-                                                                    >
-                                                                        <ArrowLeftRight size={12} /> Swap / Offer
-                                                                    </Button>
-                                                                )}
+                                                                <div className="flex items-center justify-end gap-2">
+                                                                    {tabKey !== 'history' && (getShiftStatus(shift) === 'upcoming' || ['pooled_swap', 'pooled_transfer', 'swap_pending', 'transfer_pending'].includes(getShiftStatus(shift))) && (
+                                                                        <Button
+                                                                            variant="outline"
+                                                                            size="sm"
+                                                                            className="h-8 text-[10px] gap-1 px-3 border-[hsl(var(--brand))]/20 text-[hsl(var(--brand))] hover:bg-[hsl(var(--brand-light))]"
+                                                                            onClick={() => { setSelectedShift(shift); setSwapDialogOpen(true); }}
+                                                                            disabled={!!(swapRequests || []).find((sr: any) => 
+                                                                                String(sr.shift_id) === String(shift.shift_id) && 
+                                                                                ['pending_acceptance', 'pending_approval'].includes(sr.status)
+                                                                            )}
+                                                                        >
+                                                                             <ArrowLeftRight size={12} /> Shift Actions
+                                                                         </Button>
+                                                                     )}
+                                                                    
+                                                                    {/* Cancel/Undo Button for Active Requests (Owned by user) */}
+                                                                    {(swapRequests || []).find((sr: any) => 
+                                                                        String(sr.shift_id) === String(shift.shift_id) && 
+                                                                        sr.requester_id === user?.employee_id &&
+                                                                        ['pending_acceptance', 'pending_approval'].includes(sr.status)
+                                                                    ) && (
+                                                                        <Button
+                                                                            variant="ghost"
+                                                                            size="sm"
+                                                                            className="h-8 text-[10px] text-[hsl(var(--danger))] bg-[hsl(var(--danger-light))]/5 hover:bg-[hsl(var(--danger-light))]/15 border border-[hsl(var(--danger))]/10"
+                                                                            onClick={() => {
+                                                                                const req = (swapRequests || []).find((sr: any) => String(sr.shift_id) === String(shift.shift_id) && ['pending_acceptance', 'pending_approval'].includes(sr.status));
+                                                                                if (req) respondSwapMutation.mutate({ id: req.request_id, action: 'cancel' });
+                                                                            }}
+                                                                        >
+                                                                            <X size={12} className="mr-1" /> Undo Request
+                                                                        </Button>
+                                                                    )}
+                                                                </div>
                                                             </td>
                                                         </tr>
                                                     ))}
@@ -487,4 +536,3 @@ export default function EmployeeShiftsPage() {
         </DashboardLayout>
     );
 }
-

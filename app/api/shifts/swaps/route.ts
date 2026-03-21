@@ -98,7 +98,7 @@ export async function POST(request: NextRequest) {
         const validationError = validateRequiredFields(body, ['shift_id']);
         if (validationError) return errorResponse(validationError, 400);
 
-        const { shift_id, target_employee_id, target_shift_id } = body;
+        const { shift_id, target_employee_id, target_shift_id, pool_type } = body;
         const employeeId = authUser.employee_id;
 
         if (!employeeId && authUser.role === 'employee') {
@@ -185,6 +185,70 @@ export async function POST(request: NextRequest) {
             return errorResponse('You can only offer your own shifts.', 403);
         }
 
+        // 1b. Prevent duplicate active requests for the same shift
+        const { data: existingRequest } = await supabase
+            .from('ShiftSwapRequest')
+            .select('request_id')
+            .eq('shift_id', shift_id)
+            .in('status', ['pending_acceptance', 'pending_approval'])
+            .limit(1)
+            .maybeSingle();
+
+        if (existingRequest) {
+            return errorResponse('This shift already has an active swap or transfer request.', 409);
+        }
+
+        // --- SWAP-SPECIFIC VALIDATIONS ---
+        if (target_shift_id) {
+            if (!target_employee_id) {
+                return errorResponse('A target employee must be specified for a two-way swap.', 400);
+            }
+
+            // Verify target shift belongs to target employee
+            const { data: targetShift, error: targetShiftError } = await supabase
+                .from('Shift')
+                .select('*')
+                .eq('shift_id', target_shift_id)
+                .eq('employee_id', target_employee_id)
+                .single();
+
+            if (targetShiftError || !targetShift) {
+                return errorResponse('The shift you are trying to swap with was not found for this colleague.', 400);
+            }
+
+            // Prevent identical shift swap
+            if (shift.start_time === targetShift.start_time && shift.end_time === targetShift.end_time) {
+                return errorResponse('These shifts have identical times. Swapping is redundant.', 400);
+            }
+
+            // Check if requester has a conflict with the new shift (Sarah takes Angela's 1-5)
+            const { data: requesterConflictingShifts } = await supabase
+                .from('Shift')
+                .select('shift_id')
+                .eq('employee_id', employeeId || shift.employee_id)
+                .neq('shift_id', shift_id) // Exclude the shift being given away
+                .lt('start_time', targetShift.end_time)
+                .gt('end_time', targetShift.start_time);
+
+            if (requesterConflictingShifts && requesterConflictingShifts.length > 0) {
+                return errorResponse('The shift you are taking conflicts with your other existing shifts.', 400);
+            }
+
+            // Check if target employee has a conflict with Sarah's shift (Angela takes Sarah's 9-1)
+            const { data: targetConflictingShifts } = await supabase
+                .from('Shift')
+                .select('shift_id')
+                .eq('employee_id', target_employee_id)
+                .neq('shift_id', target_shift_id) // Exclude the shift they are giving away
+                .lt('start_time', shift.end_time)
+                .gt('end_time', shift.start_time);
+
+            if (targetConflictingShifts && targetConflictingShifts.length > 0) {
+                return errorResponse('The shift your colleague is taking conflicts with their other existing shifts.', 400);
+            }
+        }
+        // ---------------------------------
+
         // 2. Create the request
         const { data: swapRequest, error: swapError } = await supabase
             .from('ShiftSwapRequest')
@@ -194,7 +258,8 @@ export async function POST(request: NextRequest) {
                 shift_id,
                 target_employee_id: target_employee_id || null,
                 target_shift_id: target_shift_id || null,
-                status: target_employee_id ? 'pending_acceptance' : 'pending_approval'
+                status: target_employee_id ? 'pending_acceptance' : 'pending_approval',
+                manager_note: !target_employee_id ? (pool_type || 'transfer') : null
             })
             .select()
             .single();

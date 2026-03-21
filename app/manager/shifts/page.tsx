@@ -33,10 +33,10 @@ export default function ManagerShiftsPage() {
     });
 
     const respondSwapMutation = useMutation({
-        mutationFn: ({ id, action }: { id: string; action: "accept" | "decline" }) =>
+        mutationFn: ({ id, action }: { id: string; action: "accept" | "decline" | "cancel" }) =>
             apiPut(`/shifts/swaps/${id}`, { action }),
-        onSuccess: () => {
-            toast.success("Response recorded!");
+        onSuccess: (data: any, variables: any) => {
+            toast.success(variables.action === 'cancel' ? "Request cancelled!" : "Response recorded!");
             queryClient.invalidateQueries({ queryKey: ["my-swap-requests"] });
             queryClient.invalidateQueries({ queryKey: ["my-shifts"] });
         },
@@ -66,6 +66,29 @@ export default function ManagerShiftsPage() {
     const openPoolShifts = swapRequests.filter((sr: any) => 
         !sr.target_employee_id && sr.status === 'pending_approval' && sr.requester_id !== user?.employee_id
     );
+
+    const getShiftStatus = (shift: any) => {
+        const now = new Date();
+        const start = new Date(shift.start_time);
+        const end = new Date(shift.end_time);
+
+        // Check for active swap/transfer requests for THIS shift
+        const activeRequest = (swapRequests || []).find((sr: any) => 
+            String(sr.shift_id) === String(shift.shift_id) && 
+            ['pending_acceptance', 'pending_approval'].includes(sr.status)
+        );
+
+        if (activeRequest) {
+            if (!activeRequest.target_employee_id) {
+                return activeRequest.manager_note === 'swap' ? "pooled_swap" : "pooled_transfer";
+            }
+            return activeRequest.target_shift_id ? "swap_pending" : "transfer_pending";
+        }
+
+        if (end < now) return "completed";
+        if (start <= now && end >= now) return "ongoing";
+        return "upcoming";
+    };
 
     return (
         <DashboardLayout
@@ -120,7 +143,9 @@ export default function ManagerShiftsPage() {
                                 <CardContent className="p-4">
                                     <div className="flex items-start justify-between mb-3">
                                         <div>
-                                            <p className="text-xs font-medium text-[hsl(var(--brand))] uppercase tracking-wider mb-1">Open Offer</p>
+                                            <p className="text-[10px] font-bold text-[hsl(var(--brand))] uppercase tracking-wider mb-1">
+                                                {pool.manager_note === 'swap' ? 'Swap Requested' : 'Open Transfer'}
+                                            </p>
                                             <p className="font-semibold text-sm">{pool.Requester?.first_name} {pool.Requester?.last_name}</p>
                                         </div>
                                         <div className="h-8 w-8 rounded-full bg-[hsl(var(--brand-light))] flex items-center justify-center">
@@ -187,17 +212,41 @@ export default function ManagerShiftsPage() {
                                                 </p>
                                             </div>
                                         </div>
-                                        <div className="flex flex-col items-end gap-2">
-                                            <StatusBadge status={shift.status || "confirmed"} />
-                                            <Button
-                                                variant="outline"
-                                                size="sm"
-                                                className="h-7 text-[10px] gap-1 px-2 border-[hsl(var(--brand))]/20 text-[hsl(var(--brand))] hover:bg-[hsl(var(--brand-light))]"
-                                                onClick={() => { setSelectedShift(shift); setSwapDialogOpen(true); }}
-                                            >
-                                                <ArrowLeftRight size={12} /> Swap / Offer
-                                            </Button>
-                                        </div>
+                                                 <div className="flex flex-col items-end gap-1.5">
+                                                     <StatusBadge status={getShiftStatus(shift)} />
+                                                     {(getShiftStatus(shift) === 'upcoming' || ['pooled_swap', 'pooled_transfer', 'swap_pending', 'transfer_pending'].includes(getShiftStatus(shift))) && (
+                                                         <Button
+                                                             variant="outline"
+                                                             size="sm"
+                                                             className="h-7 text-[10px] gap-1 px-2 border-[hsl(var(--brand))]/20 text-[hsl(var(--brand))] hover:bg-[hsl(var(--brand-light))]"
+                                                             onClick={() => { setSelectedShift(shift); setSwapDialogOpen(true); }}
+                                                             disabled={!!(swapRequests || []).find((sr: any) => 
+                                                                 String(sr.shift_id) === String(shift.shift_id) && 
+                                                                 ['pending_acceptance', 'pending_approval'].includes(sr.status)
+                                                             )}
+                                                         >
+                                                             <ArrowLeftRight size={12} /> Shift Actions
+                                                         </Button>
+                                                     )}
+                                                     {/* Cancel/Undo Button for Active Requests (Owned by user) */}
+                                                     {(swapRequests || []).find((sr: any) => 
+                                                         String(sr.shift_id) === String(shift.shift_id) && 
+                                                         sr.requester_id === user?.employee_id &&
+                                                         ['pending_acceptance', 'pending_approval'].includes(sr.status)
+                                                     ) && (
+                                                         <Button
+                                                             variant="ghost"
+                                                             size="sm"
+                                                             className="h-7 text-[10px] text-[hsl(var(--danger))] bg-[hsl(var(--danger-light))]/5 hover:bg-[hsl(var(--danger-light))]/15 border border-[hsl(var(--danger))]/10"
+                                                             onClick={() => {
+                                                                 const req = (swapRequests || []).find((sr: any) => String(sr.shift_id) === String(shift.shift_id) && ['pending_acceptance', 'pending_approval'].includes(sr.status));
+                                                                 if (req) respondSwapMutation.mutate({ id: req.request_id, action: 'cancel' });
+                                                             }}
+                                                         >
+                                                             <X size={12} className="mr-1" /> Undo Request
+                                                         </Button>
+                                                     )}
+                                                </div>
                                     </div>
                                 </CardContent>
                             </Card>
@@ -222,10 +271,10 @@ export default function ManagerShiftsPage() {
                             {past.slice(0, 5).map((shift: any) => (
                                 <tr key={shift.shift_id} className="border-b border-[hsl(var(--border))] last:border-0 hover:bg-[hsl(var(--muted))]/10 transition-colors">
                                     <td className="px-4 py-3 font-medium">{new Date(shift.start_time).toLocaleDateString("en-AU")}</td>
-                                    <td className="px-4 py-3 text-[hsl(var(--muted-foreground))]">
-                                        {new Date(shift.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - {new Date(shift.end_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                    </td>
-                                    <td className="px-4 py-3 text-right"><StatusBadge status={shift.status || "completed"} /></td>
+                                     <td className="px-4 py-3 text-[hsl(var(--muted-foreground))]">
+                                         {new Date(shift.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - {new Date(shift.end_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                     </td>
+                                     <td className="px-4 py-3 text-right"><StatusBadge status={getShiftStatus(shift)} /></td>
                                 </tr>
                             ))}
                         </tbody>

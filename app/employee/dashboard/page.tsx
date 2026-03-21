@@ -25,6 +25,11 @@ export default function EmployeeDashboardPage() {
         queryFn: () => apiGet<any[]>("/timesheets"),
     });
 
+    const { data: swapRequests = [] } = useQuery({
+        queryKey: ["my-swap-requests"],
+        queryFn: () => apiGet<any[]>("/shifts/swaps"),
+    });
+
     // Find next upcoming shift
     const now = new Date();
     const upcomingShifts = shifts
@@ -38,6 +43,29 @@ export default function EmployeeDashboardPage() {
 
     // Latest timesheet gross pay
     const latestTimesheet = timesheets[0];
+
+    const getShiftStatus = (shift: any) => {
+        if (!shift) return "upcoming";
+        const start = new Date(shift.start_time);
+        const end = new Date(shift.end_time);
+
+        // Check for active swap/transfer requests for THIS shift
+        const activeRequest = (swapRequests || []).find((sr: any) => 
+            sr.shift_id === shift.shift_id && 
+            ['pending_acceptance', 'pending_approval'].includes(sr.status)
+        );
+
+        if (activeRequest) {
+            if (!activeRequest.target_employee_id) {
+                return activeRequest.manager_note === 'swap' ? "pooled_swap" : "pooled_transfer";
+            }
+            return activeRequest.target_shift_id ? "swap_pending" : "transfer_pending";
+        }
+
+        if (end < now) return "completed";
+        if (start <= now && end >= now) return "ongoing";
+        return "upcoming";
+    };
 
     return (
         <DashboardLayout
@@ -89,7 +117,7 @@ export default function EmployeeDashboardPage() {
                                 </p>
                             </div>
                             <div className="ml-auto">
-                                <StatusBadge status={nextShift.status || "confirmed"} />
+                                 <StatusBadge status={getShiftStatus(nextShift)} />
                             </div>
                         </div>
                     ) : (
