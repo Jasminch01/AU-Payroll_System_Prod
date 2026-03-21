@@ -314,8 +314,8 @@ function processDay(
         actual_start: finalStart.toTimeString().split(' ')[0], // HH:mm:ss (TIME type)
         actual_end: finalEnd.toTimeString().split(' ')[0],     // HH:mm:ss (TIME type)
         actual_hours: Number(actualHours.toFixed(2)),
-        roster_start: rosterStart ? rosterStart.toISOString().split('T')[0] : null, // YYYY-MM-DD (DATE type)
-        roster_end: rosterEnd ? rosterEnd.toISOString().split('T')[0] : null,       // YYYY-MM-DD (DATE type)
+        roster_start: rosterStart ? rosterStart.toTimeString().split(' ')[0] : null, // HH:mm:ss (TIME type)
+        roster_end: rosterEnd ? rosterEnd.toTimeString().split(' ')[0] : null,       // HH:mm:ss (TIME type)
         rostered_hours: rosterStart && rosterEnd ? Number(calculateHours(rosterStart, rosterEnd).toFixed(2)) : 0,
         status,
         flags: flags.join(', '),

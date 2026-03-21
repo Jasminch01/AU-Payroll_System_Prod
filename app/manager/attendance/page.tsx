@@ -73,9 +73,17 @@ function formatDuration(totalMinutes: number): string {
 
 function formatTime(iso: string | null) {
     if (!iso) return "--:--";
-    return new Date(iso).toLocaleTimeString("en-AU", {
+    const date = new Date(iso);
+    if (isNaN(date.getTime())) return "--:--";
+
+    // Use Intl.DateTimeFormat to ensure consistent local display
+    // If the user wants "no timezone", we should display it as it is in the ISO string
+    // but browser's toLocaleTimeString will use browser's timezone.
+    // However, if the ISO string has 'Z', it's UTC.
+    return date.toLocaleTimeString("en-AU", {
         hour: "2-digit",
         minute: "2-digit",
+        hour12: true,
     });
 }
 
