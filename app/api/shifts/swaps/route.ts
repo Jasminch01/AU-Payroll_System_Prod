@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { requireRole, getAuthUser } from '@/lib/auth';
 import { successResponse, errorResponse, validateRequiredFields } from '@/lib/api-helpers';
+import { createNotification } from '@/lib/notifications';
 
 /**
  * GET /api/shifts/swaps
@@ -266,6 +267,44 @@ export async function POST(request: NextRequest) {
             .single();
 
         if (swapError) return errorResponse(swapError.message, 400);
+
+        // --- DISPATCH NOTIFICATIONS ---
+        try {
+            if (target_employee_id) {
+                // Direct request
+                const { data: tEmp } = await supabase.from('Employee').select('user_id').eq('employee_id', target_employee_id).single();
+                if (tEmp?.user_id) {
+                    await createNotification({
+                        business_id: authUser.business_id,
+                        user_ids: [tEmp.user_id],
+                        actor_id: authUser.user_id,
+                        type: 'SHIFT_SWAP_REQUESTED',
+                        title: 'New Shift Request',
+                        message: target_shift_id ? 'Someone offered to swap shifts with you.' : 'Someone offered to give you their shift.',
+                        entity_id: swapRequest.request_id,
+                        entity_type: 'shift_swap_request'
+                    });
+                }
+            } else {
+                // Pool request: notify all employees in the business
+                const { data: allEmps } = await supabase.from('Employee').select('user_id').eq('business_id', authUser.business_id);
+                const userIds = allEmps?.map(e => e.user_id).filter((id): id is string => !!id && id !== authUser.user_id) || [];
+                if (userIds.length > 0) {
+                    await createNotification({
+                        business_id: authUser.business_id,
+                        user_ids: userIds,
+                        actor_id: authUser.user_id,
+                        type: 'BROADCAST',
+                        title: 'New Open Shift',
+                        message: 'An open shift is available in the pool.',
+                        entity_id: swapRequest.request_id,
+                        entity_type: 'shift_swap_request'
+                    });
+                }
+            }
+        } catch (e) {
+            console.error('Notification dispatch failed:', e);
+        }
 
         return successResponse(swapRequest, 'Swap request created successfully', 201);
     } catch (err) {

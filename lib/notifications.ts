@@ -2,6 +2,69 @@ import { createClient } from './supabase/server';
 import { logAudit } from './audit';
 import { sendEmail } from './email';
 
+// --- NEW APP NOTIFICATION TYPES ---
+export type NotificationType = 
+    | 'SHIFT_SWAP_REQUESTED'
+    | 'SHIFT_SWAP_ACCEPTED'
+    | 'SHIFT_SWAP_REJECTED'
+    | 'SHIFT_SWAP_APPROVED'
+    | 'SHIFT_TRANSFER_OFFERED'
+    | 'SHIFT_TRANSFER_ACCEPTED'
+    | 'SHIFT_TRANSFER_APPROVED'
+    | 'TIMESHEET_SUBMITTED'
+    | 'TIMESHEET_APPROVED'
+    | 'TIMESHEET_REJECTED'
+    | 'EMPLOYEE_JOINED'
+    | 'SHIFT_PUBLISHED'
+    | 'SHIFT_UPDATED'
+    | 'SHIFT_DELETED'
+    | 'BROADCAST';
+
+export interface CreateNotificationParams {
+    business_id: string;
+    user_ids: string[];
+    actor_id?: string | null;
+    type: NotificationType;
+    title: string;
+    message: string;
+    entity_id?: string | null;
+    entity_type?: string | null;
+}
+
+export async function createNotification(params: CreateNotificationParams) {
+    const { business_id, user_ids, actor_id, type, title, message, entity_id, entity_type } = params;
+    
+    if (!user_ids || user_ids.length === 0) {
+        return { success: false, error: 'No recipients provided' };
+    }
+
+    try {
+        const supabase = await createClient();
+        const insertData = user_ids.map((user_id) => ({
+            business_id,
+            user_id,
+            actor_id: actor_id || null,
+            type,
+            title,
+            message,
+            entity_id: entity_id || null,
+            entity_type: entity_type || null,
+            is_read: false
+        }));
+
+        const { error } = await supabase.from('notifications').insert(insertData);
+        if (error) {
+            console.error('Failed to insert bulk notifications into DB:', error);
+            return { success: false, error: error.message };
+        }
+        return { success: true };
+    } catch (err) {
+        console.error('Unexpected error creating notifications:', err);
+        return { success: false, error: 'Internal server error while creating notifications' };
+    }
+}
+// --- END APP NOTIFICATIONS ---
+
 /**
  * Notify employees that a roster has been published or updated.
  * Currently logs to audit log and console.
@@ -27,13 +90,14 @@ export async function notifyRosterPublished(rosterId: string, businessId: string
     // 2. Get all shifts in this roster with employee details
     const { data: shifts } = await supabase
         .from('Shift')
-        .select('*, Employee:employee_id(email, first_name)')
+        .select('*, Employee:employee_id(email, first_name, user_id)')
         .eq('roster_id', rosterId);
 
     if (!shifts || shifts.length === 0) return;
 
     // 3. Categorize changes per employee
     const notifications = [];
+    const inAppUserIds = new Set<string>();
 
     for (const shift of shifts) {
         if (!shift.employee_id || !shift.Employee) continue;
@@ -62,12 +126,29 @@ export async function notifyRosterPublished(rosterId: string, businessId: string
                 type,
                 time: `${new Date(shift.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - ${new Date(shift.end_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
             });
+            if (shift.Employee.user_id) {
+                inAppUserIds.add(shift.Employee.user_id);
+            }
         }
     }
 
     if (notifications.length === 0) return;
 
     console.log(`[Notification] Sending ${notifications.length} targeted notifications for roster ${rosterId}`);
+    
+    // Trigger in-app broadcast Notification for roster publish
+    if (inAppUserIds.size > 0) {
+        await createNotification({
+            business_id: businessId,
+            user_ids: Array.from(inAppUserIds),
+            type: 'SHIFT_PUBLISHED',
+            title: 'Roster Updated',
+            message: 'Your upcoming shift schedule has been updated. Please check the Roster.',
+            entity_id: rosterId,
+            entity_type: 'roster'
+        }).catch(err => console.error('[Notify] In-app roster publish failed:', err));
+    }
+
 
     // unique employees who received notifications (for audit summary)
     const notifiedEmails = new Set(notifications.map(n => n.email));
@@ -129,14 +210,26 @@ export async function notifyShiftPublished(shiftId: string) {
 
     const { data: shift } = await supabase
         .from('Shift')
-        .select('*, Employee:employee_id(email, first_name)')
+        .select('*, Employee:employee_id(email, first_name, user_id)')
         .eq('shift_id', shiftId)
         .single();
 
     if (!shift || !shift.Employee) return;
 
-    const { email, first_name } = shift.Employee;
+    const { email, first_name, user_id } = shift.Employee;
     const time = `${shift.start_time.split('T')[1]?.substring(0, 5)} - ${shift.end_time.split('T')[1]?.substring(0, 5)}`;
+
+    if (user_id) {
+        await createNotification({
+            business_id: shift.business_id,
+            user_ids: [user_id],
+            type: 'SHIFT_PUBLISHED',
+            title: 'New Shift Assigned',
+            message: `You have been assigned a new shift on ${shift.shift_date} (${time})`,
+            entity_id: shiftId,
+            entity_type: 'shift'
+        }).catch(err => console.error('[Notify] In-app single shift publish failed:', err));
+    }
 
     await sendEmail({
         to: email,
@@ -158,20 +251,35 @@ export async function notifyShiftPublished(shiftId: string) {
 /**
  * Notify a single employee that a published shift has been updated.
  */
-export async function notifyShiftUpdated(shiftId: string, previousStart: string, previousEnd: string) {
+export async function notifyShiftUpdated(shiftId: string, previousStart: string, previousEnd: string, businessId?: string, userId?: string) {
     const supabase = await createClient();
 
     const { data: shift } = await supabase
         .from('Shift')
-        .select('*, Employee:employee_id(email, first_name)')
+        .select('*, Employee:employee_id(email, first_name, user_id)')
         .eq('shift_id', shiftId)
         .single();
 
     if (!shift || !shift.Employee) return;
 
     const { email, first_name } = shift.Employee;
+    const finalUserId = userId || shift.Employee.user_id;
+    const finalBusId = businessId || shift.business_id;
+
     const newTime = `${shift.start_time.split('T')[1]?.substring(0, 5)} - ${shift.end_time.split('T')[1]?.substring(0, 5)}`;
     const oldTime = `${previousStart.split('T')[1]?.substring(0, 5)} - ${previousEnd.split('T')[1]?.substring(0, 5)}`;
+
+    if (finalUserId && finalBusId) {
+        await createNotification({
+            business_id: finalBusId,
+            user_ids: [finalUserId],
+            type: 'SHIFT_UPDATED',
+            title: 'Shift Updated',
+            message: `Your shift on ${shift.shift_date} was changed to ${newTime}`,
+            entity_id: shiftId,
+            entity_type: 'shift'
+        }).catch(err => console.error('[Notify] In-app shift update failed:', err));
+    }
 
     await sendEmail({
         to: email,
@@ -193,7 +301,19 @@ export async function notifyShiftUpdated(shiftId: string, previousStart: string,
 /**
  * Notify a single employee their shift has been removed.
  */
-export async function notifyShiftDeleted(employeeEmail: string, employeeName: string, shiftDate: string, shiftTime: string) {
+export async function notifyShiftDeleted(employeeEmail: string, employeeName: string, shiftDate: string, shiftTime: string, businessId?: string, userId?: string) {
+    if (businessId && userId) {
+        await createNotification({
+            business_id: businessId,
+            user_ids: [userId],
+            type: 'SHIFT_DELETED',
+            title: 'Shift Cancelled',
+            message: `Your shift on ${shiftDate} (${shiftTime}) has been removed.`,
+            entity_id: null,
+            entity_type: 'shift'
+        }).catch(err => console.error('[Notify] In-app shift delete failed:', err));
+    }
+
     await sendEmail({
         to: employeeEmail,
         subject: 'Shift Removed',
