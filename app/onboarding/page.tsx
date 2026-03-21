@@ -28,7 +28,10 @@ export default function OnboardingPage() {
     const [password, setPassword] = useState("");
     const [phone, setPhone] = useState("");
     const [dob, setDob] = useState("");
-    const [bankDetails, setBankDetails] = useState("");
+    const [bankAccountName, setBankAccountName] = useState("");
+    const [bankBsb, setBankBsb] = useState("");
+    const [bankAccountNumber, setBankAccountNumber] = useState("");
+    const [abnTfnAcn, setAbnTfnAcn] = useState("");
     const [emergencyName, setEmergencyName] = useState("");
     const [emergencyPhone, setEmergencyPhone] = useState("");
     const [kioskPin, setKioskPin] = useState("");
@@ -72,7 +75,7 @@ export default function OnboardingPage() {
 
                 setEmployeeName(`${data.data.employee.first_name || ""} ${data.data.employee.last_name || ""}`.trim());
                 setBusinessName(data.data.business_name);
-                
+
                 if (data.data.employee.phone) {
                     setPhone(data.data.employee.phone);
                     setPrefilledPhone(true);
@@ -122,9 +125,9 @@ export default function OnboardingPage() {
                         // Check if we are actually logged in despite the error (double-request issue)
                         const { data: { session } } = await supabase.auth.getSession();
                         if (session) {
-                             window.history.replaceState({}, document.title, window.location.pathname);
-                             await checkStatus();
-                             return;
+                            window.history.replaceState({}, document.title, window.location.pathname);
+                            await checkStatus();
+                            return;
                         }
                         toast.error(error.message || 'Invalid or expired invitation link.');
                         router.push('/login');
@@ -165,7 +168,7 @@ export default function OnboardingPage() {
                         setBusinessCode(bCode);
                         setJoinMode(true);
                         setCheckingStatus(false);
-                        
+
                         try {
                             const bRes = await fetch(`/api/business/preview?code=${bCode}`);
                             const bData = await bRes.json();
@@ -210,15 +213,18 @@ export default function OnboardingPage() {
             const res = await fetch("/api/employees/join", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ 
-                    email, 
-                    password, 
-                    first_name: firstName, 
-                    last_name: lastName, 
+                body: JSON.stringify({
+                    email,
+                    password,
+                    first_name: firstName,
+                    last_name: lastName,
                     join_code: businessCode,
                     phone,
                     dob,
-                    bank_details: bankDetails,
+                    bank_account_name: bankAccountName,
+                    bank_bsb: bankBsb,
+                    bank_account_number: bankAccountNumber,
+                    "ABN/TFN/ACN": abnTfnAcn,
                     emergency_contact_name: emergencyName,
                     emergency_contact_phone: emergencyPhone,
                     kiosk_pin: kioskPin
@@ -258,7 +264,10 @@ export default function OnboardingPage() {
                     password,
                     phone,
                     dob,
-                    bank_details: bankDetails,
+                    bank_account_name: bankAccountName,
+                    bank_bsb: bankBsb,
+                    bank_account_number: bankAccountNumber,
+                    "ABN/TFN/ACN": abnTfnAcn,
                     emergency_contact_name: emergencyName,
                     emergency_contact_phone: emergencyPhone,
                     kiosk_pin: kioskPin,
@@ -378,9 +387,25 @@ export default function OnboardingPage() {
                                 <Input type="date" value={dob} onChange={(e) => setDob(e.target.value)} required className="h-10 text-sm" />
                             </div>
 
-                            <div className="space-y-[6px]">
-                                <label className="text-[12px] font-bold text-slate-800 ml-1">Bank Details (BSB & Acc)</label>
-                                <Input placeholder="BSB: 000-000, Acc: 00000000" value={bankDetails} onChange={(e) => setBankDetails(e.target.value)} required className="h-10 text-sm" />
+                            <div className="space-y-[14px]">
+                                <div className="space-y-[6px]">
+                                    <label className="text-[12px] font-bold text-slate-800 ml-1">Bank Account Name <span className="text-red-500">*</span></label>
+                                    <Input placeholder="John Doe" value={bankAccountName} onChange={(e) => setBankAccountName(e.target.value)} required className="h-10 text-sm" />
+                                </div>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div className="space-y-[6px]">
+                                        <label className="text-[12px] font-bold text-slate-800 ml-1">Bank BSB <span className="text-red-500">*</span></label>
+                                        <Input placeholder="000-000" value={bankBsb} onChange={(e) => setBankBsb(e.target.value)} required className="h-10 text-sm" />
+                                    </div>
+                                    <div className="space-y-[6px]">
+                                        <label className="text-[12px] font-bold text-slate-800 ml-1">Account Number <span className="text-red-500">*</span></label>
+                                        <Input placeholder="00000000" value={bankAccountNumber} onChange={(e) => setBankAccountNumber(e.target.value)} required className="h-10 text-sm" />
+                                    </div>
+                                </div>
+                                <div className="space-y-[6px]">
+                                    <label className="text-[12px] font-bold text-slate-800 ml-1">ABN / TFN / ACN</label>
+                                    <Input placeholder="Optional" value={abnTfnAcn} onChange={(e) => setAbnTfnAcn(e.target.value)} className="h-10 text-sm" />
+                                </div>
                             </div>
 
                             <div className="grid grid-cols-2 gap-3">
@@ -425,9 +450,25 @@ export default function OnboardingPage() {
                                 <Input type="date" value={dob} onChange={(e) => setDob(e.target.value)} required className="h-10 text-sm" />
                             </div>
 
-                            <div className="space-y-[6px]">
-                                <label className="text-[12px] font-bold text-slate-800 ml-1">Bank Details (BSB & Acc)</label>
-                                <Input placeholder="BSB: 000-000, Acc: 00000000" value={bankDetails} onChange={(e) => setBankDetails(e.target.value)} required className="h-10 text-sm" />
+                            <div className="space-y-[14px]">
+                                <div className="space-y-[6px]">
+                                    <label className="text-[12px] font-bold text-slate-800 ml-1">Bank Account Name <span className="text-red-500">*</span></label>
+                                    <Input placeholder="John Doe" value={bankAccountName} onChange={(e) => setBankAccountName(e.target.value)} required className="h-10 text-sm" />
+                                </div>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div className="space-y-[6px]">
+                                        <label className="text-[12px] font-bold text-slate-800 ml-1">Bank BSB <span className="text-red-500">*</span></label>
+                                        <Input placeholder="000-000" value={bankBsb} onChange={(e) => setBankBsb(e.target.value)} required className="h-10 text-sm" />
+                                    </div>
+                                    <div className="space-y-[6px]">
+                                        <label className="text-[12px] font-bold text-slate-800 ml-1">Account Number <span className="text-red-500">*</span></label>
+                                        <Input placeholder="00000000" value={bankAccountNumber} onChange={(e) => setBankAccountNumber(e.target.value)} required className="h-10 text-sm" />
+                                    </div>
+                                </div>
+                                <div className="space-y-[6px]">
+                                    <label className="text-[12px] font-bold text-slate-800 ml-1">ABN / TFN / ACN</label>
+                                    <Input placeholder="Optional" value={abnTfnAcn} onChange={(e) => setAbnTfnAcn(e.target.value)} className="h-10 text-sm" />
+                                </div>
                             </div>
 
                             <div className="grid grid-cols-2 gap-3">

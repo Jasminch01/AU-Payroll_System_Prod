@@ -474,15 +474,15 @@ export default function OwnerEmployeeDetailPage() {
                                             </div>
                                             <div className="space-y-1.5">
                                                 <label className="text-xs font-semibold text-[hsl(var(--muted-foreground))] ml-0.5">Pay Cycle</label>
-                                                <select
-                                                    value={data.pay_cycle || "weekly"}
-                                                    onChange={(e) => updateField("pay_cycle", e.target.value)}
-                                                    className="flex h-10 w-full rounded-md border border-[hsl(var(--input))] bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--brand))]/20 appearance-none"
-                                                >
-                                                    <option value="weekly">weekly</option>
-                                                    <option value="fortnightly">fortnightly</option>
-                                                    <option value="monthly">monthly</option>
-                                                </select>
+                                                <div className="flex h-10 w-full items-center gap-2 rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/10 px-3">
+                                                    <CalendarClock size={14} className={data.pay_cycle ? "text-[hsl(var(--brand))] shrink-0" : "text-[hsl(var(--muted-foreground))] shrink-0"} />
+                                                    <span className={`text-sm font-semibold capitalize ${data.pay_cycle ? 'text-[hsl(var(--foreground))]' : 'text-[hsl(var(--muted-foreground))] italic'}`}>
+                                                        {data.pay_cycle ? data.pay_cycle.charAt(0).toUpperCase() + data.pay_cycle.slice(1) : "Not Set"}
+                                                    </span>
+                                                    <span className="ml-auto text-[10px] font-medium text-[hsl(var(--muted-foreground))] bg-[hsl(var(--muted))]/30 px-2 py-0.5 rounded">
+                                                        Employee Pay Cycle
+                                                    </span>
+                                                </div>
                                             </div>
                                             <div className="space-y-1.5">
                                                 <label className="text-xs font-semibold text-[hsl(var(--muted-foreground))] ml-0.5">Lifecycle Status</label>
