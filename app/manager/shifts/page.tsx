@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { DashboardLayout } from "@/components/layout";
 import { Card, CardContent } from "@/components/ui/card";
@@ -15,6 +15,7 @@ import { CalendarDays, Clock, ArrowLeftRight, Check, X, Users } from "lucide-rea
 import { useAuth } from "@/hooks/use-auth";
 
 import { ShiftSwapDialog } from "@/components/shifts/swap-dialog";
+import { createClient } from "@/lib/supabase/client";
 
 export default function ManagerShiftsPage() {
     const queryClient = useQueryClient();
@@ -31,6 +32,44 @@ export default function ManagerShiftsPage() {
         queryKey: ["my-swap-requests"],
         queryFn: () => apiGet<any[]>("/shifts/swaps"),
     });
+
+    // Real-time listener
+    useEffect(() => {
+        const supabase = createClient();
+        const channel = supabase
+            .channel('manager-shifts-realtime')
+            .on(
+                'postgres_changes',
+                {
+                    event: '*',
+                    schema: 'public',
+                    table: 'Shift'
+                },
+                () => {
+                    queryClient.invalidateQueries({ queryKey: ["my-shifts"] });
+                }
+            )
+            .on(
+                'postgres_changes',
+                {
+                    event: '*',
+                    schema: 'public',
+                    table: 'ShiftSwapRequest'
+                },
+                (payload) => {
+                    console.log('Real-time ShiftSwapRequest change received:', payload);
+                    queryClient.invalidateQueries({ queryKey: ["my-swap-requests"] });
+                    queryClient.invalidateQueries({ queryKey: ["my-shifts"] });
+                }
+            )
+            .subscribe((status) => {
+                console.log('Supabase real-time subscription status (manager):', status);
+            });
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [queryClient]);
 
     const respondSwapMutation = useMutation({
         mutationFn: ({ id, action }: { id: string; action: "accept" | "decline" | "cancel" }) =>
@@ -231,7 +270,7 @@ export default function ManagerShiftsPage() {
                                                      {/* Cancel/Undo Button for Active Requests (Owned by user) */}
                                                      {(swapRequests || []).find((sr: any) => 
                                                          String(sr.shift_id) === String(shift.shift_id) && 
-                                                         sr.requester_id === user?.employee_id &&
+                                                         String(sr.requester_id) === String(user?.employee_id) &&
                                                          ['pending_acceptance', 'pending_approval'].includes(sr.status)
                                                      ) && (
                                                          <Button

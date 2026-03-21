@@ -61,7 +61,8 @@ export async function GET(request: NextRequest) {
 
                 if (isOpenPool) {
                     const reqRole = roleMap.get(swap.Requester?.user_id) || 'employee';
-                    return reqRole === 'employee' && swap.requester_id !== employeeId;
+                    // We include own pool posts so they can see "Pooled" status and Undo them
+                    return reqRole === 'employee';
                 }
                 return isPersonal;
             });

@@ -51,10 +51,11 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
             }
             const { error } = await supabase
                 .from('ShiftSwapRequest')
-                .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+                .delete()
                 .eq('request_id', id);
+
             if (error) return errorResponse(error.message, 400);
-            return successResponse(null, 'Request cancelled');
+            return successResponse(null, 'Request permanently removed.');
         }
 
         // ACTION: Accept/Decline (by Target Employee or Pool Claimant)
