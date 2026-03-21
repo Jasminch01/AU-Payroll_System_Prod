@@ -210,6 +210,7 @@ export async function POST(request: NextRequest) {
                 start_time,
                 end_time,
                 shift_type,
+                shift_status: 'draft',
             })
             .select()
             .single();

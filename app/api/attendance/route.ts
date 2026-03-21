@@ -94,10 +94,20 @@ export async function POST(request: NextRequest) {
             return errorResponse(`Manual entry error: ${transitionError}`, 400);
         }
 
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        const hours = String(now.getHours()).padStart(2, '0');
+        const minutes = String(now.getMinutes()).padStart(2, '0');
+        const seconds = String(now.getSeconds()).padStart(2, '0');
+        const localTimestamp = `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
+
         const { data: log, error } = await supabase
             .from('AttendanceLog')
             .insert({
                 ...body,
+                timestamp: body.timestamp || localTimestamp,
                 business_id: authUser.business_id,
                 override_by: authUser.user_id, // Track who made the manual entry
             })

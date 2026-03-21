@@ -30,7 +30,7 @@ export function EmployeeTimesheets({ employeeId }: { employeeId: string }) {
                                     <p className="font-semibold">{format(new Date(ts.date), "EEEE, MMM d, yyyy")}</p>
                                     <p className="text-sm text-[hsl(var(--muted-foreground))]">
                                         {ts.actual_hours !== null ? `${ts.actual_hours.toFixed(2)} hrs` : "Missing punch"}&nbsp;&bull;&nbsp;
-                                        {ts.actual_start ? format(new Date(ts.actual_start), "h:mm a") : "--"} - {ts.actual_end ? format(new Date(ts.actual_end), "h:mm a") : "--"}
+                                        {ts.actual_start ? format(new Date(`${ts.date}T${ts.actual_start}`), "h:mm a") : "--"} - {ts.actual_end ? format(new Date(`${ts.date}T${ts.actual_end}`), "h:mm a") : "--"}
                                     </p>
                                 </div>
                                 <div className="flex items-center gap-3">

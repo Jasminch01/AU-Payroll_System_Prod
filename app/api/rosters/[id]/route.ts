@@ -82,12 +82,6 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
         if (body.start_date) updateData.start_date = body.start_date;
         if (body.end_date) updateData.end_date = body.end_date;
 
-        // Publish roster
-        if (body.status === 'published' && existing.status === 'draft') {
-            updateData.status = 'published';
-            updateData.published_at = new Date().toISOString();
-        }
-
         if (Object.keys(updateData).length === 0) {
             return errorResponse('No valid fields to update', 400);
         }
@@ -103,12 +97,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 
         if (error) return errorResponse(error.message, 400);
 
-        // If published, trigger notification
-        if (updateData.status === 'published') {
-            await notifyRosterPublished(id, authUser.business_id, authUser.user_id);
-        }
-
-        return successResponse(updated, 'Roster updated successfully');
+        return successResponse(updated);
     } catch (err) {
         console.error('Update roster error:', err);
         return errorResponse('Internal server error', 500);

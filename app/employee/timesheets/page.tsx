@@ -45,6 +45,18 @@ export default function EmployeeTimesheetsPage() {
         .filter((t) => t.status === "approved")
         .reduce((sum, t) => sum + (t.gross_pay || 0), 0);
 
+    const parseTime = (dateStr: string, timeStr: string | null) => {
+        if (!timeStr) return null;
+        if (timeStr.includes("T")) return new Date(timeStr);
+        return new Date(`${dateStr}T${timeStr}`);
+    };
+
+    const formatTimeDisplay = (dateStr: string, timeStr: string | null) => {
+        const date = parseTime(dateStr, timeStr);
+        if (!date || isNaN(date.getTime())) return "—";
+        return date.toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit", hour12: true });
+    };
+
     return (
         <DashboardLayout
             role="employee"
@@ -163,25 +175,25 @@ export default function EmployeeTimesheetsPage() {
                                             <div>
                                                 <p className="text-xs text-[hsl(var(--muted-foreground))] mb-0.5">Rostered Start</p>
                                                 <p className="text-sm font-medium">
-                                                    {ts.roster_start ? new Date(ts.roster_start).toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit" }) : "—"}
+                                                    {formatTimeDisplay(ts.date, ts.roster_start)}
                                                 </p>
                                             </div>
                                             <div>
                                                 <p className="text-xs text-[hsl(var(--muted-foreground))] mb-0.5">Rostered End</p>
                                                 <p className="text-sm font-medium">
-                                                    {ts.roster_end ? new Date(ts.roster_end).toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit" }) : "—"}
+                                                    {formatTimeDisplay(ts.date, ts.roster_end)}
                                                 </p>
                                             </div>
                                             <div>
                                                 <p className="text-xs text-[hsl(var(--muted-foreground))] mb-0.5">Actual Start</p>
                                                 <p className="text-sm font-medium">
-                                                    {ts.actual_start ? new Date(ts.actual_start).toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit" }) : "—"}
+                                                    {formatTimeDisplay(ts.date, ts.actual_start)}
                                                 </p>
                                             </div>
                                             <div>
                                                 <p className="text-xs text-[hsl(var(--muted-foreground))] mb-0.5">Actual End</p>
                                                 <p className="text-sm font-medium">
-                                                    {ts.actual_end ? new Date(ts.actual_end).toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit" }) : "—"}
+                                                    {formatTimeDisplay(ts.date, ts.actual_end)}
                                                 </p>
                                             </div>
                                             <div>
