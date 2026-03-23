@@ -48,6 +48,13 @@ export function DataTable<T extends Record<string, any>>({
     const [sortKey, setSortKey] = React.useState<string | null>(null);
     const [sortDir, setSortDir] = React.useState<"asc" | "desc">("asc");
 
+    const [currentPage, setCurrentPage] = React.useState(1);
+    const pageSize = 10;
+
+    React.useEffect(() => {
+        setCurrentPage(1);
+    }, [search, sortKey, sortDir]);
+
     // Helper to get nested values by dot-notation key (e.g. "Employee.first_name")
     const getNestedValue = (obj: any, path: string): any => {
         return path.split('.').reduce((o, k) => o?.[k], obj);
@@ -73,6 +80,13 @@ export function DataTable<T extends Record<string, any>>({
             return 0;
         });
     }, [filtered, sortKey, sortDir]);
+
+    // Pagination
+    const totalPages = Math.ceil(sorted.length / pageSize) || 1;
+    const paginated = React.useMemo(() => {
+        const start = (currentPage - 1) * pageSize;
+        return sorted.slice(start, start + pageSize);
+    }, [sorted, currentPage, pageSize]);
 
     const handleSort = (key: string) => {
         if (sortKey === key) {
@@ -160,7 +174,7 @@ export function DataTable<T extends Record<string, any>>({
                                     </td>
                                 </tr>
                             ) : (
-                                sorted.map((row, i) => (
+                                paginated.map((row, i) => (
                                     <tr
                                         key={i}
                                         className={cn(
@@ -181,6 +195,31 @@ export function DataTable<T extends Record<string, any>>({
                     </table>
                 </div>
             </div>
+
+            {/* Pagination Controls */}
+            {totalPages > 1 && (
+                <div className="flex items-center justify-between pt-2">
+                    <span className="text-sm text-[hsl(var(--muted-foreground))]">
+                        Showing {((currentPage - 1) * pageSize) + 1} to {Math.min(currentPage * pageSize, sorted.length)} of {sorted.length} entries
+                    </span>
+                    <div className="flex items-center gap-2">
+                        <button
+                            disabled={currentPage === 1}
+                            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                            className="h-8 px-3 rounded-md text-sm border border-[hsl(var(--input))] disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[hsl(var(--muted))] transition-colors text-[hsl(var(--foreground))]"
+                        >
+                            Previous
+                        </button>
+                        <button
+                            disabled={currentPage === totalPages}
+                            onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                            className="h-8 px-3 rounded-md text-sm border border-[hsl(var(--input))] disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[hsl(var(--muted))] transition-colors text-[hsl(var(--foreground))]"
+                        >
+                            Next
+                        </button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

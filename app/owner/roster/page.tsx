@@ -4,6 +4,7 @@ import React, { useState, useMemo, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { DashboardLayout } from "@/components/layout";
 import { Button } from "@/components/ui/button";
+import Link from "next/link";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -12,13 +13,17 @@ import {
 import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/api-client";
 import { useEffect } from "react";
 import { toast } from "sonner";
-import { Plus, ChevronLeft, ChevronRight, Clock, Trash2, CheckCircle2, FileText, RefreshCcw, Copy, Bell, CalendarDays } from "lucide-react";
+import { Plus, ChevronLeft, ChevronRight, Clock, Trash2, CheckCircle2, FileText, RefreshCcw, Copy, Bell, CalendarDays, Search, Filter, ChevronsLeft, ChevronsRight, GripVertical, MoreHorizontal, Users } from "lucide-react";
+import { Reorder, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { 
     Popover, PopoverTrigger, PopoverContent 
 } from "@/components/ui/popover";
+import {
+    DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem
+} from "@/components/ui/dropdown-menu";
 import { 
     format, addMonths, subMonths, startOfMonth, endOfMonth, 
     startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, 
@@ -134,11 +139,58 @@ export default function OwnerRosterPage() {
 
     const periodOptions = useMemo(() => getPeriodOptions(rosterPeriod), [rosterPeriod]);
 
+    // Search, Filter & Pagination State
+    const [searchQuery, setSearchQuery] = useState("");
+    const [roleFilter, setRoleFilter] = useState("all");
+    const [currentPage, setCurrentPage] = useState(1);
+    const pageSize = 10;
 
     const { data: employees = [] } = useQuery({
         queryKey: ["employees"],
         queryFn: () => apiGet<any[]>("/employees"),
     });
+
+    // Local order for drag-and-drop reordering
+    const [orderedEmployeeIds, setOrderedEmployeeIds] = useState<string[]>([]);
+    
+    useEffect(() => {
+        if (employees.length > 0 && orderedEmployeeIds.length === 0) {
+            setOrderedEmployeeIds(employees.filter((e: any) => e.status === "active").map((e: any) => e.employee_id));
+        }
+    }, [employees, orderedEmployeeIds.length]);
+
+    const filteredEmployees = useMemo(() => {
+        const active = employees.filter((e: any) => e.status === "active");
+        
+        // Sort by the local ordered list
+        const sorted = [...active].sort((a, b) => {
+            const indexA = orderedEmployeeIds.indexOf(a.employee_id);
+            const indexB = orderedEmployeeIds.indexOf(b.employee_id);
+            if (indexA === -1 && indexB === -1) return 0;
+            if (indexA === -1) return 1;
+            if (indexB === -1) return -1;
+            return indexA - indexB;
+        });
+
+        return sorted.filter((e: any) => {
+            const matchesSearch = `${e.first_name} ${e.last_name}`.toLowerCase().includes(searchQuery.toLowerCase());
+            const matchesRole = roleFilter === "all" || e.role_title === roleFilter;
+            return matchesSearch && matchesRole;
+        });
+    }, [employees, searchQuery, roleFilter, orderedEmployeeIds]);
+
+    const paginatedEmployees = useMemo(() => {
+        const start = (currentPage - 1) * pageSize;
+        return filteredEmployees.slice(start, start + pageSize);
+    }, [filteredEmployees, currentPage, pageSize]);
+
+    const totalPages = Math.ceil(filteredEmployees.length / pageSize);
+
+    // Get unique roles for filter
+    const roles = useMemo(() => {
+        const allRoles = employees.map((e: any) => e.role_title).filter(Boolean);
+        return Array.from(new Set(allRoles));
+    }, [employees]);
 
     const { data: shifts = [], isLoading, isFetching } = useQuery({
         queryKey: ["shifts", rangeStart, rangeEnd],
@@ -495,24 +547,34 @@ export default function OwnerRosterPage() {
         <DashboardLayout
             role="owner"
             pageTitle="Roster Management"
+            defaultCollapsed={true}
             pageDescription={`${rosterPeriod.charAt(0).toUpperCase() + rosterPeriod.slice(1)} Roster: ${rosterDates[0].toLocaleDateString("en-AU", { month: "short", day: "numeric" })} – ${rosterDates[rosterDates.length - 1].toLocaleDateString("en-AU", { month: "short", day: "numeric", year: "numeric" })}`}
             actions={
-                <div className="flex items-center gap-2">
-                    <select
-                        value={rosterPeriod}
-                        onChange={(e) => {
-                            setRosterPeriod(e.target.value as RosterPeriod);
-                            setOffset(0);
-                        }}
-                        className="h-10 w-32 rounded-lg border border-[hsl(var(--input))] bg-white px-3 text-sm font-medium focus:ring-2 focus:ring-[hsl(var(--brand))]/20 outline-none"
-                    >
-                        <option value="weekly">Weekly</option>
-                        <option value="fortnightly">Fortnightly</option>
-                        <option value="monthly">Monthly</option>
-                    </select>
-                    <Button 
+                <div className="flex items-center gap-3">
+                    <div className="flex bg-[hsl(var(--muted))] p-1 rounded-lg border border-[hsl(var(--border))]">
+                        {(["weekly", "fortnightly", "monthly"] as const).map((p) => (
+                            <button
+                                key={p}
+                                onClick={() => {
+                                    setRosterPeriod(p);
+                                    setOffset(0);
+                                    setCurrentPage(1);
+                                }}
+                                className={cn(
+                                    "px-4 py-1.5 text-xs font-extrabold rounded-md transition-all tracking-tight",
+                                    rosterPeriod === p 
+                                        ? "bg-white text-[hsl(var(--brand))] shadow-sm ring-1 ring-black/5" 
+                                        : "text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"
+                                )}
+                            >
+                                {p.charAt(0).toUpperCase() + p.slice(1)}
+                            </button>
+                        ))}
+                    </div>
+                    <Button
                         onClick={() => openAddShift(formatDate(new Date()))}
                         disabled={isFetching || isFetchingRosters}
+                        className="shadow-lg shadow-[hsl(var(--brand))]/10"
                     >
                         <Plus size={16} className="mr-2" /> Add Shift
                     </Button>
@@ -622,6 +684,47 @@ export default function OwnerRosterPage() {
                     <Button variant="outline" size="icon" className="h-9 w-9 rounded-lg" onClick={() => setOffset(offset + 1)}>
                         <ChevronRight size={18} />
                     </Button>
+
+                    <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        className="h-9 px-3 text-xs font-bold text-[hsl(var(--brand))] hover:bg-[hsl(var(--brand))]/5"
+                        onClick={() => {
+                            setOffset(0);
+                            setCalendarMonth(new Date());
+                        }}
+                    >
+                        Today
+                    </Button>
+                </div>
+
+                <div className="flex items-center gap-3 flex-1 max-w-md mx-4">
+                    <div className="relative flex-1 group">
+                        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[hsl(var(--muted-foreground))] group-focus-within:text-[hsl(var(--brand))] transition-colors" />
+                        <Input 
+                            placeholder="Search employee..." 
+                            className="pl-9 h-10 bg-white border-[hsl(var(--border))] rounded-xl focus:ring-[hsl(var(--brand))]/10"
+                            value={searchQuery}
+                            onChange={(e) => {
+                                setSearchQuery(e.target.value);
+                                setCurrentPage(1);
+                            }}
+                        />
+                    </div>
+                    <div className="relative w-40">
+                        <Filter size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[hsl(var(--muted-foreground))]" />
+                        <select
+                            value={roleFilter}
+                            onChange={(e) => {
+                                setRoleFilter(e.target.value);
+                                setCurrentPage(1);
+                            }}
+                            className="w-full pl-9 h-10 rounded-xl border border-[hsl(var(--border))] bg-white text-xs font-medium focus:ring-2 focus:ring-[hsl(var(--brand))]/10 outline-none appearance-none cursor-pointer"
+                        >
+                            <option value="all">All Roles</option>
+                            {roles.map(r => <option key={r} value={r}>{r}</option>)}
+                        </select>
+                    </div>
                 </div>
 
                 <div className="flex items-center gap-3">
@@ -708,13 +811,22 @@ export default function OwnerRosterPage() {
                 </div>
             </div>
 
-            <div className="w-full max-w-full rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] overflow-hidden">
-                <div className="overflow-x-auto w-full">
-                    <table className="w-full text-sm">
-                        <thead>
-                            <tr className="border-b border-[hsl(var(--border))] bg-[hsl(var(--muted))]">
-                                <th className="sticky left-0 z-10 bg-[hsl(var(--muted))] px-4 py-3 text-left font-medium text-[hsl(var(--muted-foreground))] w-48 min-w-48">
-                                    Employee
+            <div className="w-full max-w-full rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] overflow-hidden shadow-md relative">
+                <div className={cn(
+                    "overflow-y-auto w-full max-h-[calc(100vh-320px)] scrollbar-thin",
+                    (rosterPeriod === "monthly" || rosterPeriod === "fortnightly") ? "overflow-x-hidden" : "overflow-x-auto"
+                )}>
+                    <table className={cn(
+                        "w-full text-sm border-separate border-spacing-0",
+                        (rosterPeriod === "monthly" || rosterPeriod === "fortnightly") ? "table-fixed" : ""
+                    )}>
+                        <thead className="sticky top-0 z-40">
+                            <tr className="bg-[hsl(var(--muted))]">
+                                <th className={cn(
+                                    "sticky left-0 top-0 z-50 bg-[hsl(var(--muted))] py-4 font-bold text-[hsl(var(--muted-foreground))] border-b border-r border-[hsl(var(--border))] shadow-[inset_-1px_-1px_0_hsl(var(--border))] text-center",
+                                    rosterPeriod === "monthly" ? "w-14 min-w-14 px-1" : "w-48 min-w-48 px-4"
+                                )}>
+                                    <Users size={16} className="mx-auto opacity-70" />
                                 </th>
                                 {rosterDates.map((d, i) => {
                                     const isToday = formatDate(d) === formatDate(new Date());
@@ -728,31 +840,146 @@ export default function OwnerRosterPage() {
                                     return (
                                         <th
                                             key={i}
-                                            className={`px-3 py-4 text-center font-semibold min-w-32 border-l border-[hsl(var(--border))] first:border-l-0 ${isToday ? "text-[hsl(var(--brand))] bg-[hsl(var(--brand-light))]/30" : (isPast ? "text-[hsl(var(--muted-foreground))] bg-[hsl(var(--muted))]/30" : "text-[hsl(var(--muted-foreground))]")}`}
+                                            className={cn(
+                                                "px-1 py-4 text-center font-bold border-b border-l border-[hsl(var(--border))] first:border-l-0 last:border-r-0 transition-colors",
+                                                isToday ? "text-[hsl(var(--brand))] bg-[hsl(var(--brand-light))]/30" : (isPast ? "text-[hsl(var(--muted-foreground))] bg-[hsl(var(--muted))]/30" : "text-[hsl(var(--muted-foreground))]")
+                                            )}
+                                            style={{ 
+                                                minWidth: (rosterPeriod === "monthly" || rosterPeriod === "fortnightly") ? "0" : "140px",
+                                                width: (rosterPeriod === "monthly" || rosterPeriod === "fortnightly") ? `${100 / (rosterDates.length + 2)}%` : "auto"
+                                            }}
                                         >
-                                            <div className="text-xs">{dayName}</div>
-                                            <div className="text-sm font-semibold">{d.getDate()}</div>
+                                            {(rosterPeriod === "monthly" || rosterPeriod === "fortnightly") ? (
+                                                <div className="flex flex-col items-center">
+                                                    <div className="text-[9px] uppercase tracking-tighter opacity-50 font-black">{dayName}</div>
+                                                    <div className="text-[11px] font-black">{d.getDate()}</div>
+                                                </div>
+                                            ) : (
+                                                <>
+                                                    <div className="text-[10px] uppercase tracking-wider opacity-60 mb-0.5">{dayName}</div>
+                                                    <div className="text-sm font-black">{d.getDate()}</div>
+                                                </>
+                                            )}
                                         </th>
                                     );
                                 })}
                             </tr>
                         </thead>
-                        <tbody>
-                            {activeEmployees.length === 0 ? (
+                        <Reorder.Group 
+                            as="tbody" 
+                            axis="y" 
+                            values={paginatedEmployees.map(e => e.employee_id)} 
+                            onReorder={(newOrder) => {
+                                // Update only the current page's order in the main list
+                                const start = (currentPage - 1) * pageSize;
+                                const updated = [...orderedEmployeeIds];
+                                const pageIds = paginatedEmployees.map(e => e.employee_id);
+                                const firstIndex = updated.indexOf(pageIds[0]);
+                                if (firstIndex !== -1) {
+                                    updated.splice(firstIndex, pageIds.length, ...newOrder);
+                                    setOrderedEmployeeIds(updated);
+                                }
+                            }}
+                            className="relative"
+                        >
+                            {paginatedEmployees.length === 0 ? (
                                 <tr>
-                                    <td colSpan={rosterDates.length + 1} className="px-4 py-12 text-center text-[hsl(var(--muted-foreground))]">
-                                        No active employees found.
+                                    <td colSpan={rosterDates.length + 1} className="px-4 py-12 text-center text-[hsl(var(--muted-foreground))] bg-white">
+                                        No employees found matching your filters.
                                     </td>
                                 </tr>
                             ) : (
-                                activeEmployees.map((emp: any) => (
-                                    <tr key={emp.employee_id} className="border-b border-[hsl(var(--border))] hover:bg-[hsl(var(--muted))]/50 transition-colors">
-                                        <td className="sticky left-0 z-10 bg-[hsl(var(--card))] px-4 py-3">
-                                            <div className="flex items-center gap-2">
-                                                <div className="flex h-7 w-7 items-center justify-center rounded-full bg-[hsl(var(--brand-light))] text-[hsl(var(--brand))] text-xs font-bold">
+                                paginatedEmployees.map((emp: any) => (
+                                    <Reorder.Item 
+                                        as="tr" 
+                                        key={emp.employee_id} 
+                                        value={emp.employee_id} 
+                                        dragListener={true}
+                                        className="border-b border-[hsl(var(--border))] hover:bg-[hsl(var(--muted))]/30 transition-colors bg-white group"
+                                    >
+                                        <td className={cn(
+                                            "sticky left-0 z-30 bg-white group-hover:bg-[hsl(var(--muted))]/30 py-3 border-r border-[hsl(var(--border))] shadow-[inset_-1px_0_0_hsl(var(--border))]",
+                                            rosterPeriod === "monthly" ? "w-14 px-0.5" : "px-4"
+                                        )}>
+                                            <div className={cn(
+                                                "flex items-center group/profile gap-2",
+                                                rosterPeriod === "monthly" ? "justify-center relative" : ""
+                                            )}>
+                                                {/* Grip Icon (Only for non-monthly) */}
+                                                {rosterPeriod !== "monthly" && (
+                                                    <div className="cursor-grab active:cursor-grabbing text-[hsl(var(--muted-foreground))] opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                                                        <GripVertical size={14} />
+                                                    </div>
+                                                )}
+
+                                                {/* Profile Avatar */}
+                                                <div className={cn(
+                                                    "shrink-0 items-center justify-center rounded-full bg-[hsl(var(--brand-light))] text-[hsl(var(--brand))] font-bold shadow-sm flex transition-all",
+                                                    rosterPeriod === "monthly" ? "h-9 w-9 text-xs" : "h-8 w-8 text-xs"
+                                                )}>
                                                     {emp.first_name?.[0]}{emp.last_name?.[0]}
                                                 </div>
-                                                <span className="font-medium text-sm truncate">{emp.first_name} {emp.last_name}</span>
+
+                                                {/* Name and Role (Identification Message Bubble - Reveals strictly on profile hover) */}
+                                                <div className={cn(
+                                                    "flex flex-col min-w-0 transition-all",
+                                                    rosterPeriod === "monthly" 
+                                                        ? "absolute left-[calc(100%-14px)] z-50 bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-2xl shadow-2xl p-3 px-4 opacity-0 group-hover/profile:opacity-100 group-hover/profile:visible pointer-events-none scale-90 group-hover/profile:scale-100 transform origin-left min-w-[160px] invisible animate-in fade-in slide-in-from-left-2 duration-200"
+                                                        : ""
+                                                )}>
+                                                    {/* Message bubble tail (carets) */}
+                                                    {rosterPeriod === "monthly" && (
+                                                        <div className="absolute top-1/2 -left-2 -translate-y-1/2 w-4 h-4 bg-[hsl(var(--card))] border-l border-b border-[hsl(var(--border))] rotate-45 rounded-sm" />
+                                                    )}
+                                                    
+                                                    <span className={cn(
+                                                        "font-bold truncate text-[hsl(var(--foreground))] relative z-10",
+                                                        rosterPeriod === "monthly" ? "text-xs mb-0.5" : "text-sm"
+                                                    )}>{emp.first_name} {emp.last_name}</span>
+                                                    <span className={cn(
+                                                        "font-black uppercase tracking-widest relative z-10",
+                                                        rosterPeriod === "monthly" ? "text-[8px] text-[hsl(var(--brand))]" : "text-[10px] text-[hsl(var(--muted-foreground))]"
+                                                    )}>{emp.role_title}</span>
+                                                </div>
+
+                                                {/* Actions Menu - Always on hover, kept compact within column */}
+                                                <div className={cn(
+                                                    "shrink-0",
+                                                    rosterPeriod === "monthly" ? "absolute right-0 z-10" : ""
+                                                )}>
+                                                    <DropdownMenu>
+                                                        <DropdownMenuTrigger asChild>
+                                                            <Button 
+                                                                variant="ghost" 
+                                                                size="icon" 
+                                                                className={cn(
+                                                                    "h-7 w-7 rounded-full transition-all opacity-0 group-hover/profile:opacity-100 ring-2 ring-transparent group-hover/profile:ring-[hsl(var(--brand))]/10 hover:bg-transparent hover:text-blue-600",
+                                                                    rosterPeriod === "monthly" && "h-5 w-5"
+                                                                )}
+                                                            >
+                                                                <MoreHorizontal size={rosterPeriod === "monthly" ? 12 : 14} className="text-[hsl(var(--muted-foreground))] hover:text-blue-600" />
+                                                            </Button>
+                                                        </DropdownMenuTrigger>
+                                                        <DropdownMenuContent 
+                                                            align="end" 
+                                                            side="bottom" 
+                                                            sideOffset={8}
+                                                            className="min-w-[140px] p-1 bg-white/95 backdrop-blur-md border-[hsl(var(--border))] rounded-2xl shadow-2xl animate-in fade-in zoom-in-95 duration-200"
+                                                        >
+                                                            <DropdownMenuItem asChild className="focus:bg-transparent focus:text-blue-600 data-highlighted:bg-transparent data-highlighted:text-blue-600">
+                                                                <Link 
+                                                                    href={`/owner/employees/${emp.employee_id}`} 
+                                                                    className="font-bold text-[10px] uppercase tracking-[0.15em] cursor-pointer w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl hover:text-blue-600 transition-all group/action"
+                                                                >
+                                                                    View Profile
+                                                                    <div className="opacity-0 group-hover/action:opacity-100 -translate-x-2 group-hover/action:translate-x-0 transition-all">
+                                                                         →
+                                                                    </div>
+                                                                </Link>
+                                                            </DropdownMenuItem>
+                                                        </DropdownMenuContent>
+                                                    </DropdownMenu>
+                                                </div>
                                             </div>
                                         </td>
                                         {rosterDates.map((d, i) => {
@@ -767,51 +994,153 @@ export default function OwnerRosterPage() {
                                             return (
                                                 <td
                                                     key={dateStr}
-                                                    className={`p-2 border border-[hsl(var(--border))] min-w-[140px] align-top transition-colors group
-                                                        ${formatDate(d) === formatDate(new Date()) ? "bg-[hsl(var(--brand-light))]/5" : ""}
-                                                        ${isPast ? "bg-[hsl(var(--muted))]/10" : "hover:bg-[hsl(var(--muted))]/5"}`}
-                                                    onClick={() => !isPast && openAddShift(dateStr, emp.employee_id)}
+                                                    className={cn(
+                                                        "border-b border-l border-[hsl(var(--border))] align-top transition-colors relative group/cell",
+                                                        rosterPeriod === "monthly" ? "p-1 min-w-0" : "p-2 min-w-[140px]",
+                                                        formatDate(d) === formatDate(new Date()) ? "bg-[hsl(var(--brand-light))]/5" : "",
+                                                        isPast ? "bg-[hsl(var(--muted))]/10" : "hover:bg-[hsl(var(--brand))]/5"
+                                                    )}
+                                                    onClick={() => !isPast && rosterPeriod !== "monthly" && openAddShift(dateStr, emp.employee_id)}
                                                 >
-                                                    {dayShifts.map((s: any) => {
-                                                        const isPublished = s.shift_status === 'published';
+                                                    {/* Hover Plus Icon for Quick Add - Only for empty cells */}
+                                                    {!isPast && dayShifts.length === 0 && (
+                                                        <button 
+                                                            className="absolute top-1 right-1 z-10 p-0.5 rounded-md bg-[hsl(var(--brand))] text-white opacity-0 group-hover/cell:opacity-100 transition-opacity shadow-sm hover:scale-110 active:scale-95"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                openAddShift(dateStr, emp.employee_id);
+                                                            }}
+                                                        >
+                                                            <Plus size={10} strokeWidth={4} />
+                                                        </button>
+                                                    )}
 
-                                                        return (
-                                                            <div
-                                                                key={s.shift_id}
-                                                                className={cn(
-                                                                    "rounded-xl px-3 py-2 text-xs font-semibold mb-2 transition-all cursor-pointer border relative group",
-                                                                    isPublished
-                                                                        ? "bg-white border-[hsl(var(--border))] shadow-sm text-[hsl(var(--foreground))]"
-                                                                        : "bg-transparent border-dashed border-[hsl(var(--brand))]/40 text-[hsl(var(--brand))] shadow-none",
-                                                                    isPast ? "opacity-60 grayscale-[0.5]" : "hover:border-[hsl(var(--brand))] hover:shadow-md"
-                                                                )}
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    openAddShift(dateStr, emp.employee_id, s);
-                                                                }}
-                                                            >
-                                                                <div className={`flex items-center gap-1.5 mb-1 ${isPublished ? "text-[hsl(var(--brand))]" : "text-[hsl(var(--brand))]/70"}`}>
-                                                                    <Clock size={12} strokeWidth={2.5} />
-                                                                    <span className="uppercase tracking-wider text-[10px]">{s.shift_type}</span>
-                                                                    <div className="ml-auto flex items-center gap-1">
-                                                                        {isPublished && <CheckCircle2 size={10} className="text-[hsl(var(--success))]" />}
+                                                    {dayShifts.length > 0 && (
+                                                        <div className={cn(
+                                                            "flex flex-col gap-1 w-full h-full py-1",
+                                                            rosterPeriod === "monthly" ? "min-h-[64px]" : "min-h-[72px]"
+                                                        )}>
+                                                            {dayShifts.map((s: any) => {
+                                                                const isPublished = s.shift_status === 'published';
+                                                                const startTimeStr = new Date(s.start_time).toLocaleTimeString("en-AU", { hour: "numeric", hour12: true }).replace(" ", "").toLowerCase();
+                                                                const endTimeStr = new Date(s.end_time).toLocaleTimeString("en-AU", { hour: "numeric", hour12: true }).replace(" ", "").toLowerCase();
+
+                                                                return (
+                                                                    <div
+                                                                        key={s.shift_id}
+                                                                        className={cn(
+                                                                            "rounded-lg px-2 py-1.5 font-bold mb-1 transition-all cursor-pointer border relative group/shift overflow-hidden flex flex-col h-full min-h-[64px] shadow-sm",
+                                                                            isPublished
+                                                                                ? "bg-[#E8F5E9] border-[#C8E6C9] text-green-900"
+                                                                                : "bg-[#F5F5F5] border-[#E0E0E0] text-gray-700",
+                                                                            isPast ? "opacity-60 grayscale-[0.5]" : "hover:shadow-md hover:-translate-y-0.5"
+                                                                        )}
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            openAddShift(dateStr, emp.employee_id, s);
+                                                                        }}
+                                                                    >
+                                                                        <div className="flex flex-col gap-0.5">
+                                                                            <span className="text-[10px] leading-none uppercase tabular-nums">
+                                                                                {startTimeStr}
+                                                                            </span>
+                                                                            <span className="text-[10px] leading-none uppercase tabular-nums">
+                                                                                {endTimeStr}
+                                                                            </span>
+                                                                        </div>
+                                                                        <div className="mt-auto pt-1">
+                                                                            <span className="text-[9px] font-black uppercase tracking-tighter truncate block opacity-80">
+                                                                                {s.shift_type}
+                                                                            </span>
+                                                                        </div>
+                                                                        {/* Bottom Accent Bar as requested in reference image */}
+                                                                        <div className={cn(
+                                                                            "absolute bottom-0 left-0 right-0 h-1.5",
+                                                                            isPublished ? "bg-green-500" : "bg-red-500"
+                                                                        )} />
                                                                     </div>
-                                                                </div>
-                                                                <div className="flex flex-col items-start gap-0.5">
-                                                                    <span>{new Date(s.start_time).toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit", hour12: true })}</span>
-                                                                    <span className="text-[hsl(var(--muted-foreground))] font-normal text-[10px]">to {new Date(s.end_time).toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit", hour12: true })}</span>
-                                                                </div>
-                                                            </div>
-                                                        );
-                                                    })}
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    )}
                                                 </td>
                                             );
                                         })}
-                                    </tr>
+                                    </Reorder.Item>
                                 ))
                             )}
-                        </tbody>
+                        </Reorder.Group>
                     </table>
+                </div>
+
+                {/* Pagination Controls */}
+                <div className="flex items-center justify-between px-6 py-4 bg-[hsl(var(--muted))]/20 border-t border-[hsl(var(--border))]">
+                    <div className="text-xs text-[hsl(var(--muted-foreground))] font-medium">
+                        Showing <span className="text-[hsl(var(--foreground))] font-bold">{Math.min(filteredEmployees.length, (currentPage - 1) * pageSize + 1)}</span> to <span className="text-[hsl(var(--foreground))] font-bold">{Math.min(filteredEmployees.length, currentPage * pageSize)}</span> of <span className="text-[hsl(var(--foreground))] font-bold">{filteredEmployees.length}</span> employees
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                        <Button 
+                            variant="outline" 
+                            size="icon" 
+                            disabled={currentPage === 1}
+                            onClick={() => setCurrentPage(1)}
+                            className="h-8 w-8 rounded-lg border-[hsl(var(--border))]"
+                        >
+                            <ChevronsLeft size={14} />
+                        </Button>
+                        <Button 
+                            variant="outline" 
+                            size="icon" 
+                            disabled={currentPage === 1}
+                            onClick={() => setCurrentPage(currentPage - 1)}
+                            className="h-8 w-8 rounded-lg border-[hsl(var(--border))]"
+                        >
+                            <ChevronLeft size={14} />
+                        </Button>
+                        
+                        <div className="flex items-center gap-1 mx-2">
+                            {Array.from({ length: totalPages }, (_, i) => i + 1)
+                                .filter(p => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 1)
+                                .map((p, i, arr) => {
+                                    if (i > 0 && p !== arr[i-1] + 1) {
+                                        return <span key={`dots-${p}`} className="text-[hsl(var(--muted-foreground))]">...</span>;
+                                    }
+                                    return (
+                                        <button
+                                            key={p}
+                                            onClick={() => setCurrentPage(p)}
+                                            className={cn(
+                                                "h-8 w-8 text-xs font-bold rounded-lg transition-all",
+                                                currentPage === p 
+                                                    ? "bg-[hsl(var(--brand))] text-white shadow-md shadow-[hsl(var(--brand))]/20" 
+                                                    : "hover:bg-[hsl(var(--muted))] text-[hsl(var(--foreground))]"
+                                            )}
+                                        >
+                                            {p}
+                                        </button>
+                                    );
+                                })}
+                        </div>
+
+                        <Button 
+                            variant="outline" 
+                            size="icon" 
+                            disabled={currentPage >= totalPages}
+                            onClick={() => setCurrentPage(currentPage + 1)}
+                            className="h-8 w-8 rounded-lg border-[hsl(var(--border))]"
+                        >
+                            <ChevronRight size={14} />
+                        </Button>
+                        <Button 
+                            variant="outline" 
+                            size="icon" 
+                            disabled={currentPage >= totalPages}
+                            onClick={() => setCurrentPage(totalPages)}
+                            className="h-8 w-8 rounded-lg border-[hsl(var(--border))]"
+                        >
+                            <ChevronsRight size={14} />
+                        </Button>
+                    </div>
                 </div>
             </div>
 
