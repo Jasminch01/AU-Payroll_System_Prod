@@ -31,6 +31,8 @@ export interface NavItem {
 interface SidebarProps {
     role: "owner" | "manager" | "employee";
     businessName?: string;
+    isCollapsed?: boolean;
+    onToggleCollapse?: () => void;
 }
 
 const ownerNav: NavItem[] = [
@@ -70,15 +72,14 @@ const navMap = {
     employee: employeeNav,
 };
 
-export function Sidebar({ role, businessName = "AU Payroll" }: SidebarProps) {
+export function Sidebar({ role, businessName = "AU Payroll", isCollapsed = false, onToggleCollapse }: SidebarProps) {
     const pathname = usePathname();
-    const [collapsed, setCollapsed] = useState(false);
     const items = navMap[role];
 
     return (
         <motion.aside
             initial={false}
-            animate={{ width: collapsed ? 72 : 260 }}
+            animate={{ width: isCollapsed ? 72 : 260 }}
             transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
             className="fixed left-0 top-0 z-40 flex h-screen flex-col border-r border-[hsl(var(--sidebar-muted))] bg-[hsl(var(--sidebar))] text-[hsl(var(--sidebar-foreground))] shadow-[1px_0_0_0_hsl(var(--sidebar-muted))]"
         >
@@ -89,7 +90,7 @@ export function Sidebar({ role, businessName = "AU Payroll" }: SidebarProps) {
                     {businessName.charAt(0).toUpperCase()}
                 </div>
                 <AnimatePresence>
-                    {!collapsed && (
+                    {!isCollapsed && (
                         <motion.span
                             initial={{ opacity: 0, width: 0 }}
                             animate={{ opacity: 1, width: "auto" }}
@@ -117,11 +118,11 @@ export function Sidebar({ role, businessName = "AU Payroll" }: SidebarProps) {
                                     : "text-[hsl(var(--sidebar-foreground))]/60 hover:bg-[hsl(var(--sidebar-muted))] hover:text-[hsl(var(--sidebar-foreground))]"
                             )}
 
-                            title={collapsed ? item.label : undefined}
+                            title={isCollapsed ? item.label : undefined}
                         >
                             <span className="shrink-0">{item.icon}</span>
                             <AnimatePresence>
-                                {!collapsed && (
+                                {!isCollapsed && (
                                     <motion.span
                                         initial={{ opacity: 0, width: 0 }}
                                         animate={{ opacity: 1, width: "auto" }}
@@ -132,7 +133,7 @@ export function Sidebar({ role, businessName = "AU Payroll" }: SidebarProps) {
                                     </motion.span>
                                 )}
                             </AnimatePresence>
-                            {!collapsed && item.badge && (
+                            {!isCollapsed && item.badge && (
                                 <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-[hsl(var(--danger))] px-1.5 text-[10px] font-bold text-white">
                                     {item.badge}
                                 </span>
@@ -143,21 +144,23 @@ export function Sidebar({ role, businessName = "AU Payroll" }: SidebarProps) {
             </nav>
 
             {/* Bottom Section — Collapse Toggle only */}
-            <div className="border-t border-[hsl(var(--sidebar-muted))] p-3">
-                <button
-                    onClick={() => setCollapsed(!collapsed)}
-                    className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-[hsl(var(--sidebar-foreground))]/70 hover:bg-[hsl(var(--sidebar-muted))] hover:text-[hsl(var(--sidebar-foreground))] transition-colors"
-                >
-                    {collapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
-                    <AnimatePresence>
-                        {!collapsed && (
-                            <motion.span initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                                Collapse
-                            </motion.span>
-                        )}
-                    </AnimatePresence>
-                </button>
-            </div>
+            {onToggleCollapse && (
+                <div className="border-t border-[hsl(var(--sidebar-muted))] p-3">
+                    <button
+                        onClick={onToggleCollapse}
+                        className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-[hsl(var(--sidebar-foreground))]/70 hover:bg-[hsl(var(--sidebar-muted))] hover:text-[hsl(var(--sidebar-foreground))] transition-colors"
+                    >
+                        {isCollapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
+                        <AnimatePresence>
+                            {!isCollapsed && (
+                                <motion.span initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                                    Collapse
+                                </motion.span>
+                            )}
+                        </AnimatePresence>
+                    </button>
+                </div>
+            )}
         </motion.aside>
     );
 }

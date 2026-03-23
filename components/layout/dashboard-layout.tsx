@@ -5,6 +5,7 @@ import { Sidebar } from "./sidebar";
 import { TopNav } from "./topnav";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "@/hooks/use-auth";
+import { cn } from "@/lib/utils";
 
 interface DashboardLayoutProps {
     children: React.ReactNode;
@@ -13,6 +14,7 @@ interface DashboardLayoutProps {
     pageDescription?: string;
     businessName?: string;
     actions?: React.ReactNode;
+    defaultCollapsed?: boolean;
 }
 
 export function DashboardLayout({
@@ -22,9 +24,11 @@ export function DashboardLayout({
     pageDescription,
     businessName,
     actions,
+    defaultCollapsed = false,
 }: DashboardLayoutProps) {
     const { user } = useAuth();
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+    const [isCollapsed, setIsCollapsed] = useState(defaultCollapsed);
 
     return (
         <div className="flex min-h-screen bg-[hsl(var(--background))]">
@@ -33,6 +37,8 @@ export function DashboardLayout({
                 <Sidebar
                     role={role}
                     businessName={businessName || user?.business?.business_name}
+                    isCollapsed={isCollapsed}
+                    onToggleCollapse={() => setIsCollapsed(!isCollapsed)}
                 />
             </div>
 
@@ -66,8 +72,13 @@ export function DashboardLayout({
                 )}
             </AnimatePresence>
 
-            {/* Main Content Area — offset by sidebar width */}
-            <div className="flex flex-1 flex-col lg:ml-[260px] min-w-0">
+            {/* Main Content Area — dynamically offset by sidebar width */}
+            <div 
+                className={cn(
+                    "flex flex-1 flex-col min-w-0 transition-[margin] duration-200 ease-[0.4,0,0.2,1]",
+                    isCollapsed ? "lg:ml-[72px]" : "lg:ml-[260px]"
+                )}
+            >
                 <TopNav
                     onMenuClick={() => setMobileMenuOpen(!mobileMenuOpen)}
                 />
