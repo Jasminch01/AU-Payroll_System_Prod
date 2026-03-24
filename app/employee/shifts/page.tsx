@@ -44,14 +44,31 @@ export default function EmployeeShiftsPage() {
             .on(
                 'postgres_changes',
                 {
-                    event: '*',
+                    event: 'INSERT',
                     schema: 'public',
                     table: 'Shift',
-                    filter: `employee_id=eq.${user?.employee_id}`
+                    filter: user?.employee_id ? `employee_id=eq.${user.employee_id}` : undefined
                 },
-                () => {
-                    queryClient.invalidateQueries({ queryKey: ["my-shifts"] });
-                }
+                () => queryClient.invalidateQueries({ queryKey: ["my-shifts"] })
+            )
+            .on(
+                'postgres_changes',
+                {
+                    event: 'UPDATE',
+                    schema: 'public',
+                    table: 'Shift',
+                    filter: user?.employee_id ? `employee_id=eq.${user.employee_id}` : undefined
+                },
+                () => queryClient.invalidateQueries({ queryKey: ["my-shifts"] })
+            )
+            .on(
+                'postgres_changes',
+                {
+                    event: 'DELETE',
+                    schema: 'public',
+                    table: 'Shift'
+                },
+                () => queryClient.invalidateQueries({ queryKey: ["my-shifts"] })
             )
             .on(
                 'postgres_changes',
