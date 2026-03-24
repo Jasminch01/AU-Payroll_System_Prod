@@ -96,8 +96,7 @@ export async function notifyRosterPublished(rosterId: string, businessId: string
     if (!shifts || shifts.length === 0) return;
 
     // 3. Categorize changes per employee
-    const notifications = [];
-    const inAppUserIds = new Set<string>();
+    const emailNotifications = [];
 
     for (const shift of shifts) {
         if (!shift.employee_id || !shift.Employee) continue;
@@ -119,39 +118,39 @@ export async function notifyRosterPublished(rosterId: string, businessId: string
         }
 
         if (type !== 'unchanged') {
-            notifications.push({
+            const shiftTime = `${new Date(shift.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - ${new Date(shift.end_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+            
+            emailNotifications.push({
                 email: shift.Employee.email,
                 name: shift.Employee.first_name,
                 date: shift.shift_date,
                 type,
-                time: `${new Date(shift.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - ${new Date(shift.end_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                time: shiftTime
             });
+
+            // Send INDIVIDUAL in-app notification per employee
             if (shift.Employee.user_id) {
-                inAppUserIds.add(shift.Employee.user_id);
+                createNotification({
+                    business_id: businessId,
+                    user_ids: [shift.Employee.user_id],
+                    type: type === 'new' ? 'SHIFT_PUBLISHED' : 'SHIFT_UPDATED',
+                    title: type === 'new' ? 'New Shift Assigned' : 'Shift Updated',
+                    message: type === 'new' 
+                        ? `You have a new shift on ${shift.shift_date} (${shiftTime})`
+                        : `Your shift on ${shift.shift_date} was updated to ${shiftTime}`,
+                    entity_id: shift.shift_id,
+                    entity_type: 'shift'
+                }).catch(err => console.error('[Notify] In-app targeted notification failed:', err));
             }
         }
     }
 
-    if (notifications.length === 0) return;
+    if (emailNotifications.length === 0) return;
 
-    console.log(`[Notification] Sending ${notifications.length} targeted notifications for roster ${rosterId}`);
+    console.log(`[Notification] Sending ${emailNotifications.length} targeted email notifications for roster ${rosterId}`);
     
-    // Trigger in-app broadcast Notification for roster publish
-    if (inAppUserIds.size > 0) {
-        await createNotification({
-            business_id: businessId,
-            user_ids: Array.from(inAppUserIds),
-            type: 'SHIFT_PUBLISHED',
-            title: 'Roster Updated',
-            message: 'Your upcoming shift schedule has been updated. Please check the Roster.',
-            entity_id: rosterId,
-            entity_type: 'roster'
-        }).catch(err => console.error('[Notify] In-app roster publish failed:', err));
-    }
-
-
     // unique employees who received notifications (for audit summary)
-    const notifiedEmails = new Set(notifications.map(n => n.email));
+    const notifiedEmails = new Set(emailNotifications.map(n => n.email));
 
     // 4. Log the notification event summary
     await logAudit({
@@ -161,7 +160,7 @@ export async function notifyRosterPublished(rosterId: string, businessId: string
         action: 'UPDATE',
         changedBy: updatedBy,
         afterValue: {
-            notifiedCount: notifications.length,
+            notifiedCount: emailNotifications.length,
             uniqueEmployees: notifiedEmails.size,
             startDate: roster.start_date,
             endDate: roster.end_date
@@ -170,7 +169,7 @@ export async function notifyRosterPublished(rosterId: string, businessId: string
     });
 
     // 5. Send actual emails
-    for (const n of notifications) {
+    for (const n of emailNotifications) {
         const subject = n.type === 'new' ? 'New Shift Assigned' : 'Shift Updated';
         const bodyContent = n.type === 'new' 
             ? `you have been assigned a <b>new shift</b>`

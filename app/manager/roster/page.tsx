@@ -175,7 +175,7 @@ export default function ManagerRosterPage() {
 
         return sorted.filter((e: any) => {
             const matchesSearch = `${e.first_name} ${e.last_name}`.toLowerCase().includes(searchQuery.toLowerCase());
-            const matchesRole = roleFilter === "all" || e.role_title === roleFilter;
+            const matchesRole = roleFilter === "all" || e.role_title?.toLowerCase() === roleFilter;
             return matchesSearch && matchesRole;
         });
     }, [employees, searchQuery, roleFilter, orderedEmployeeIds]);
@@ -262,25 +262,56 @@ export default function ManagerRosterPage() {
 
     const createShiftMutation = useMutation({
         mutationFn: (data: any) => apiPost("/shift", data),
+        onMutate: async (newShift) => {
+            await queryClient.cancelQueries({ queryKey: ["shifts", rangeStart, rangeEnd] });
+            const previousShifts = queryClient.getQueryData(["shifts", rangeStart, rangeEnd]);
+            queryClient.setQueryData(["shifts", rangeStart, rangeEnd], (old: any[] = []) => [
+                ...old,
+                { ...newShift, shift_id: `temp_${Date.now()}`, status: 'draft' }
+            ]);
+            return { previousShifts };
+        },
         onSuccess: () => {
             toast.success("Shift created");
-            queryClient.invalidateQueries({ queryKey: ["shifts"] });
-            queryClient.invalidateQueries({ queryKey: ["rosters"] });
             setAddShiftOpen(false);
         },
-        onError: (err: Error) => toast.error(err.message),
+        onError: (err: Error, newShift, context: any) => {
+            toast.error(err.message);
+            if (context?.previousShifts) {
+                queryClient.setQueryData(["shifts", rangeStart, rangeEnd], context.previousShifts);
+            }
+        },
+        onSettled: () => {
+            queryClient.invalidateQueries({ queryKey: ["shifts"] });
+            queryClient.invalidateQueries({ queryKey: ["rosters"] });
+        },
     });
 
     const deleteShiftMutation = useMutation({
         mutationFn: (shiftId: string) => apiDelete(`/shift/${shiftId}`),
+        onMutate: async (shiftId) => {
+            await queryClient.cancelQueries({ queryKey: ["shifts", rangeStart, rangeEnd] });
+            const previousShifts = queryClient.getQueryData(["shifts", rangeStart, rangeEnd]);
+            queryClient.setQueryData(["shifts", rangeStart, rangeEnd], (old: any[] = []) => 
+                old.filter((s: any) => s.shift_id !== shiftId)
+            );
+            return { previousShifts };
+        },
         onSuccess: () => {
             toast.success("Shift deleted");
-            queryClient.invalidateQueries({ queryKey: ["shifts"] });
-            queryClient.invalidateQueries({ queryKey: ["rosters"] });
             setDeleteConfirmOpen(false);
             setAddShiftOpen(false);
         },
-        onError: (err: Error) => toast.error(err.message),
+        onError: (err: Error, shiftId, context: any) => {
+            toast.error(err.message);
+            if (context?.previousShifts) {
+                queryClient.setQueryData(["shifts", rangeStart, rangeEnd], context.previousShifts);
+            }
+        },
+        onSettled: () => {
+            queryClient.invalidateQueries({ queryKey: ["shifts"] });
+            queryClient.invalidateQueries({ queryKey: ["rosters"] });
+        },
     });
 
     const [deleteRosterConfirmOpen, setDeleteRosterConfirmOpen] = useState(false);
@@ -297,11 +328,26 @@ export default function ManagerRosterPage() {
 
     const notifyShiftMutation = useMutation({
         mutationFn: (shiftId: string) => apiPost(`/shift/${shiftId}/notify`, {}),
+        onMutate: async (shiftId) => {
+            await queryClient.cancelQueries({ queryKey: ["shifts", rangeStart, rangeEnd] });
+            const previousShifts = queryClient.getQueryData(["shifts", rangeStart, rangeEnd]);
+            queryClient.setQueryData(["shifts", rangeStart, rangeEnd], (old: any[] = []) => 
+                old.map((s: any) => s.shift_id === shiftId ? { ...s, status: 'published' } : s)
+            );
+            return { previousShifts };
+        },
         onSuccess: () => {
             toast.success("Shift published & employee notified!", { icon: "🔔" });
+        },
+        onError: (err: Error, shiftId, context: any) => {
+            toast.error(err.message);
+            if (context?.previousShifts) {
+                queryClient.setQueryData(["shifts", rangeStart, rangeEnd], context.previousShifts);
+            }
+        },
+        onSettled: () => {
             queryClient.invalidateQueries({ queryKey: ["shifts"] });
         },
-        onError: (err: Error) => toast.error(err.message),
     });
 
     const [duplicateOpen, setDuplicateOpen] = useState(false);
@@ -345,23 +391,53 @@ export default function ManagerRosterPage() {
 
     const updateShiftMutation = useMutation({
         mutationFn: (data: any) => apiPut(`/shift/${editingShiftId}`, data),
+        onMutate: async (updatedShift) => {
+            await queryClient.cancelQueries({ queryKey: ["shifts", rangeStart, rangeEnd] });
+            const previousShifts = queryClient.getQueryData(["shifts", rangeStart, rangeEnd]);
+            queryClient.setQueryData(["shifts", rangeStart, rangeEnd], (old: any[] = []) => 
+                old.map((s: any) => s.shift_id === editingShiftId ? { ...s, ...updatedShift } : s)
+            );
+            return { previousShifts };
+        },
         onSuccess: () => {
             toast.success("Shift updated");
-            queryClient.invalidateQueries({ queryKey: ["shifts"] });
-            queryClient.invalidateQueries({ queryKey: ["rosters"] });
             setAddShiftOpen(false);
         },
-        onError: (err: Error) => toast.error(err.message),
+        onError: (err: Error, updatedShift, context: any) => {
+            toast.error(err.message);
+            if (context?.previousShifts) {
+                queryClient.setQueryData(["shifts", rangeStart, rangeEnd], context.previousShifts);
+            }
+        },
+        onSettled: () => {
+            queryClient.invalidateQueries({ queryKey: ["shifts"] });
+            queryClient.invalidateQueries({ queryKey: ["rosters"] });
+        },
     });
 
     const publishRosterMutation = useMutation({
         mutationFn: (rosterId: string) => apiPost(`/rosters/${rosterId}/publish`, {}),
+        onMutate: async () => {
+            await queryClient.cancelQueries({ queryKey: ["shifts", rangeStart, rangeEnd] });
+            const previousShifts = queryClient.getQueryData(["shifts", rangeStart, rangeEnd]);
+            queryClient.setQueryData(["shifts", rangeStart, rangeEnd], (old: any[] = []) => 
+                old.map((s: any) => (s.status === 'draft' || !s.status) ? { ...s, status: 'published' } : s)
+            );
+            return { previousShifts };
+        },
         onSuccess: () => {
             toast.success("Shifts published and employees notified!");
+        },
+        onError: (err: Error, rosterId, context: any) => {
+            toast.error(err.message);
+            if (context?.previousShifts) {
+                queryClient.setQueryData(["shifts", rangeStart, rangeEnd], context.previousShifts);
+            }
+        },
+        onSettled: () => {
             queryClient.invalidateQueries({ queryKey: ["rosters"] });
             queryClient.invalidateQueries({ queryKey: ["shifts"] });
         },
-        onError: (err: Error) => toast.error(err.message),
     });
 
     const handleAddShift = () => {
@@ -734,7 +810,11 @@ export default function ManagerRosterPage() {
                             className="w-full pl-9 h-10 rounded-xl border border-[hsl(var(--border))] bg-white text-xs font-medium focus:ring-2 focus:ring-[hsl(var(--brand))]/10 outline-none appearance-none cursor-pointer"
                         >
                             <option value="all">All Roles</option>
-                            {roles.map(r => <option key={r} value={r}>{r}</option>)}
+                            {roles.map(r => (
+                                <option key={r} value={r.toLowerCase()}>
+                                    {r.split(' ').map((word: string) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join(' ')}
+                                </option>
+                            ))}
                         </select>
                     </div>
                 </div>

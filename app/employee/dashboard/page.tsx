@@ -8,12 +8,60 @@ import { Card, CardContent } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/badge";
 import { apiGet } from "@/lib/api-client";
 import { CalendarDays, Clock, Palmtree, DollarSign } from "lucide-react";
+import { useEffect } from "react";
+import { createClient } from "@/lib/supabase/client";
+import { useQueryClient } from "@tanstack/react-query";
+import { useAuth } from "@/hooks/use-auth";
 
 export default function EmployeeDashboardPage() {
+    const queryClient = useQueryClient();
+    const { user } = useAuth();
+
     const { data: shifts = [] } = useQuery({
         queryKey: ["my-shifts"],
         queryFn: () => apiGet<any[]>("/shifts/me"),
     });
+
+    // Real-time listener for shifts
+    useEffect(() => {
+        const supabase = createClient();
+        const channel = supabase
+            .channel('employee-dashboard-realtime')
+            .on(
+                'postgres_changes',
+                {
+                    event: 'INSERT',
+                    schema: 'public',
+                    table: 'Shift',
+                    filter: user?.employee_id ? `employee_id=eq.${user.employee_id}` : undefined
+                },
+                () => queryClient.invalidateQueries({ queryKey: ["my-shifts"] })
+            )
+            .on(
+                'postgres_changes',
+                {
+                    event: 'UPDATE',
+                    schema: 'public',
+                    table: 'Shift',
+                    filter: user?.employee_id ? `employee_id=eq.${user.employee_id}` : undefined
+                },
+                () => queryClient.invalidateQueries({ queryKey: ["my-shifts"] })
+            )
+            .on(
+                'postgres_changes',
+                {
+                    event: 'DELETE',
+                    schema: 'public',
+                    table: 'Shift'
+                },
+                () => queryClient.invalidateQueries({ queryKey: ["my-shifts"] })
+            )
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [user?.employee_id, queryClient]);
 
     const { data: leaveBalances = [] } = useQuery({
         queryKey: ["my-leave-balances"],
