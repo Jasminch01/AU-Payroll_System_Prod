@@ -4,7 +4,7 @@ import { requireRole } from '@/lib/auth';
 import { successResponse, errorResponse } from '@/lib/api-helpers';
 import { checkShiftConflictWithLeave } from '@/lib/leave-logic';
 import { logAudit } from '@/lib/audit';
-import { notifyShiftUpdated, notifyShiftDeleted } from '@/lib/notifications';
+import { notifyShiftUpdated, notifyShiftDeleted, notifyShiftPublished } from '@/lib/notifications';
 
 interface RouteParams {
     params: Promise<{ id: string }>;
@@ -174,14 +174,36 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
             }
         }
 
-        // Deputy-style: if the shift was published, notify employee of the update (non-blocking)
-        if (existing.shift_status === 'published' && existing.employee_id) {
-            const supabaseClient = await createClient();
-            const { data: emp } = await supabaseClient.from('Employee').select('business_id, user_id').eq('employee_id', existing.employee_id).single();
-            if (emp) {
-                notifyShiftUpdated(id, existing.start_time, existing.end_time, emp.business_id, emp.user_id).catch(err =>
-                    console.error(`[Notify] shift update email failed for ${id}:`, err)
-                );
+        // Deputy-style: if the shift was published, notify the appropriate employees (non-blocking)
+        if (existing.shift_status === 'published') {
+            const oldEmpId = existing.employee_id;
+            const newEmpId = updateData.employee_id || oldEmpId;
+
+            if (newEmpId !== oldEmpId) {
+                // 1. Notify OLD about removal
+                if (oldEmpId) {
+                    const { data: oldEmp } = await supabase.from('Employee').select('email, first_name, user_id, business_id').eq('employee_id', oldEmpId).single();
+                    if (oldEmp) {
+                        const shiftTime = `${existing.start_time.split('T')[1]?.substring(0, 5)} - ${existing.end_time.split('T')[1]?.substring(0, 5)}`;
+                        notifyShiftDeleted(oldEmp.email, oldEmp.first_name, existing.shift_date, shiftTime, oldEmp.business_id, oldEmp.user_id).catch(err =>
+                            console.error(`[Notify] old shift removed email failed for ${id}:`, err)
+                        );
+                    }
+                }
+                // 2. Notify NEW about assignment
+                if (newEmpId) {
+                    notifyShiftPublished(id).catch((err: Error) => 
+                        console.error(`[Notify] new shift assigned email failed for ${id}:`, err)
+                    );
+                }
+            } else if (oldEmpId) {
+                // Same employee, just notify update
+                const { data: currentEmp } = await supabase.from('Employee').select('user_id, business_id').eq('employee_id', oldEmpId).single();
+                if (currentEmp) {
+                    notifyShiftUpdated(id, existing.start_time, existing.end_time, currentEmp.business_id, currentEmp.user_id).catch((err: Error) =>
+                        console.error(`[Notify] shift update email failed for ${id}:`, err)
+                    );
+                }
             }
         }
 

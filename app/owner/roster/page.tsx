@@ -18,15 +18,15 @@ import { Reorder, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
-import { 
-    Popover, PopoverTrigger, PopoverContent 
+import {
+    Popover, PopoverTrigger, PopoverContent
 } from "@/components/ui/popover";
 import {
     DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem
 } from "@/components/ui/dropdown-menu";
-import { 
-    format, addMonths, subMonths, startOfMonth, endOfMonth, 
-    startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, 
+import {
+    format, addMonths, subMonths, startOfMonth, endOfMonth,
+    startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth,
     isSameDay, addDays, differenceInWeeks, differenceInDays
 } from "date-fns";
 
@@ -36,11 +36,11 @@ function getRosterDates(offset: number, period: RosterPeriod): Date[] {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const start = new Date(today);
-    
+
     // Normalize to Monday of current week
     const day = today.getDay();
     const diffToMonday = (day === 0 ? -6 : 1 - day);
-    
+
     if (period === "weekly") {
         start.setDate(today.getDate() + diffToMonday + offset * 7);
         return Array.from({ length: 7 }, (_, i) => {
@@ -80,17 +80,17 @@ function formatDate(d: Date | string) {
 
 function getPeriodOptions(period: RosterPeriod, count: number = 12): { label: string, start: string, end: string, offset: number }[] {
     const options: { label: string, start: string, end: string, offset: number }[] = [];
-    
-    for (let i = -Math.floor(count/3); i <= count - Math.floor(count/3); i++) {
+
+    for (let i = -Math.floor(count / 3); i <= count - Math.floor(count / 3); i++) {
         const dates = getRosterDates(i, period);
         const start = dates[0];
         const end = dates[dates.length - 1];
-        
+
         let prefix = "";
         if (i === 0) prefix = period === "weekly" ? "This week, " : period === "fortnightly" ? "This fortnight, " : "This month, ";
         else if (i === 1) prefix = period === "weekly" ? "Next week, " : period === "fortnightly" ? "Next fortnight, " : "Next month, ";
         else if (i === -1) prefix = period === "weekly" ? "Last week, " : period === "fortnightly" ? "Last fortnight, " : "Last month, ";
-        
+
         const label = `${prefix}${format(start, "MMM d")} - ${format(end, "MMM d")}`;
         options.push({
             label,
@@ -128,10 +128,10 @@ export default function OwnerRosterPage() {
 
     // Copy Shifts state
     const [copyOption, setCopyOption] = useState<'next_week' | 'prev_week'>('next_week');
-    
+
     // Copy Review & Undo state
-    const [copyResult, setCopyResult] = useState<{ 
-        copiedCount: number, overlapCount: number, overlapDetails: string[] 
+    const [copyResult, setCopyResult] = useState<{
+        copiedCount: number, overlapCount: number, overlapDetails: string[]
     } | null>(null);
     const [resultModalOpen, setResultModalOpen] = useState(false);
     const [lastNewShiftIds, setLastNewShiftIds] = useState<string[]>([]);
@@ -152,7 +152,7 @@ export default function OwnerRosterPage() {
 
     // Local order for drag-and-drop reordering
     const [orderedEmployeeIds, setOrderedEmployeeIds] = useState<string[]>([]);
-    
+
     useEffect(() => {
         if (employees.length > 0 && orderedEmployeeIds.length === 0) {
             setOrderedEmployeeIds(employees.filter((e: any) => e.status === "active").map((e: any) => e.employee_id));
@@ -161,7 +161,7 @@ export default function OwnerRosterPage() {
 
     const filteredEmployees = useMemo(() => {
         const active = employees.filter((e: any) => e.status === "active");
-        
+
         // Sort by the local ordered list
         const sorted = [...active].sort((a, b) => {
             const indexA = orderedEmployeeIds.indexOf(a.employee_id);
@@ -174,7 +174,7 @@ export default function OwnerRosterPage() {
 
         return sorted.filter((e: any) => {
             const matchesSearch = `${e.first_name} ${e.last_name}`.toLowerCase().includes(searchQuery.toLowerCase());
-            const matchesRole = roleFilter === "all" || e.role_title === roleFilter;
+            const matchesRole = roleFilter === "all" || e.role_title?.toLowerCase() === roleFilter;
             return matchesSearch && matchesRole;
         });
     }, [employees, searchQuery, roleFilter, orderedEmployeeIds]);
@@ -248,11 +248,11 @@ export default function OwnerRosterPage() {
                 const start = new Date(latest.start_date);
                 const end = new Date(latest.end_date);
                 const diffDays = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-                
+
                 if (diffDays > 20) setRosterPeriod("monthly");
                 else if (diffDays > 10) setRosterPeriod("fortnightly");
                 else setRosterPeriod("weekly");
-                
+
                 setHasAutoSet(true);
             }
         }
@@ -260,36 +260,82 @@ export default function OwnerRosterPage() {
 
     const createShiftMutation = useMutation({
         mutationFn: (data: any) => apiPost("/shift", data),
+        onMutate: async (newShift) => {
+            await queryClient.cancelQueries({ queryKey: ["shifts", rangeStart, rangeEnd] });
+            const previousShifts = queryClient.getQueryData(["shifts", rangeStart, rangeEnd]);
+            queryClient.setQueryData(["shifts", rangeStart, rangeEnd], (old: any[] = []) => [
+                ...old,
+                { ...newShift, shift_id: `temp_${Date.now()}`, status: 'draft' }
+            ]);
+            return { previousShifts };
+        },
         onSuccess: () => {
             toast.success("Shift created");
-            queryClient.invalidateQueries({ queryKey: ["shifts"] });
-            queryClient.invalidateQueries({ queryKey: ["rosters"] });
             setAddShiftOpen(false);
         },
-        onError: (err: Error) => toast.error(err.message),
+        onError: (err: Error, newShift, context: any) => {
+            toast.error(err.message);
+            if (context?.previousShifts) {
+                queryClient.setQueryData(["shifts", rangeStart, rangeEnd], context.previousShifts);
+            }
+        },
+        onSettled: () => {
+            queryClient.invalidateQueries({ queryKey: ["shifts"] });
+            queryClient.invalidateQueries({ queryKey: ["rosters"] });
+        },
     });
 
     const updateShiftMutation = useMutation({
         mutationFn: (data: any) => apiPut(`/shift/${editingShiftId}`, data),
+        onMutate: async (updatedShift) => {
+            await queryClient.cancelQueries({ queryKey: ["shifts", rangeStart, rangeEnd] });
+            const previousShifts = queryClient.getQueryData(["shifts", rangeStart, rangeEnd]);
+            queryClient.setQueryData(["shifts", rangeStart, rangeEnd], (old: any[] = []) => 
+                old.map((s: any) => s.shift_id === editingShiftId ? { ...s, ...updatedShift } : s)
+            );
+            return { previousShifts };
+        },
         onSuccess: () => {
             toast.success("Shift updated");
-            queryClient.invalidateQueries({ queryKey: ["shifts"] });
-            queryClient.invalidateQueries({ queryKey: ["rosters"] });
             setAddShiftOpen(false);
         },
-        onError: (err: Error) => toast.error(err.message),
+        onError: (err: Error, updatedShift, context: any) => {
+            toast.error(err.message);
+            if (context?.previousShifts) {
+                queryClient.setQueryData(["shifts", rangeStart, rangeEnd], context.previousShifts);
+            }
+        },
+        onSettled: () => {
+            queryClient.invalidateQueries({ queryKey: ["shifts"] });
+            queryClient.invalidateQueries({ queryKey: ["rosters"] });
+        },
     });
 
     const deleteShiftMutation = useMutation({
         mutationFn: (shiftId: string) => apiDelete(`/shift/${shiftId}`),
+        onMutate: async (shiftId) => {
+            await queryClient.cancelQueries({ queryKey: ["shifts", rangeStart, rangeEnd] });
+            const previousShifts = queryClient.getQueryData(["shifts", rangeStart, rangeEnd]);
+            queryClient.setQueryData(["shifts", rangeStart, rangeEnd], (old: any[] = []) => 
+                old.filter((s: any) => s.shift_id !== shiftId)
+            );
+            return { previousShifts };
+        },
         onSuccess: () => {
             toast.success("Shift deleted");
-            queryClient.invalidateQueries({ queryKey: ["shifts"] });
-            queryClient.invalidateQueries({ queryKey: ["rosters"] });
             setDeleteConfirmOpen(false);
             setAddShiftOpen(false);
         },
-        onError: (err: Error) => toast.error(err.message),
+        onError: (err: Error, shiftId, context: any) => {
+            toast.error(err.message);
+            if (context?.previousShifts) {
+                queryClient.setQueryData(["shifts", rangeStart, rangeEnd], context.previousShifts);
+            }
+        },
+        onSettled: () => {
+            queryClient.invalidateQueries({ queryKey: ["shifts"] });
+            queryClient.invalidateQueries({ queryKey: ["rosters"] });
+        },
     });
 
     const [deleteRosterConfirmOpen, setDeleteRosterConfirmOpen] = useState(false);
@@ -306,17 +352,32 @@ export default function OwnerRosterPage() {
 
     const notifyShiftMutation = useMutation({
         mutationFn: (shiftId: string) => apiPost(`/shift/${shiftId}/notify`, {}),
+        onMutate: async (shiftId) => {
+            await queryClient.cancelQueries({ queryKey: ["shifts", rangeStart, rangeEnd] });
+            const previousShifts = queryClient.getQueryData(["shifts", rangeStart, rangeEnd]);
+            queryClient.setQueryData(["shifts", rangeStart, rangeEnd], (old: any[] = []) => 
+                old.map((s: any) => s.shift_id === shiftId ? { ...s, status: 'published' } : s)
+            );
+            return { previousShifts };
+        },
         onSuccess: () => {
             toast.success("Shift published & employee notified!", { icon: "🔔" });
+        },
+        onError: (err: Error, shiftId, context: any) => {
+            toast.error(err.message);
+            if (context?.previousShifts) {
+                queryClient.setQueryData(["shifts", rangeStart, rangeEnd], context.previousShifts);
+            }
+        },
+        onSettled: () => {
             queryClient.invalidateQueries({ queryKey: ["shifts"] });
         },
-        onError: (err: Error) => toast.error(err.message),
     });
 
     const [duplicateOpen, setDuplicateOpen] = useState(false);
     const [targetDuplicateDate, setTargetDuplicateDate] = useState("");
     const duplicateRosterMutation = useMutation({
-        mutationFn: (data: { source_from: string; source_to: string; target_start: string }) => 
+        mutationFn: (data: { source_from: string; source_to: string; target_start: string }) =>
             apiPost(`/rosters/copy-shifts`, data),
         onSuccess: (res: any) => {
             setCopyResult({
@@ -326,11 +387,11 @@ export default function OwnerRosterPage() {
             });
             setLastNewShiftIds(res.newShiftIds || []);
             setResultModalOpen(true);
-            
+
             queryClient.invalidateQueries({ queryKey: ["rosters"] });
             queryClient.invalidateQueries({ queryKey: ["shifts"] });
             setDuplicateOpen(false);
-            
+
             // Auto-jump to the target period
             setOffset(offset + 1);
         },
@@ -353,12 +414,27 @@ export default function OwnerRosterPage() {
 
     const publishRosterMutation = useMutation({
         mutationFn: (rosterId: string) => apiPost(`/rosters/${rosterId}/publish`, {}),
+        onMutate: async () => {
+            await queryClient.cancelQueries({ queryKey: ["shifts", rangeStart, rangeEnd] });
+            const previousShifts = queryClient.getQueryData(["shifts", rangeStart, rangeEnd]);
+            queryClient.setQueryData(["shifts", rangeStart, rangeEnd], (old: any[] = []) => 
+                old.map((s: any) => (s.status === 'draft' || !s.status) ? { ...s, status: 'published' } : s)
+            );
+            return { previousShifts };
+        },
         onSuccess: () => {
             toast.success("Shifts published and employees notified!");
+        },
+        onError: (err: Error, rosterId, context: any) => {
+            toast.error(err.message);
+            if (context?.previousShifts) {
+                queryClient.setQueryData(["shifts", rangeStart, rangeEnd], context.previousShifts);
+            }
+        },
+        onSettled: () => {
             queryClient.invalidateQueries({ queryKey: ["rosters"] });
             queryClient.invalidateQueries({ queryKey: ["shifts"] });
         },
-        onError: (err: Error) => toast.error(err.message),
     });
 
     const handleAddShift = () => {
@@ -388,7 +464,7 @@ export default function OwnerRosterPage() {
         if (currentRoster) {
             const rosterStart = formatDate(currentRoster.start_date);
             const rosterEnd = formatDate(currentRoster.end_date);
-            
+
             if (selectedDate < rosterStart || selectedDate > rosterEnd) {
                 setPendingShiftData(payload);
                 setExpansionOpen(true);
@@ -417,7 +493,7 @@ export default function OwnerRosterPage() {
     const openAddShift = (date: string, empId = "", shift: any = null) => {
         setSelectedDate(date);
         setShiftEmployee(empId);
-        
+
         if (shift) {
             setEditingShiftId(shift.shift_id);
             setShiftStart(new Date(shift.start_time).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }));
@@ -435,7 +511,7 @@ export default function OwnerRosterPage() {
             setInitialFormState(null);
             const now = new Date();
             const todayStr = formatDate(now);
-            
+
             if (date === todayStr) {
                 const hour = now.getHours() + 1;
                 const startStr = `${String(hour > 23 ? 23 : hour).padStart(2, "0")}:00`;
@@ -506,12 +582,12 @@ export default function OwnerRosterPage() {
                 drafts++;
             }
         }
-        return { 
-            total, 
-            published, 
-            drafts, 
-            modified: 0, 
-            allPublished: total > 0 && total === published 
+        return {
+            total,
+            published,
+            drafts,
+            modified: 0,
+            allPublished: total > 0 && total === published
         };
     }, [shifts, rangeStart, rangeEnd]);
 
@@ -521,7 +597,7 @@ export default function OwnerRosterPage() {
     const handleDateSelect = (date: Date) => {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
-        
+
         // Find Monday of today's week
         const day = today.getDay();
         const diffToMonday = (day === 0 ? -6 : 1 - day);
@@ -538,7 +614,7 @@ export default function OwnerRosterPage() {
         } else {
             newOffset = (date.getFullYear() - today.getFullYear()) * 12 + (date.getMonth() - today.getMonth());
         }
-        
+
         setOffset(newOffset);
         setIsCalendarOpen(false);
     };
@@ -562,8 +638,8 @@ export default function OwnerRosterPage() {
                                 }}
                                 className={cn(
                                     "px-4 py-1.5 text-xs font-extrabold rounded-md transition-all tracking-tight",
-                                    rosterPeriod === p 
-                                        ? "bg-white text-[hsl(var(--brand))] shadow-sm ring-1 ring-black/5" 
+                                    rosterPeriod === p
+                                        ? "bg-white text-[hsl(var(--brand))] shadow-sm ring-1 ring-black/5"
                                         : "text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"
                                 )}
                             >
@@ -586,7 +662,7 @@ export default function OwnerRosterPage() {
                     <Button variant="outline" size="icon" className="h-9 w-9 rounded-lg" onClick={() => setOffset(offset - 1)}>
                         <ChevronLeft size={18} />
                     </Button>
-                    
+
                     <Popover open={isCalendarOpen} onOpenChange={setIsCalendarOpen}>
                         <PopoverTrigger asChild>
                             <button
@@ -612,18 +688,18 @@ export default function OwnerRosterPage() {
                                         {format(calendarMonth, "MMM yyyy")}
                                     </h4>
                                     <div className="flex gap-1">
-                                        <Button 
-                                            variant="ghost" 
-                                            size="icon" 
-                                            className="h-8 w-8 rounded-full" 
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="h-8 w-8 rounded-full"
                                             onClick={() => setCalendarMonth(subMonths(calendarMonth, 1))}
                                         >
                                             <ChevronLeft size={16} />
                                         </Button>
-                                        <Button 
-                                            variant="ghost" 
-                                            size="icon" 
-                                            className="h-8 w-8 rounded-full" 
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="h-8 w-8 rounded-full"
                                             onClick={() => setCalendarMonth(addMonths(calendarMonth, 1))}
                                         >
                                             <ChevronRight size={16} />
@@ -640,12 +716,12 @@ export default function OwnerRosterPage() {
                                         const start = startOfWeek(startOfMonth(calendarMonth));
                                         const end = endOfWeek(endOfMonth(calendarMonth));
                                         const days = eachDayOfInterval({ start, end });
-                                        
+
                                         return days.map((day) => {
                                             const isSelected = rosterDates.some(d => isSameDay(d, day));
                                             const inMonth = isSameMonth(day, calendarMonth);
                                             const isToday = isSameDay(day, new Date());
-                                            
+
                                             return (
                                                 <button
                                                     key={day.toISOString()}
@@ -665,8 +741,8 @@ export default function OwnerRosterPage() {
                                     })()}
                                 </div>
                                 <div className="mt-4 pt-4 border-t flex justify-center">
-                                    <Button 
-                                        variant="outline" 
+                                    <Button
+                                        variant="outline"
                                         className="w-full bg-[hsl(var(--brand))]/5 border-[hsl(var(--brand))]/20 text-[hsl(var(--brand))] font-bold hover:bg-[hsl(var(--brand))]/10 transition-colors py-5"
                                         onClick={() => {
                                             setOffset(0);
@@ -685,9 +761,9 @@ export default function OwnerRosterPage() {
                         <ChevronRight size={18} />
                     </Button>
 
-                    <Button 
-                        variant="ghost" 
-                        size="sm" 
+                    <Button
+                        variant="ghost"
+                        size="sm"
                         className="h-9 px-3 text-xs font-bold text-[hsl(var(--brand))] hover:bg-[hsl(var(--brand))]/5"
                         onClick={() => {
                             setOffset(0);
@@ -701,8 +777,8 @@ export default function OwnerRosterPage() {
                 <div className="flex items-center gap-3 flex-1 max-w-md mx-4">
                     <div className="relative flex-1 group">
                         <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[hsl(var(--muted-foreground))] group-focus-within:text-[hsl(var(--brand))] transition-colors" />
-                        <Input 
-                            placeholder="Search employee..." 
+                        <Input
+                            placeholder="Search employee..."
                             className="pl-9 h-10 bg-white border-[hsl(var(--border))] rounded-xl focus:ring-[hsl(var(--brand))]/10"
                             value={searchQuery}
                             onChange={(e) => {
@@ -722,7 +798,11 @@ export default function OwnerRosterPage() {
                             className="w-full pl-9 h-10 rounded-xl border border-[hsl(var(--border))] bg-white text-xs font-medium focus:ring-2 focus:ring-[hsl(var(--brand))]/10 outline-none appearance-none cursor-pointer"
                         >
                             <option value="all">All Roles</option>
-                            {roles.map(r => <option key={r} value={r}>{r}</option>)}
+                            {roles.map(r => (
+                                <option key={r} value={r.toLowerCase()}>
+                                    {r.split(' ').map((word: string) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join(' ')}
+                                </option>
+                            ))}
                         </select>
                     </div>
                 </div>
@@ -738,10 +818,10 @@ export default function OwnerRosterPage() {
                             <div className="flex items-center gap-3">
                                 <div className="flex flex-col items-end">
                                     <div className="flex items-center gap-2">
-                                        <Badge 
+                                        <Badge
                                             variant={statusSummary.allPublished ? "default" : "outline"}
-                                            className={statusSummary.allPublished 
-                                                ? "bg-[hsl(var(--success))] hover:bg-[hsl(var(--success))] text-white" 
+                                            className={statusSummary.allPublished
+                                                ? "bg-[hsl(var(--success))] hover:bg-[hsl(var(--success))] text-white"
                                                 : "border-[hsl(var(--warning-foreground))] text-[hsl(var(--warning-foreground))] bg-[hsl(var(--warning))]/10"
                                             }
                                         >
@@ -844,7 +924,7 @@ export default function OwnerRosterPage() {
                                                 "px-1 py-4 text-center font-bold border-b border-l border-[hsl(var(--border))] first:border-l-0 last:border-r-0 transition-colors",
                                                 isToday ? "text-[hsl(var(--brand))] bg-[hsl(var(--brand-light))]/30" : (isPast ? "text-[hsl(var(--muted-foreground))] bg-[hsl(var(--muted))]/30" : "text-[hsl(var(--muted-foreground))]")
                                             )}
-                                            style={{ 
+                                            style={{
                                                 minWidth: (rosterPeriod === "monthly" || rosterPeriod === "fortnightly") ? "0" : "140px",
                                                 width: (rosterPeriod === "monthly" || rosterPeriod === "fortnightly") ? `${100 / (rosterDates.length + 2)}%` : "auto"
                                             }}
@@ -865,10 +945,10 @@ export default function OwnerRosterPage() {
                                 })}
                             </tr>
                         </thead>
-                        <Reorder.Group 
-                            as="tbody" 
-                            axis="y" 
-                            values={paginatedEmployees.map(e => e.employee_id)} 
+                        <Reorder.Group
+                            as="tbody"
+                            axis="y"
+                            values={paginatedEmployees.map(e => e.employee_id)}
                             onReorder={(newOrder) => {
                                 // Update only the current page's order in the main list
                                 const start = (currentPage - 1) * pageSize;
@@ -890,10 +970,10 @@ export default function OwnerRosterPage() {
                                 </tr>
                             ) : (
                                 paginatedEmployees.map((emp: any) => (
-                                    <Reorder.Item 
-                                        as="tr" 
-                                        key={emp.employee_id} 
-                                        value={emp.employee_id} 
+                                    <Reorder.Item
+                                        as="tr"
+                                        key={emp.employee_id}
+                                        value={emp.employee_id}
                                         dragListener={true}
                                         className="border-b border-[hsl(var(--border))] hover:bg-[hsl(var(--muted))]/30 transition-colors bg-white group"
                                     >
@@ -923,7 +1003,7 @@ export default function OwnerRosterPage() {
                                                 {/* Name and Role (Identification Message Bubble - Reveals strictly on profile hover) */}
                                                 <div className={cn(
                                                     "flex flex-col min-w-0 transition-all",
-                                                    rosterPeriod === "monthly" 
+                                                    rosterPeriod === "monthly"
                                                         ? "absolute left-[calc(100%-14px)] z-50 bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-2xl shadow-2xl p-3 px-4 opacity-0 group-hover/profile:opacity-100 group-hover/profile:visible pointer-events-none scale-90 group-hover/profile:scale-100 transform origin-left min-w-[160px] invisible animate-in fade-in slide-in-from-left-2 duration-200"
                                                         : ""
                                                 )}>
@@ -931,7 +1011,7 @@ export default function OwnerRosterPage() {
                                                     {rosterPeriod === "monthly" && (
                                                         <div className="absolute top-1/2 -left-2 -translate-y-1/2 w-4 h-4 bg-[hsl(var(--card))] border-l border-b border-[hsl(var(--border))] rotate-45 rounded-sm" />
                                                     )}
-                                                    
+
                                                     <span className={cn(
                                                         "font-bold truncate text-[hsl(var(--foreground))] relative z-10",
                                                         rosterPeriod === "monthly" ? "text-xs mb-0.5" : "text-sm"
@@ -949,9 +1029,9 @@ export default function OwnerRosterPage() {
                                                 )}>
                                                     <DropdownMenu>
                                                         <DropdownMenuTrigger asChild>
-                                                            <Button 
-                                                                variant="ghost" 
-                                                                size="icon" 
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="icon"
                                                                 className={cn(
                                                                     "h-7 w-7 rounded-full transition-all opacity-0 group-hover/profile:opacity-100 ring-2 ring-transparent group-hover/profile:ring-[hsl(var(--brand))]/10 hover:bg-transparent hover:text-blue-600",
                                                                     rosterPeriod === "monthly" && "h-5 w-5"
@@ -960,20 +1040,20 @@ export default function OwnerRosterPage() {
                                                                 <MoreHorizontal size={rosterPeriod === "monthly" ? 12 : 14} className="text-[hsl(var(--muted-foreground))] hover:text-blue-600" />
                                                             </Button>
                                                         </DropdownMenuTrigger>
-                                                        <DropdownMenuContent 
-                                                            align="end" 
-                                                            side="bottom" 
+                                                        <DropdownMenuContent
+                                                            align="end"
+                                                            side="bottom"
                                                             sideOffset={8}
                                                             className="min-w-[140px] p-1 bg-white/95 backdrop-blur-md border-[hsl(var(--border))] rounded-2xl shadow-2xl animate-in fade-in zoom-in-95 duration-200"
                                                         >
                                                             <DropdownMenuItem asChild className="focus:bg-transparent focus:text-blue-600 data-highlighted:bg-transparent data-highlighted:text-blue-600">
-                                                                <Link 
-                                                                    href={`/owner/employees/${emp.employee_id}`} 
+                                                                <Link
+                                                                    href={`/owner/employees/${emp.employee_id}`}
                                                                     className="font-bold text-[10px] uppercase tracking-[0.15em] cursor-pointer w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl hover:text-blue-600 transition-all group/action"
                                                                 >
                                                                     View Profile
                                                                     <div className="opacity-0 group-hover/action:opacity-100 -translate-x-2 group-hover/action:translate-x-0 transition-all">
-                                                                         →
+                                                                        →
                                                                     </div>
                                                                 </Link>
                                                             </DropdownMenuItem>
@@ -1004,7 +1084,7 @@ export default function OwnerRosterPage() {
                                                 >
                                                     {/* Hover Plus Icon for Quick Add - Only for empty cells */}
                                                     {!isPast && dayShifts.length === 0 && (
-                                                        <button 
+                                                        <button
                                                             className="absolute top-1 right-1 z-10 p-0.5 rounded-md bg-[hsl(var(--brand))] text-white opacity-0 group-hover/cell:opacity-100 transition-opacity shadow-sm hover:scale-110 active:scale-95"
                                                             onClick={(e) => {
                                                                 e.stopPropagation();
@@ -1079,30 +1159,30 @@ export default function OwnerRosterPage() {
                         Showing <span className="text-[hsl(var(--foreground))] font-bold">{Math.min(filteredEmployees.length, (currentPage - 1) * pageSize + 1)}</span> to <span className="text-[hsl(var(--foreground))] font-bold">{Math.min(filteredEmployees.length, currentPage * pageSize)}</span> of <span className="text-[hsl(var(--foreground))] font-bold">{filteredEmployees.length}</span> employees
                     </div>
                     <div className="flex items-center gap-1.5">
-                        <Button 
-                            variant="outline" 
-                            size="icon" 
+                        <Button
+                            variant="outline"
+                            size="icon"
                             disabled={currentPage === 1}
                             onClick={() => setCurrentPage(1)}
                             className="h-8 w-8 rounded-lg border-[hsl(var(--border))]"
                         >
                             <ChevronsLeft size={14} />
                         </Button>
-                        <Button 
-                            variant="outline" 
-                            size="icon" 
+                        <Button
+                            variant="outline"
+                            size="icon"
                             disabled={currentPage === 1}
                             onClick={() => setCurrentPage(currentPage - 1)}
                             className="h-8 w-8 rounded-lg border-[hsl(var(--border))]"
                         >
                             <ChevronLeft size={14} />
                         </Button>
-                        
+
                         <div className="flex items-center gap-1 mx-2">
                             {Array.from({ length: totalPages }, (_, i) => i + 1)
                                 .filter(p => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 1)
                                 .map((p, i, arr) => {
-                                    if (i > 0 && p !== arr[i-1] + 1) {
+                                    if (i > 0 && p !== arr[i - 1] + 1) {
                                         return <span key={`dots-${p}`} className="text-[hsl(var(--muted-foreground))]">...</span>;
                                     }
                                     return (
@@ -1111,8 +1191,8 @@ export default function OwnerRosterPage() {
                                             onClick={() => setCurrentPage(p)}
                                             className={cn(
                                                 "h-8 w-8 text-xs font-bold rounded-lg transition-all",
-                                                currentPage === p 
-                                                    ? "bg-[hsl(var(--brand))] text-white shadow-md shadow-[hsl(var(--brand))]/20" 
+                                                currentPage === p
+                                                    ? "bg-[hsl(var(--brand))] text-white shadow-md shadow-[hsl(var(--brand))]/20"
                                                     : "hover:bg-[hsl(var(--muted))] text-[hsl(var(--foreground))]"
                                             )}
                                         >
@@ -1122,18 +1202,18 @@ export default function OwnerRosterPage() {
                                 })}
                         </div>
 
-                        <Button 
-                            variant="outline" 
-                            size="icon" 
+                        <Button
+                            variant="outline"
+                            size="icon"
                             disabled={currentPage >= totalPages}
                             onClick={() => setCurrentPage(currentPage + 1)}
                             className="h-8 w-8 rounded-lg border-[hsl(var(--border))]"
                         >
                             <ChevronRight size={14} />
                         </Button>
-                        <Button 
-                            variant="outline" 
-                            size="icon" 
+                        <Button
+                            variant="outline"
+                            size="icon"
                             disabled={currentPage >= totalPages}
                             onClick={() => setCurrentPage(totalPages)}
                             className="h-8 w-8 rounded-lg border-[hsl(var(--border))]"
@@ -1150,19 +1230,19 @@ export default function OwnerRosterPage() {
                         <DialogTitle>{editingShiftId ? 'Edit Shift' : 'Add Shift'}</DialogTitle>
                         <DialogDescription>
                             {editingShiftId ? (
-                                new Date() >= (new Date((shifts.find((s: any) => s.shift_id === editingShiftId) || {}).start_time)) 
-                                ? "This shift has already started and cannot be modified." 
-                                : "Modify shift details or remove it"
+                                new Date() >= (new Date((shifts.find((s: any) => s.shift_id === editingShiftId) || {}).start_time))
+                                    ? "This shift has already started and cannot be modified."
+                                    : "Modify shift details or remove it"
                             ) : `Assign a shift for ${selectedDate ? new Date(selectedDate + "T00:00:00").toLocaleDateString("en-AU", { weekday: "long", month: "short", day: "numeric" }) : ""}`}
                         </DialogDescription>
                     </DialogHeader>
 
                     <div className="space-y-4 py-2">
-                        <Input 
-                            label="Shift Date" 
-                            type="date" 
-                            value={selectedDate} 
-                            onChange={(e) => setSelectedDate(e.target.value)} 
+                        <Input
+                            label="Shift Date"
+                            type="date"
+                            value={selectedDate}
+                            onChange={(e) => setSelectedDate(e.target.value)}
                             disabled={editingShiftId ? new Date() >= (new Date((shifts.find((s: any) => s.shift_id === editingShiftId) || {}).start_time)) : false}
                         />
                         <div className="space-y-1.5">
@@ -1216,8 +1296,8 @@ export default function OwnerRosterPage() {
                         </div>
                         <div className="flex items-center gap-2">
                             <Button variant="outline" onClick={() => setAddShiftOpen(false)}>Cancel</Button>
-                            <Button 
-                                onClick={handleAddShift} 
+                            <Button
+                                onClick={handleAddShift}
                                 loading={createShiftMutation.isPending || updateShiftMutation.isPending}
                                 disabled={editingShiftId ? (!isDirty || (new Date() >= (new Date((shifts.find((s: any) => s.shift_id === editingShiftId) || {}).start_time)))) : false}
                             >
@@ -1242,8 +1322,8 @@ export default function OwnerRosterPage() {
                     </DialogHeader>
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setDeleteConfirmOpen(false)}>Cancel</Button>
-                        <Button 
-                            variant="default" 
+                        <Button
+                            variant="default"
                             className="bg-[hsl(var(--danger))] text-white hover:bg-[hsl(var(--danger))]/90"
                             onClick={() => editingShiftId && deleteShiftMutation.mutate(editingShiftId)}
                             loading={deleteShiftMutation.isPending}
@@ -1314,21 +1394,21 @@ export default function OwnerRosterPage() {
                                 <h3 className="text-sm font-bold text-[hsl(var(--muted-foreground))] uppercase tracking-wider mb-4">Dates</h3>
                                 <div className="space-y-3">
                                     {[
-                                        { 
-                                            id: 'next_week', 
-                                            label: `Copy to next ${rosterPeriod === 'weekly' ? 'week' : rosterPeriod === 'fortnightly' ? 'fortnight' : 'month'}` 
+                                        {
+                                            id: 'next_week',
+                                            label: `Copy to next ${rosterPeriod === 'weekly' ? 'week' : rosterPeriod === 'fortnightly' ? 'fortnight' : 'month'}`
                                         },
-                                        { 
-                                            id: 'prev_week', 
-                                            label: `Copy from previous ${rosterPeriod === 'weekly' ? 'week' : rosterPeriod === 'fortnightly' ? 'fortnight' : 'month'}` 
+                                        {
+                                            id: 'prev_week',
+                                            label: `Copy from previous ${rosterPeriod === 'weekly' ? 'week' : rosterPeriod === 'fortnightly' ? 'fortnight' : 'month'}`
                                         }
                                     ].map((opt) => (
-                                        <label 
+                                        <label
                                             key={opt.id}
                                             className={cn(
                                                 "flex items-center gap-3 p-3 rounded-xl border-2 transition-all cursor-pointer",
-                                                copyOption === opt.id 
-                                                    ? "border-[hsl(var(--brand))] bg-[hsl(var(--brand))]/5" 
+                                                copyOption === opt.id
+                                                    ? "border-[hsl(var(--brand))] bg-[hsl(var(--brand))]/5"
                                                     : "border-[hsl(var(--border))] hover:border-[hsl(var(--brand))]/30"
                                             )}
                                         >
@@ -1338,11 +1418,11 @@ export default function OwnerRosterPage() {
                                             )}>
                                                 {copyOption === opt.id && <div className="w-2.5 h-2.5 rounded-full bg-[hsl(var(--brand))]" />}
                                             </div>
-                                            <input 
-                                                type="radio" 
-                                                className="hidden" 
-                                                name="copyOption" 
-                                                value={opt.id} 
+                                            <input
+                                                type="radio"
+                                                className="hidden"
+                                                name="copyOption"
+                                                value={opt.id}
                                                 checked={copyOption === opt.id}
                                                 onChange={() => setCopyOption(opt.id as any)}
                                             />
@@ -1360,16 +1440,16 @@ export default function OwnerRosterPage() {
                                 className="px-8 py-6 rounded-xl bg-[hsl(var(--brand))] text-white hover:bg-[hsl(var(--brand-hover))] font-bold text-lg shadow-lg shadow-[hsl(var(--brand))]/20"
                                 onClick={() => {
                                     let payload: any = { source_from: "", source_to: "", target_start: "" };
-                                    
+
                                     if (copyOption === 'next_week') {
                                         let daysToAdd = 7;
                                         if (rosterPeriod === 'fortnightly') daysToAdd = 14;
-                                        
+
                                         if (rosterPeriod === 'monthly') {
                                             const dSource = new Date(rangeStart + 'T00:00:00Z');
                                             const dTarget = new Date(dSource);
                                             dTarget.setMonth(dTarget.getUTCMonth() + 1);
-                                            
+
                                             payload = {
                                                 source_from: rangeStart,
                                                 source_to: rangeEnd,
@@ -1390,11 +1470,11 @@ export default function OwnerRosterPage() {
                                             const dSource = new Date(rangeStart + 'T00:00:00Z');
                                             const dTarget = new Date(dSource);
                                             dTarget.setMonth(dTarget.getUTCMonth() - 1);
-                                            
+
                                             // Source is prev month, target is current
                                             const dPrevEnd = new Date(dSource);
                                             dPrevEnd.setUTCDate(dPrevEnd.getUTCDate() - 1);
-                                            
+
                                             payload = {
                                                 source_from: formatDate(dTarget),
                                                 source_to: formatDate(dPrevEnd),
@@ -1408,7 +1488,7 @@ export default function OwnerRosterPage() {
                                             };
                                         }
                                     }
-                                    
+
                                     duplicateRosterMutation.mutate(payload);
                                 }}
                                 loading={duplicateRosterMutation.isPending}
@@ -1431,7 +1511,7 @@ export default function OwnerRosterPage() {
                             Review the outcome of your duplication
                         </DialogDescription>
                     </DialogHeader>
-                    
+
                     <div className="p-6 space-y-4">
                         <div className="grid grid-cols-2 gap-3">
                             <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-100 text-center">
@@ -1440,8 +1520,8 @@ export default function OwnerRosterPage() {
                             </div>
                             <div className={cn(
                                 "p-4 rounded-xl text-center border",
-                                (copyResult?.overlapCount ?? 0) > 0 
-                                    ? "bg-amber-50 border-amber-100 text-amber-600" 
+                                (copyResult?.overlapCount ?? 0) > 0
+                                    ? "bg-amber-50 border-amber-100 text-amber-600"
                                     : "bg-gray-50 border-gray-100 text-gray-400"
                             )}>
                                 <p className="text-2xl font-bold">{copyResult?.overlapCount}</p>
@@ -1467,15 +1547,15 @@ export default function OwnerRosterPage() {
                     </div>
 
                     <DialogFooter className="p-6 pt-0 bg-gray-50/50 flex flex-row gap-3">
-                        <Button 
-                            variant="outline" 
+                        <Button
+                            variant="outline"
                             className="flex-1 rounded-xl h-12 font-bold border-gray-200 hover:bg-amber-50 hover:text-amber-600 hover:border-amber-100 transition-all group"
                             onClick={() => setUndoConfirmOpen(true)}
                         >
                             <RefreshCcw className="w-4 h-4 mr-2 group-hover:rotate-180 transition-transform duration-500" />
                             Undo Last Copy
                         </Button>
-                        <Button 
+                        <Button
                             className="flex-1 rounded-xl h-12 font-bold bg-[hsl(var(--brand))] hover:bg-[hsl(var(--brand))]/90 shadow-lg shadow-[hsl(var(--brand))]/20"
                             onClick={() => setResultModalOpen(false)}
                         >
@@ -1492,25 +1572,25 @@ export default function OwnerRosterPage() {
                         <div className="w-12 h-12 rounded-2xl bg-amber-100 flex items-center justify-center mx-auto">
                             <Clock className="w-6 h-6 text-amber-600" />
                         </div>
-                        
+
                         <div className="text-center space-y-2">
                             <h3 className="text-lg font-bold text-gray-900">Undo Copy?</h3>
                             <p className="text-sm text-gray-500 leading-relaxed px-2">
-                                Are you sure you want to undo the last copy? This will remove 
-                                <span className="font-bold text-gray-900 mx-1">{lastNewShiftIds.length}</span> 
+                                Are you sure you want to undo the last copy? This will remove
+                                <span className="font-bold text-gray-900 mx-1">{lastNewShiftIds.length}</span>
                                 newly created shifts.
                             </p>
                         </div>
 
                         <div className="grid grid-cols-2 gap-3 pt-2">
-                            <Button 
-                                variant="outline" 
+                            <Button
+                                variant="outline"
                                 className="rounded-xl h-11 font-bold border-gray-200"
                                 onClick={() => setUndoConfirmOpen(false)}
                             >
                                 Cancel
                             </Button>
-                            <Button 
+                            <Button
                                 variant="danger"
                                 className="rounded-xl h-11 font-bold shadow-lg shadow-red-100"
                                 onClick={() => undoLastCopyMutation.mutate()}

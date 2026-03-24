@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
+import { createClient } from "@/lib/supabase/client";
 
 interface NotificationData {
     id: string;
@@ -33,8 +34,32 @@ export function NotificationBell() {
             return result.data || [];
         },
         enabled: !!user,
-        refetchInterval: 15000, // Poll every 15s to update real-time
     });
+
+    // Real-time listener for notifications
+    useEffect(() => {
+        if (!user) return;
+        const supabase = createClient();
+        const channel = supabase
+            .channel('notifications-realtime')
+            .on(
+                'postgres_changes',
+                {
+                    event: '*',
+                    schema: 'public',
+                    table: 'notifications',
+                    filter: `user_id=eq.${user.user_id}`
+                },
+                () => {
+                    queryClient.invalidateQueries({ queryKey: ["notifications", user.user_id] });
+                }
+            )
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [user, queryClient]);
 
     const unreadCount = notifications.filter(n => !n.is_read).length;
 
@@ -116,7 +141,7 @@ export function NotificationBell() {
                         </div>
 
                         {/* List */}
-                        <div className="max-h-[70vh] overflow-y-auto">
+                        <div className="max-h-[310px] overflow-y-auto">
                             {notifications.length === 0 ? (
                                 <div className="flex flex-col items-center justify-center space-y-2 px-4 py-8 text-center">
                                     <Bell className="h-8 w-8 text-[hsl(var(--muted-foreground))]/50" />
@@ -134,20 +159,22 @@ export function NotificationBell() {
                                             )}
                                         >
                                             <div className="flex items-start justify-between gap-2">
-                                                <div className="min-w-0 flex-1">
-                                                    <p className={cn(
-                                                        "text-sm", 
-                                                        !notification.is_read ? "font-semibold text-[hsl(var(--foreground))]" : "font-medium text-[hsl(var(--foreground))]"
-                                                    )}>
-                                                        {notification.title}
-                                                    </p>
-                                                    <p className="mt-1 text-xs text-[hsl(var(--muted-foreground))] line-clamp-2">
-                                                        {notification.message}
-                                                    </p>
-                                                    <p className="mt-2 text-[10px] text-[hsl(var(--muted-foreground))]">
-                                                        {new Date(notification.created_at).toLocaleString()}
-                                                    </p>
-                                                </div>
+                                                 <div className="min-w-0 flex-1">
+                                                     <div className="flex items-start justify-between gap-4 mb-0.5">
+                                                         <p className={cn(
+                                                             "text-sm", 
+                                                             !notification.is_read ? "font-semibold text-[hsl(var(--foreground))]" : "font-medium text-[hsl(var(--foreground))]"
+                                                         )}>
+                                                             {notification.title}
+                                                         </p>
+                                                         <span className="text-[10px] text-[hsl(var(--muted-foreground))] whitespace-nowrap pt-0.5">
+                                                            {new Date(notification.created_at).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true })}
+                                                         </span>
+                                                     </div>
+                                                     <p className="text-xs text-[hsl(var(--muted-foreground))] line-clamp-2">
+                                                         {notification.message}
+                                                     </p>
+                                                 </div>
                                                 {!notification.is_read && (
                                                     <div className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-[hsl(var(--brand))]" />
                                                 )}
