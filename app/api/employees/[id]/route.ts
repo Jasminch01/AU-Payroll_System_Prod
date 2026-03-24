@@ -97,7 +97,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
  */
 export async function PUT(request: NextRequest, { params }: RouteParams) {
     try {
-        const authUser = await requireRole('owner', "manager");
+        const authUser = await requireRole('owner', "manager", "employee");
         if (!authUser) {
             return errorResponse('Unauthorized. Owner access required.', 401);
         }
@@ -123,7 +123,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
         ];
 
         // Only owners (or the employee themselves, if we supported it) can update bank details and pin via this endpoint
-        if (authUser.role === 'owner') {
+        if (authUser.role === 'owner' || authUser.role === 'employee') {
             allowedFields.push('bank_details', 'kiosk_pin', 'bank_account_name', 'bank_bsb', 'bank_account_number', 'ABN/TFN/ACN');
         }
 

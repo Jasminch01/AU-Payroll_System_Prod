@@ -17,7 +17,6 @@ export default function ProfilePage() {
     const queryClient = useQueryClient();
     const { user } = useAuth();
     const role = user?.role;
-    const [editing, setEditing] = useState(false);
     const [formData, setFormData] = useState<any>(null);
     const supabase = createClient();
 
@@ -41,17 +40,22 @@ export default function ProfilePage() {
     }, [profile, formData]);
 
     const updateMutation = useMutation({
-        mutationFn: (data: any) => apiPut(`/profile`, data),
+        mutationFn: (data: any) => {
+            return apiPut(`/profile`, data);
+        },
         onSuccess: () => {
-            toast.success("Profile updated!");
-            queryClient.invalidateQueries({ queryKey: ["user-profile"] });
+            toast.success("Employee updated");
+
+            queryClient.invalidateQueries({ queryKey: ["employee", user?.user_id] });
+            queryClient.invalidateQueries({ queryKey: ["employees"] });
             queryClient.invalidateQueries({ queryKey: ["auth-me"] });
-            setEditing(false);
+
             setFormData(null);
         },
-        onError: (err: Error) => toast.error(err.message),
+        onError: (err: Error) => {
+            toast.error(err.message);
+        },
     });
-
     const handlePasswordUpdate = async () => {
         if (newPwd !== confirmPwd) {
             toast.error("Passwords do not match");
@@ -135,41 +139,37 @@ export default function ProfilePage() {
                             </div>
                         </div>
                         <div className="shrink-0 pt-4 md:pt-0">
-                            {editing ? (
-                                <div className="flex items-center gap-3">
-                                    <Button variant="outline" size="sm" onClick={() => { setEditing(false); setFormData(profile ? { ...profile } : null); }}>Cancel</Button>
-                                    <Button
-                                        size="sm"
-                                        onClick={() => {
-                                            const payload: any = {
-                                                phone: data.phone,
-                                                dob: data.dob,
-                                                emergency_contact_name: data.emergency_contact_name,
-                                                emergency_contact_phone: data.emergency_contact_phone,
-                                                bank_details: data.bank_details,
-                                                kiosk_pin: data.kiosk_pin,
-                                            };
-                                            if (role === 'owner' && data.Business) {
-                                                payload.business = {
-                                                    business_name: data.Business.business_name,
-                                                    abn: data.Business.abn,
-                                                    state: data.Business.state,
-                                                    labour_threshold_min: data.Business.labour_threshold_min ? parseFloat(data.Business.labour_threshold_min) : null,
-                                                    labour_theshold_max: data.Business.labour_theshold_max ? parseFloat(data.Business.labour_theshold_max) : null,
-                                                };
-                                            }
-                                            updateMutation.mutate(payload);
-                                        }}
-                                        loading={updateMutation.isPending}
-                                    >
-                                        <Save size={16} className="mr-2" /> Save Changes
-                                    </Button>
-                                </div>
-                            ) : (
-                                <Button onClick={() => setEditing(true)} size="lg" className="rounded-full px-8 shadow-lg transition-all hover:scale-105">
-                                    Edit Profile
-                                </Button>
-                            )}
+                            <Button
+                                size="sm"
+                                onClick={() => {
+                                    const payload: any = {
+                                        first_name: data.first_name,
+                                        last_name: data.last_name,
+                                        phone: data.phone,
+                                        dob: data.dob,
+                                        emergency_contact_name: data.emergency_contact_name,
+                                        emergency_contact_phone: data.emergency_contact_phone,
+                                        bank_account_name: data.bank_account_name,
+                                        bank_bsb: data.bank_bsb,
+                                        bank_account_number: data.bank_account_number,
+                                        "ABN/TFN/ACN": data["ABN/TFN/ACN"],
+                                        kiosk_pin: data.kiosk_pin,
+                                    };
+                                    if (role === 'owner' && data.Business) {
+                                        payload.business = {
+                                            business_name: data.Business.business_name,
+                                            abn: data.Business.abn,
+                                            state: data.Business.state,
+                                            labour_threshold_min: data.Business.labour_threshold_min ? parseFloat(data.Business.labour_threshold_min) : null,
+                                            labour_theshold_max: data.Business.labour_theshold_max ? parseFloat(data.Business.labour_theshold_max) : null,
+                                        };
+                                    }
+                                    updateMutation.mutate(payload);
+                                }}
+                                loading={updateMutation.isPending}
+                            >
+                                <Save size={16} className="mr-2" /> Save Changes
+                            </Button>
                         </div>
                     </CardContent>
                 </Card>
@@ -189,17 +189,27 @@ export default function ProfilePage() {
                             <CardHeader><CardTitle className="text-base flex items-center gap-2"><User size={18} /> Personal Details</CardTitle></CardHeader>
                             <CardContent className="space-y-4">
                                 <div className="grid grid-cols-2 gap-4">
-                                    <Input label="First Name" value={data.first_name || ""} onChange={(e) => updateField("first_name", e.target.value)} disabled={!editing} />
-                                    <Input label="Last Name" value={data.last_name || ""} onChange={(e) => updateField("last_name", e.target.value)} disabled={!editing} />
+                                    <Input label="First Name" value={data.first_name || ""} onChange={(e) => updateField("first_name", e.target.value)} disabled />
+                                    <Input label="Last Name" value={data.last_name || ""} onChange={(e) => updateField("last_name", e.target.value)} disabled />
                                 </div>
                                 <Input label="Email Address" value={user?.email || ""} disabled />
                                 {role !== 'owner' && (
                                     <>
                                         <div className="grid grid-cols-2 gap-4">
-                                            <Input label="Phone Number" value={data.phone || ""} onChange={(e) => updateField("phone", e.target.value)} disabled={!editing} />
-                                            <Input label="Date of Birth" type="date" value={data.dob || ""} onChange={(e) => updateField("dob", e.target.value)} disabled={!editing} />
+                                            <Input label="Phone Number" value={data.phone || ""} onChange={(e) => updateField("phone", e.target.value)} />
+                                            <Input label="Date of Birth" type="date" value={data.dob || ""} onChange={(e) => updateField("dob", e.target.value)} />
                                         </div>
-                                        <Input label="Bank Details (BSB & Account)" value={data.bank_details || ""} onChange={(e) => updateField("bank_details", e.target.value)} disabled={!editing} placeholder="e.g. BSB: 062000, Acc: 12345678" />
+                                        <div className="pt-4 border-t border-[hsl(var(--border))]">
+                                            <h4 className="text-sm font-semibold mb-3">Bank Details</h4>
+                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                                <Input label="Account Name" value={data.bank_account_name || ""} onChange={(e) => updateField("bank_account_name", e.target.value)} />
+                                                <Input label="BSB Number" value={data.bank_bsb || ""} onChange={(e) => updateField("bank_bsb", e.target.value)} />
+                                                <Input label="Account Number" value={data.bank_account_number || ""} onChange={(e) => updateField("bank_account_number", e.target.value)} />
+                                            </div>
+                                            <div className="mt-4">
+                                                <Input label="ABN / TFN / ACN" value={data["ABN/TFN/ACN"] || ""} onChange={(e) => updateField("ABN/TFN/ACN", e.target.value)} />
+                                            </div>
+                                        </div>
                                     </>
                                 )}
                             </CardContent>
@@ -209,8 +219,8 @@ export default function ProfilePage() {
                             <Card>
                                 <CardHeader><CardTitle className="text-base flex items-center gap-2"><Phone size={18} /> Emergency Contact</CardTitle></CardHeader>
                                 <CardContent className="space-y-4">
-                                    <Input label="Contact Name" value={data.emergency_contact_name || ""} onChange={(e) => updateField("emergency_contact_name", e.target.value)} disabled={!editing} />
-                                    <Input label="Contact Phone" value={data.emergency_contact_phone || ""} onChange={(e) => updateField("emergency_contact_phone", e.target.value)} disabled={!editing} />
+                                    <Input label="Contact Name" value={data.emergency_contact_name || ""} onChange={(e) => updateField("emergency_contact_name", e.target.value)} />
+                                    <Input label="Contact Phone" value={data.emergency_contact_phone || ""} onChange={(e) => updateField("emergency_contact_phone", e.target.value)} />
                                 </CardContent>
                             </Card>
                         )}
@@ -232,7 +242,6 @@ export default function ProfilePage() {
                                         maxLength={4}
                                         value={data.kiosk_pin || ""}
                                         onChange={(e) => updateField("kiosk_pin", e.target.value.replace(/[^0-9]/g, ''))}
-                                        disabled={!editing}
                                         placeholder="Enter 4 digits to update"
                                     />
                                 </CardContent>
@@ -297,20 +306,20 @@ export default function ProfilePage() {
                                 <CardHeader><CardTitle className="text-base flex items-center gap-2"><Building2 size={18} /> Business Information</CardTitle></CardHeader>
                                 <CardContent>
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                        <Input label="Business Name" value={data.Business?.business_name || ""} onChange={(e) => updateBusinessField("business_name", e.target.value)} disabled={!editing} />
-                                        <Input label="ABN (Australian Business Number)" value={data.Business?.abn || ""} onChange={(e) => updateBusinessField("abn", e.target.value)} disabled={!editing} />
-                                        <Input label="Registered State" value={data.Business?.state || ""} onChange={(e) => updateBusinessField("state", e.target.value)} disabled={!editing} />
+                                        <Input label="Business Name" value={data.Business?.business_name || ""} onChange={(e) => updateBusinessField("business_name", e.target.value)} />
+                                        <Input label="ABN (Australian Business Number)" value={data.Business?.abn || ""} onChange={(e) => updateBusinessField("abn", e.target.value)} />
+                                        <Input label="Registered State" value={data.Business?.state || ""} onChange={(e) => updateBusinessField("state", e.target.value)} />
                                         <div className="sm:col-span-2 grid grid-cols-2 gap-4 pt-2 border-t border-[hsl(var(--border))] mt-2">
                                             <div className="pt-2">
                                                 <h4 className="text-sm font-semibold mb-3">Labour Thresholds</h4>
                                                 <div className="grid grid-cols-2 gap-4">
-                                                    <Input label="Min %" type="number" step="0.1" value={data.Business?.labour_threshold_min || ""} onChange={(e) => updateBusinessField("labour_threshold_min", e.target.value)} disabled={!editing} />
-                                                    <Input label="Max %" type="number" step="0.1" value={data.Business?.labour_theshold_max || ""} onChange={(e) => updateBusinessField("labour_theshold_max", e.target.value)} disabled={!editing} />
+                                                    <Input label="Min %" type="number" step="0.1" value={data.Business?.labour_threshold_min || ""} onChange={(e) => updateBusinessField("labour_threshold_min", e.target.value)} />
+                                                    <Input label="Max %" type="number" step="0.1" value={data.Business?.labour_theshold_max || ""} onChange={(e) => updateBusinessField("labour_theshold_max", e.target.value)} />
                                                 </div>
                                             </div>
                                         </div>
                                     </div>
-                                    {!editing && <p className="text-xs text-[hsl(var(--muted-foreground))] mt-4">Only owners can modify business information.</p>}
+                                    <p className="text-xs text-[hsl(var(--muted-foreground))] mt-4">Click Save Changes to update business information.</p>
                                 </CardContent>
                             </Card>
                         </TabsContent>

@@ -15,7 +15,8 @@ export async function POST(request: NextRequest) {
         const body = await request.json();
         const { 
             email, password, first_name, last_name, join_code,
-            phone, dob, bank_details, emergency_contact_name, emergency_contact_phone, kiosk_pin
+            phone, dob, bank_details, bank_account_name, bank_bsb, bank_account_number, "ABN/TFN/ACN": abnTfnAcn,
+            emergency_contact_name, emergency_contact_phone, kiosk_pin
         } = body;
 
         if (!email || !password || !first_name || !last_name || !join_code) {
@@ -88,6 +89,10 @@ export async function POST(request: NextRequest) {
                 phone: phone || '',
                 dob: dob || '1900-01-01',
                 bank_details: bank_details || '',
+                bank_account_name: bank_account_name || '',
+                bank_bsb: bank_bsb || '',
+                bank_account_number: bank_account_number || '',
+                "ABN/TFN/ACN": abnTfnAcn || '',
                 emergency_contact_name: emergency_contact_name || '',
                 emergency_contact_phone: emergency_contact_phone || '',
                 kiosk_pin: hashedPin,
