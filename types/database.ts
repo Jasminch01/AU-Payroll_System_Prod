@@ -5,7 +5,7 @@
 
 // ==================== ENUMS ====================
 
-export type EmployeeType = 'full_time' | 'part_time' | 'casual';
+export type EmployeeType = 'full_time' | 'part_time' | 'casual' | 'contract';
 
 export type PayCycle = 'weekly' | 'fortnightly' | 'monthly';
 
@@ -68,11 +68,12 @@ export interface Employee {
   bank_account_name: string | null;
   bank_bsb: string | null;
   bank_account_number: string | null;
-  "ABN/TFN/ACN": string | null;
+  abn: string | null;
+  tfn: string | null;
   emergency_contact_name: string;
   emergency_contact_phone: string;
   employment_type: EmployeeType | null;
-  role_title: string;
+  role_title: string | null;
   pay_cycle: PayCycle | null;
   start_date: string;
   end_date: string | null;

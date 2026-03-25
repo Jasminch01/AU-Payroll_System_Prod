@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
         const businessPrefix = business?.business_name ? generateBusinessPrefix(business.business_name) : 'EMP';
 
         for (const emp of employeesToInvite) {
-            const validationError = validateRequiredFields(emp, ['email', 'first_name', 'last_name', 'role_title']);
+            const validationError = validateRequiredFields(emp, ['email', 'first_name', 'last_name']);
             if (validationError) {
                 results.push({ email: emp.email, success: false, error: validationError });
                 continue;
