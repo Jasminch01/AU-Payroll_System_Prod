@@ -3,6 +3,7 @@
 import React, { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
+import { cn } from "@/lib/utils";
 import { DashboardLayout } from "@/components/layout";
 import { DataTable, Column } from "@/components/ui/data-table";
 import { Button } from "@/components/ui/button";
@@ -49,7 +50,7 @@ export default function OwnerEmployeesPage() {
 
     // Bulk Invite state
     const [bulkInviteOpen, setBulkInviteOpen] = useState(false);
-    const [bulkData, setBulkData] = useState<any[]>([{ first_name: '', last_name: '', email: '', role_title: '', phone: '' }]);
+    const [bulkData, setBulkData] = useState<any[]>([{ first_name: '', last_name: '', email: '', role_title: '', phone: '', employment_type: 'full_time', invite_as: 'employee' }]);
 
     // Join Code state
     const [joinCode, setJoinCode] = useState<string | null>(null);
@@ -65,7 +66,7 @@ export default function OwnerEmployeesPage() {
         weekday_rate: '',
         password: '',
         invite_as: 'employee',
-        bank_account_name: '', bank_bsb: '', bank_account_number: '', "ABN/TFN/ACN": ''
+        bank_account_name: '', bank_bsb: '', bank_account_number: '', abn: '', tfn: ''
     });
 
     const { user } = useAuth();
@@ -161,7 +162,7 @@ export default function OwnerEmployeesPage() {
                 password: '',
                 invite_as: 'employee',
                 employee_id: '',
-                bank_account_name: '', bank_bsb: '', bank_account_number: '', "ABN/TFN/ACN": ''
+                bank_account_name: '', bank_bsb: '', bank_account_number: '', abn: '', tfn: ''
             });
         },
         // consol.log
@@ -169,7 +170,7 @@ export default function OwnerEmployeesPage() {
     });
 
     const handleManualAdd = () => {
-        if (!manualData.email || !manualData.password || !manualData.first_name || !manualData.last_name || !manualData.dob || !manualData.role_title || !manualData.start_date) {
+        if (!manualData.email || !manualData.password || !manualData.first_name || !manualData.last_name || !manualData.dob || !manualData.start_date) {
             return toast.error("Please fill in all required (*) fields.");
         }
         addManualMutation.mutate({
@@ -189,12 +190,12 @@ export default function OwnerEmployeesPage() {
         setInvEmploymentType("full_time");
         setInvRate("");
         setInvAs("employee");
-        setBulkData([{ first_name: '', last_name: '', email: '', role_title: '', phone: '' }]);
+        setBulkData([{ first_name: '', last_name: '', email: '', role_title: '', phone: '', employment_type: 'full_time', invite_as: 'employee' }]);
     };
 
     const handleInvite = () => {
-        if (!invEmail || !invFirstName || !invLastName || !invRole) {
-            return toast.error("Please fill in first name, last name, email and role");
+        if (!invEmail || !invFirstName || !invLastName) {
+            return toast.error("Please fill in first name, last name, and email.");
         }
         inviteMutation.mutate({
             email: invEmail,
@@ -209,9 +210,9 @@ export default function OwnerEmployeesPage() {
     };
 
     const handleBulkInvite = () => {
-        const validEmployees = bulkData.filter(e => e.email && e.first_name && e.last_name && e.role_title);
+        const validEmployees = bulkData.filter(e => e.email && e.first_name && e.last_name);
         if (validEmployees.length === 0) {
-            return toast.error("Please enter at least one employee with required details (First Name, Last Name, Email, Role)");
+            return toast.error("Please enter at least one employee with required details (First Name, Last Name, Email)");
         }
         inviteMutation.mutate({ employees: validEmployees });
     };
@@ -464,9 +465,14 @@ export default function OwnerEmployeesPage() {
                         </div>
 
                         <div className="grid grid-cols-2 gap-3">
-                            <Input label="Role Title" showAsterisk placeholder="e.g. Barista" value={invRole} onChange={(e) => setInvRole(e.target.value)} />
+                            <Input label="Role Title" placeholder="e.g. Barista" value={invRole} onChange={(e) => setInvRole(e.target.value)} />
                             <div className="space-y-1.5">
-                                <label className="text-sm font-medium">Employment Type</label>
+                                <label className="text-sm font-medium">
+                                    Employment Type <span className={cn(
+                                        "ml-0.5 transition-colors duration-200",
+                                        invEmploymentType ? "text-[hsl(var(--foreground))]" : "text-[#FF4A4A]"
+                                    )}>*</span>
+                                </label>
                                 <select
                                     value={invEmploymentType}
                                     onChange={(e) => setInvEmploymentType(e.target.value)}
@@ -475,6 +481,7 @@ export default function OwnerEmployeesPage() {
                                     <option value="full_time">Full Time</option>
                                     <option value="part_time">Part Time</option>
                                     <option value="casual">Casual</option>
+                                    <option value="contract">Contract</option>
                                 </select>
                             </div>
                         </div>
@@ -556,41 +563,59 @@ export default function OwnerEmployeesPage() {
                                     <tr key={idx} className="group hover:bg-slate-50/50 transition-colors">
                                         <td className="py-3 px-4">
                                             <div className="flex gap-2">
-                                                <input
-                                                    value={row.first_name}
-                                                    onChange={(e) => {
-                                                        const newBulk = [...bulkData];
-                                                        newBulk[idx].first_name = e.target.value;
-                                                        setBulkData(newBulk);
-                                                    }}
-                                                    placeholder="First Name"
-                                                    className="w-1/2 h-9 bg-slate-50/50 border border-slate-200 rounded-lg px-3 text-xs focus:ring-1 focus:ring-[#3724B3] focus:border-[#3724B3] outline-none"
-                                                />
-                                                <input
-                                                    value={row.last_name}
-                                                    onChange={(e) => {
-                                                        const newBulk = [...bulkData];
-                                                        newBulk[idx].last_name = e.target.value;
-                                                        setBulkData(newBulk);
-                                                    }}
-                                                    placeholder="Last Name"
-                                                    className="w-1/2 h-9 bg-slate-50/50 border border-slate-200 rounded-lg px-3 text-xs focus:ring-1 focus:ring-[#3724B3] focus:border-[#3724B3] outline-none"
-                                                />
+                                                <div className="relative w-1/2">
+                                                    <input
+                                                        value={row.first_name}
+                                                        onChange={(e) => {
+                                                            const newBulk = [...bulkData];
+                                                            newBulk[idx].first_name = e.target.value;
+                                                            setBulkData(newBulk);
+                                                        }}
+                                                        placeholder="First Name"
+                                                        className="w-full h-9 bg-slate-50/50 border border-slate-200 rounded-lg px-3 text-xs focus:ring-1 focus:ring-[#3724B3] focus:border-[#3724B3] outline-none"
+                                                    />
+                                                    <span className={cn(
+                                                        "absolute right-2 top-2.5 text-[10px] transition-colors duration-200",
+                                                        row.first_name ? "text-slate-400" : "text-[#FF4A4A]"
+                                                    )}>*</span>
+                                                </div>
+                                                <div className="relative w-1/2">
+                                                    <input
+                                                        value={row.last_name}
+                                                        onChange={(e) => {
+                                                            const newBulk = [...bulkData];
+                                                            newBulk[idx].last_name = e.target.value;
+                                                            setBulkData(newBulk);
+                                                        }}
+                                                        placeholder="Last Name"
+                                                        className="w-full h-9 bg-slate-50/50 border border-slate-200 rounded-lg px-3 text-xs focus:ring-1 focus:ring-[#3724B3] focus:border-[#3724B3] outline-none"
+                                                    />
+                                                    <span className={cn(
+                                                        "absolute right-2 top-2.5 text-[10px] transition-colors duration-200",
+                                                        row.last_name ? "text-slate-400" : "text-[#FF4A4A]"
+                                                    )}>*</span>
+                                                </div>
                                             </div>
                                         </td>
                                         <td className="py-3 px-4">
                                             <div className="space-y-1.5">
-                                                <input
-                                                    type="email"
-                                                    value={row.email}
-                                                    onChange={(e) => {
-                                                        const newBulk = [...bulkData];
-                                                        newBulk[idx].email = e.target.value;
-                                                        setBulkData(newBulk);
-                                                    }}
-                                                    placeholder="email@example.com"
-                                                    className="w-full h-9 bg-slate-50/50 border border-slate-200 rounded-lg px-3 text-xs focus:ring-1 focus:ring-[#3724B3] focus:border-[#3724B3] outline-none"
-                                                />
+                                                <div className="relative">
+                                                    <input
+                                                        type="email"
+                                                        value={row.email}
+                                                        onChange={(e) => {
+                                                            const newBulk = [...bulkData];
+                                                            newBulk[idx].email = e.target.value;
+                                                            setBulkData(newBulk);
+                                                        }}
+                                                        placeholder="email@example.com"
+                                                        className="w-full h-9 bg-slate-50/50 border border-slate-200 rounded-lg px-3 text-xs focus:ring-1 focus:ring-[#3724B3] focus:border-[#3724B3] outline-none"
+                                                    />
+                                                    <span className={cn(
+                                                        "absolute right-2 top-2.5 text-[10px] transition-colors duration-200",
+                                                        row.email ? "text-slate-400" : "text-[#FF4A4A]"
+                                                    )}>*</span>
+                                                </div>
                                                 <input
                                                     type="tel"
                                                     value={row.phone}
@@ -606,28 +631,50 @@ export default function OwnerEmployeesPage() {
                                         </td>
                                         <td className="py-3 px-4">
                                             <div className="space-y-1.5">
-                                                <input
-                                                    value={row.role_title}
-                                                    onChange={(e) => {
-                                                        const newBulk = [...bulkData];
-                                                        newBulk[idx].role_title = e.target.value;
-                                                        setBulkData(newBulk);
-                                                    }}
-                                                    placeholder="Job Title (e.g. Barista)"
-                                                    className="w-full h-9 bg-slate-50/50 border border-slate-200 rounded-lg px-3 text-xs focus:ring-1 focus:ring-[#3724B3] focus:border-[#3724B3] outline-none font-medium"
-                                                />
-                                                <select
-                                                    value={row.invite_as || 'employee'}
-                                                    onChange={(e) => {
-                                                        const newBulk = [...bulkData];
-                                                        newBulk[idx].invite_as = e.target.value as any;
-                                                        setBulkData(newBulk);
-                                                    }}
-                                                    className="w-full h-8 bg-transparent border-0 text-[10px] uppercase font-bold text-slate-400 outline-none cursor-pointer hover:text-[#3724B3]"
-                                                >
-                                                    <option value="employee">Standard Employee</option>
-                                                    <option value="manager">Business Manager</option>
-                                                </select>
+                                                <div className="relative">
+                                                    <input
+                                                        value={row.role_title}
+                                                        onChange={(e) => {
+                                                            const newBulk = [...bulkData];
+                                                            newBulk[idx].role_title = e.target.value;
+                                                            setBulkData(newBulk);
+                                                        }}
+                                                        placeholder="Job Title (e.g. Barista)"
+                                                        className="w-full h-9 bg-slate-50/50 border border-slate-200 rounded-lg px-3 text-xs focus:ring-1 focus:ring-[#3724B3] focus:border-[#3724B3] outline-none font-medium"
+                                                    />
+                                                </div>
+                                                <div className="pt-1">
+                                                    <label className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter block mb-0.5">Employment Type</label>
+                                                    <select
+                                                        value={row.employment_type || 'full_time'}
+                                                        onChange={(e) => {
+                                                            const newBulk = [...bulkData];
+                                                            newBulk[idx].employment_type = e.target.value;
+                                                            setBulkData(newBulk);
+                                                        }}
+                                                        className="w-full h-7 bg-transparent border-0 text-[10px] font-medium text-slate-600 outline-none cursor-pointer hover:text-[#3724B3] -ml-0.5"
+                                                    >
+                                                        <option value="full_time">Full Time</option>
+                                                        <option value="part_time">Part Time</option>
+                                                        <option value="casual">Casual</option>
+                                                        <option value="contract">Contract</option>
+                                                    </select>
+                                                </div>
+                                                <div className="pt-1">
+                                                    <label className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter block mb-0.5">Access Level</label>
+                                                    <select
+                                                        value={row.invite_as || 'employee'}
+                                                        onChange={(e) => {
+                                                            const newBulk = [...bulkData];
+                                                            newBulk[idx].invite_as = e.target.value as any;
+                                                            setBulkData(newBulk);
+                                                        }}
+                                                        className="w-full h-7 bg-transparent border-0 text-[10px] font-medium text-slate-600 outline-none cursor-pointer hover:text-[#3724B3] -ml-0.5 opacity-80"
+                                                    >
+                                                        <option value="employee">Standard Employee</option>
+                                                        <option value="manager">Business Manager</option>
+                                                    </select>
+                                                </div>
                                             </div>
                                         </td>
                                         <td className="py-3 px-2 text-center">
@@ -648,7 +695,7 @@ export default function OwnerEmployeesPage() {
                             <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={() => setBulkData([...bulkData, { first_name: '', last_name: '', email: '', role_title: '', phone: '', invite_as: 'employee' }])}
+                                onClick={() => setBulkData([...bulkData, { first_name: '', last_name: '', email: '', role_title: '', phone: '', employment_type: 'full_time', invite_as: 'employee' }])}
                                 className="h-9 border-dashed border-slate-300 text-slate-600 hover:border-[#3724B3] hover:text-[#3724B3] bg-white"
                             >
                                 <UserPlus size={14} className="mr-2" /> Add Another Team Member
@@ -769,17 +816,28 @@ export default function OwnerEmployeesPage() {
                         <section>
                             <h3 className="text-sm font-bold border-b pb-2 mb-3">Employment Details</h3>
                             <div className="grid grid-cols-2 gap-3 mb-3">
-                                <Input label="Role Title" showAsterisk value={manualData.role_title} onChange={(e) => setManualData({ ...manualData, role_title: e.target.value })} />
+                                <Input label="Role Title" value={manualData.role_title} onChange={(e) => setManualData({ ...manualData, role_title: e.target.value })} />
                                 <div className="space-y-1.5">
-                                    <label className="text-xs font-semibold ml-0.5">Employment Type</label>
+                                    <label className="text-xs font-semibold ml-0.5">
+                                        Employment Type <span className={cn(
+                                            "ml-0.5 transition-colors duration-200",
+                                            manualData.employment_type ? "text-[hsl(var(--foreground))]" : "text-[#FF4A4A]"
+                                        )}>*</span>
+                                    </label>
                                     <select value={manualData.employment_type} onChange={(e) => setManualData({ ...manualData, employment_type: e.target.value })} className="flex h-10 w-full rounded-md border border-[hsl(var(--input))] bg-transparent px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]/20">
                                         <option value="full_time">Full Time</option>
                                         <option value="part_time">Part Time</option>
                                         <option value="casual">Casual</option>
+                                        <option value="contract">Contract</option>
                                     </select>
                                 </div>
                                 <div className="space-y-1.5">
-                                    <label className="text-xs font-semibold ml-0.5">Pay Cycle</label>
+                                    <label className="text-xs font-semibold ml-0.5">
+                                        Pay Cycle <span className={cn(
+                                            "ml-0.5 transition-colors duration-200",
+                                            manualData.pay_cycle ? "text-[hsl(var(--foreground))]" : "text-[#FF4A4A]"
+                                        )}>*</span>
+                                    </label>
                                     <select value={manualData.pay_cycle} onChange={(e) => setManualData({ ...manualData, pay_cycle: e.target.value })} className="flex h-10 w-full rounded-md border border-[hsl(var(--input))] bg-transparent px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]/20">
                                         <option value="weekly">weekly</option>
                                         <option value="fortnightly">fortnightly</option>
@@ -805,7 +863,23 @@ export default function OwnerEmployeesPage() {
                                 <Input label="Account Name" value={manualData.bank_account_name} onChange={(e) => setManualData({ ...manualData, bank_account_name: e.target.value })} />
                                 <Input label="BSB Number" value={manualData.bank_bsb} onChange={(e) => setManualData({ ...manualData, bank_bsb: e.target.value })} />
                                 <Input label="Account Number" value={manualData.bank_account_number} onChange={(e) => setManualData({ ...manualData, bank_account_number: e.target.value })} />
-                                <Input label="ABN / TFN / ACN" value={manualData["ABN/TFN/ACN"]} onChange={(e) => setManualData({ ...manualData, "ABN/TFN/ACN": e.target.value })} />
+                                {manualData.employment_type === 'contract' ? (
+                                    <Input 
+                                        label="ABN" 
+                                        showAsterisk 
+                                        value={manualData.abn} 
+                                        onChange={(e) => setManualData({ ...manualData, abn: e.target.value })} 
+                                        placeholder="Format: 00 000 000 000"
+                                    />
+                                ) : (
+                                    <Input 
+                                        label="TFN" 
+                                        showAsterisk 
+                                        value={manualData.tfn} 
+                                        onChange={(e) => setManualData({ ...manualData, tfn: e.target.value })} 
+                                        placeholder="Format: 000 000 000"
+                                    />
+                                )}
                             </div>
                         </section>
                     </div>

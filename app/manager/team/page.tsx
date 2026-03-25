@@ -211,13 +211,6 @@ export default function ManagerTeamPage() {
                                 <User size={14} className="mr-2" />
                                 View Personal
                             </DropdownMenuItem>
-                            <DropdownMenuItem
-                                onClick={() => router.push(`/manager/team/${row.employee_id}?tab=employment`)}
-                                className="cursor-pointer"
-                            >
-                                <Briefcase size={14} className="mr-2" />
-                                Edit Employment
-                            </DropdownMenuItem>
                             {row.status === "invited" && (
                                 <DropdownMenuItem
                                     onClick={() => resendInviteMutation.mutate(row.employee_id)}

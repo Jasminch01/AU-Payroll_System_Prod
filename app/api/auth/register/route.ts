@@ -55,9 +55,13 @@ export async function POST(request: NextRequest) {
         const supabase = await createClient();
 
         // Step 1: Create auth user
+        const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
         const { data: authData, error: authError } = await supabase.auth.signUp({
             email,
             password,
+            options: {
+                emailRedirectTo: `${siteUrl}/login?confirmed=true`,
+            },
         });
 
         if (authError) {

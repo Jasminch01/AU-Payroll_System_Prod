@@ -21,7 +21,12 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
                         htmlFor={inputId}
                         className="text-sm font-medium text-[hsl(var(--foreground))]"
                     >
-                        {label} {showAsterisk && <span className="text-[#FF4A4A] ml-0.5">*</span>}
+                        {label} {showAsterisk && (
+                            <span className={cn(
+                                "ml-0.5 transition-colors duration-200",
+                                props.value || props.defaultValue ? "text-[hsl(var(--foreground))]" : "text-[#FF4A4A]"
+                            )}>*</span>
+                        )}
                     </label>
                 )}
                 <input

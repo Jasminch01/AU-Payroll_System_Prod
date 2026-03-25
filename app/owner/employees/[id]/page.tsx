@@ -7,6 +7,7 @@ import { DashboardLayout } from "@/components/layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 import { StatusBadge } from "@/components/ui/badge";
 import { apiGet, apiPut, apiPost, apiDelete, apiPatch } from "@/lib/api-client";
 import { toast } from "sonner";
@@ -76,7 +77,8 @@ export default function OwnerEmployeeDetailPage() {
                 bank_account_name: employee.bank_account_name || "",
                 bank_bsb: employee.bank_bsb || "",
                 bank_account_number: employee.bank_account_number || "",
-                "ABN/TFN/ACN": employee["ABN/TFN/ACN"] || "",
+                abn: employee.abn || "",
+                tfn: employee.tfn || "",
             };
             //console.log("Normalized employee data:", normalizedData);
             setFormData(normalizedData);
@@ -158,7 +160,8 @@ export default function OwnerEmployeeDetailPage() {
             bank_account_name: formData.bank_account_name,
             bank_bsb: formData.bank_bsb,
             bank_account_number: formData.bank_account_number,
-            "ABN/TFN/ACN": formData["ABN/TFN/ACN"],
+            abn: formData.abn,
+            tfn: formData.tfn,
             role_title: formData.role_title,
             employment_type: formData.employment_type,
             pay_cycle: formData.pay_cycle,
@@ -289,7 +292,8 @@ export default function OwnerEmployeeDetailPage() {
                                                 bank_account_name: employee.bank_account_name || "",
                                                 bank_bsb: employee.bank_bsb || "",
                                                 bank_account_number: employee.bank_account_number || "",
-                                                "ABN/TFN/ACN": employee["ABN/TFN/ACN"] || "",
+                                                abn: employee.abn || "",
+                                                tfn: employee.tfn || "",
                                             };
                                             setFormData(normalizedData);
                                         }}
@@ -336,24 +340,11 @@ export default function OwnerEmployeeDetailPage() {
                                                 </div>
                                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                                                     <Input label="Employee ID" value={data.employee_id || ""} disabled={true} />
-                                                    <Input label="First Name" value={data.first_name || ""} onChange={(e) => updateField("first_name", e.target.value)} />
-                                                    <Input label="Last Name" value={data.last_name || ""} onChange={(e) => updateField("last_name", e.target.value)} />
-                                                    <Input label="Email Address" type="email" value={data.email || ""} onChange={(e) => updateField("email", e.target.value)} />
+                                                    <Input label="First Name" showAsterisk value={data.first_name || ""} onChange={(e) => updateField("first_name", e.target.value)} />
+                                                    <Input label="Last Name" showAsterisk value={data.last_name || ""} onChange={(e) => updateField("last_name", e.target.value)} />
+                                                    <Input label="Email Address" showAsterisk type="email" value={data.email || ""} onChange={(e) => updateField("email", e.target.value)} />
                                                     <Input label="Phone Number" value={data.phone || ""} onChange={(e) => updateField("phone", e.target.value)} />
-                                                    <Input label="Date of Birth" type="date" value={data.date_of_birth || ""} onChange={(e) => updateField("date_of_birth", e.target.value)} />
-                                                </div>
-                                            </section>
-
-                                            <section className="space-y-6 pt-4">
-                                                <div>
-                                                    <h3 className="text-lg font-bold text-[hsl(var(--foreground))]">Bank Details</h3>
-                                                    <p className="text-sm text-[hsl(var(--muted-foreground))]">Required for payroll processing.</p>
-                                                </div>
-                                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                                                    <Input label="Account Name" value={data.bank_account_name || ""} onChange={(e) => updateField("bank_account_name", e.target.value)} />
-                                                    <Input label="BSB Number" value={data.bank_bsb || ""} onChange={(e) => updateField("bank_bsb", e.target.value)} />
-                                                    <Input label="Account Number" value={data.bank_account_number || ""} onChange={(e) => updateField("bank_account_number", e.target.value)} />
-                                                    <Input label="ABN / TFN / ACN" value={data["ABN/TFN/ACN"] || ""} onChange={(e) => updateField("ABN/TFN/ACN", e.target.value)} />
+                                                    <Input label="Date of Birth" showAsterisk type="date" value={data.date_of_birth || ""} onChange={(e) => updateField("date_of_birth", e.target.value)} />
                                                 </div>
                                             </section>
 
@@ -441,7 +432,12 @@ export default function OwnerEmployeeDetailPage() {
                                             <Input label="Position / Role (Job Title)" value={data.role_title || ""} onChange={(e) => updateField("role_title", e.target.value)} />
                                             <Input label="System Access Level" value={data.role || "employee"} disabled className="capitalize" />
                                             <div className="space-y-1.5">
-                                                <label className="text-xs font-semibold text-[hsl(var(--muted-foreground))] ml-0.5">Employment Basis</label>
+                                                <label className="text-xs font-semibold text-[hsl(var(--muted-foreground))] ml-0.5">
+                                                    Employment Basis <span className={cn(
+                                                        "ml-0.5 transition-colors duration-200",
+                                                        data.employment_type ? "text-[hsl(var(--foreground))]" : "text-[#FF4A4A]"
+                                                    )}>*</span>
+                                                </label>
                                                 <select
                                                     value={data.employment_type || "full_time"}
                                                     onChange={(e) => updateField("employment_type", e.target.value)}
@@ -450,10 +446,16 @@ export default function OwnerEmployeeDetailPage() {
                                                     <option value="full_time">Full Time</option>
                                                     <option value="part_time">Part Time</option>
                                                     <option value="casual">Casual</option>
+                                                    <option value="contract">Contract</option>
                                                 </select>
                                             </div>
                                             <div className="space-y-1.5">
-                                                <label className="text-xs font-semibold text-[hsl(var(--muted-foreground))] ml-0.5">Pay Cycle</label>
+                                                <label className="text-xs font-semibold text-[hsl(var(--muted-foreground))] ml-0.5">
+                                                    Pay Cycle <span className={cn(
+                                                        "ml-0.5 transition-colors duration-200",
+                                                        data.pay_cycle ? "text-[hsl(var(--foreground))]" : "text-[#FF4A4A]"
+                                                    )}>*</span>
+                                                </label>
                                                 <select
                                                     value={data.pay_cycle || ""}
                                                     onChange={(e) => updateField("pay_cycle", e.target.value)}
@@ -479,6 +481,35 @@ export default function OwnerEmployeeDetailPage() {
                                                 </select>
                                                 {data.status === 'invited' && <p className="text-[10px] text-[hsl(var(--muted-foreground))] pt-1 ml-0.5">Locked until onboarding complete.</p>}
                                             </div>
+                                        </div>
+                                    </section>
+
+                                    <section className="space-y-6 pt-6 border-t border-[hsl(var(--border))]">
+                                        <div>
+                                            <h3 className="text-lg font-bold text-[hsl(var(--foreground))]">Bank & Identity</h3>
+                                            <p className="text-sm text-[hsl(var(--muted-foreground))]">Financial details for payroll processing.</p>
+                                        </div>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                            <Input label="Account Name" value={data.bank_account_name || ""} onChange={(e) => updateField("bank_account_name", e.target.value)} />
+                                            <Input label="BSB Number" value={data.bank_bsb || ""} onChange={(e) => updateField("bank_bsb", e.target.value)} />
+                                            <Input label="Account Number" value={data.bank_account_number || ""} onChange={(e) => updateField("bank_account_number", e.target.value)} />
+                                            {data.employment_type === 'contract' ? (
+                                                <Input 
+                                                    label="ABN" 
+                                                    showAsterisk 
+                                                    value={data.abn || ""} 
+                                                    onChange={(e) => updateField("abn", e.target.value)} 
+                                                    placeholder="Format: 00 000 000 000"
+                                                />
+                                            ) : (
+                                                <Input 
+                                                    label="TFN" 
+                                                    showAsterisk 
+                                                    value={data.tfn || ""} 
+                                                    onChange={(e) => updateField("tfn", e.target.value)} 
+                                                    placeholder="Format: 000 000 000"
+                                                />
+                                            )}
                                         </div>
                                     </section>
 

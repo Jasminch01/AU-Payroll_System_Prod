@@ -5,16 +5,26 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Input, PasswordInput } from "@/components/ui";
 import { toast } from "sonner";
-import { Eye, EyeOff, ArrowRight, Zap } from "lucide-react";
+import { useSearchParams } from "next/navigation";
+import { ArrowRight, Zap, CheckCircle } from "lucide-react";
 
 export default function LoginPage() {
     const router = useRouter();
+    const searchParams = useSearchParams();
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
-    const [showPassword, setShowPassword] = useState(false);
     const [loading, setLoading] = useState(false);
+
+    React.useEffect(() => {
+        if (searchParams.get("confirmed") === "true") {
+            toast.success("Email verified successfully! You can now sign in.", {
+                icon: <CheckCircle className="text-[hsl(var(--success))]" size={18} />,
+                duration: 5000,
+            });
+        }
+    }, [searchParams]);
 
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -44,7 +54,7 @@ export default function LoginPage() {
             if (role === "owner") router.push("/owner/dashboard");
             else if (role === "manager") router.push("/manager/dashboard");
             else router.push("/employee/dashboard");
-        } catch (err) {
+        } catch {
             toast.error("Something went wrong. Please try again.");
         } finally {
             setLoading(false);
@@ -138,23 +148,13 @@ export default function LoginPage() {
                             autoComplete="email"
                         />
 
-                        <div className="relative">
-                            <Input
-                                label="Password"
-                                type={showPassword ? "text" : "password"}
-                                placeholder="Enter your password"
-                                value={password}
-                                onChange={(e) => setPassword(e.target.value)}
-                                autoComplete="current-password"
-                            />
-                            <button
-                                type="button"
-                                onClick={() => setShowPassword(!showPassword)}
-                                className="absolute right-3 top-9 text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] transition-colors"
-                            >
-                                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                            </button>
-                        </div>
+                        <PasswordInput
+                            label="Password"
+                            placeholder="Enter your password"
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                            autoComplete="current-password"
+                        />
 
                         <div className="flex items-center justify-between">
                             <label className="flex items-center gap-2 text-sm">

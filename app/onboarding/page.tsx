@@ -31,7 +31,9 @@ export default function OnboardingPage() {
     const [bankAccountName, setBankAccountName] = useState("");
     const [bankBsb, setBankBsb] = useState("");
     const [bankAccountNumber, setBankAccountNumber] = useState("");
-    const [abnTfnAcn, setAbnTfnAcn] = useState("");
+    const [abn, setAbn] = useState("");
+    const [tfn, setTfn] = useState("");
+    const [employmentType, setEmploymentType] = useState("full_time");
     const [emergencyName, setEmergencyName] = useState("");
     const [emergencyPhone, setEmergencyPhone] = useState("");
 
@@ -78,6 +80,10 @@ export default function OnboardingPage() {
                 if (data.data.employee.phone) {
                     setPhone(data.data.employee.phone);
                     setPrefilledPhone(true);
+                }
+
+                if (data.data.employee.employment_type) {
+                    setEmploymentType(data.data.employee.employment_type);
                 }
 
                 if (data.data?.is_existing_user) {
@@ -223,7 +229,8 @@ export default function OnboardingPage() {
                     bank_account_name: bankAccountName,
                     bank_bsb: bankBsb,
                     bank_account_number: bankAccountNumber,
-                    "ABN/TFN/ACN": abnTfnAcn,
+                    abn: abn,
+                    tfn: tfn,
                     emergency_contact_name: emergencyName,
                     emergency_contact_phone: emergencyPhone
                 }),
@@ -265,7 +272,8 @@ export default function OnboardingPage() {
                     bank_account_name: bankAccountName,
                     bank_bsb: bankBsb,
                     bank_account_number: bankAccountNumber,
-                    "ABN/TFN/ACN": abnTfnAcn,
+                    abn: abn,
+                    tfn: tfn,
                     emergency_contact_name: emergencyName,
                     emergency_contact_phone: emergencyPhone
                 }),
@@ -391,7 +399,11 @@ export default function OnboardingPage() {
                                     </div>
                                 </div>
                                 <div className="space-y-[6px]">
-                                    <Input label="ABN / TFN / ACN" placeholder="Optional" value={abnTfnAcn} onChange={(e) => setAbnTfnAcn(e.target.value)} className="h-10 text-sm" />
+                                    {employmentType === 'contract' ? (
+                                        <Input label="ABN" showAsterisk placeholder="Format: 00 000 000 000" value={abn} onChange={(e) => setAbn(e.target.value)} required className="h-10 text-sm" />
+                                    ) : (
+                                        <Input label="TFN" showAsterisk placeholder="Format: 000 000 000" value={tfn} onChange={(e) => setTfn(e.target.value)} required className="h-10 text-sm" />
+                                    )}
                                 </div>
                             </div>
 
@@ -442,7 +454,11 @@ export default function OnboardingPage() {
                                     </div>
                                 </div>
                                 <div className="space-y-[6px]">
-                                    <Input label="ABN / TFN / ACN" placeholder="Optional" value={abnTfnAcn} onChange={(e) => setAbnTfnAcn(e.target.value)} className="h-10 text-sm" />
+                                    {employmentType === 'contract' ? (
+                                        <Input label="ABN" showAsterisk placeholder="Format: 00 000 000 000" value={abn} onChange={(e) => setAbn(e.target.value)} required className="h-10 text-sm" />
+                                    ) : (
+                                        <Input label="TFN" showAsterisk placeholder="Format: 000 000 000" value={tfn} onChange={(e) => setTfn(e.target.value)} required className="h-10 text-sm" />
+                                    )}
                                 </div>
                             </div>
 
