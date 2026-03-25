@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 import { successResponse, errorResponse } from '@/lib/api-helpers';
 import bcrypt from 'bcryptjs';
+import { generateBusinessPrefix, formatEmpSuffix, getNumericSuffix } from '@/lib/utils/employee-id';
 
 /**
  * POST /api/employees/join
@@ -16,7 +17,7 @@ export async function POST(request: NextRequest) {
         const { 
             email, password, first_name, last_name, join_code,
             phone, dob, bank_details, bank_account_name, bank_bsb, bank_account_number, "ABN/TFN/ACN": abnTfnAcn,
-            emergency_contact_name, emergency_contact_phone, kiosk_pin
+            emergency_contact_name, emergency_contact_phone
         } = body;
 
         if (!email || !password || !first_name || !last_name || !join_code) {
@@ -56,27 +57,21 @@ export async function POST(request: NextRequest) {
 
         const authUserId = signUpData.user.id;
         
-        // 3. Generate sequential Employee ID
-        const { data: lastEmp } = await supabase
+        // 3. Generate sequential Employee ID using Prefix + 4 digits
+        const { data: allEmps } = await supabase
             .from('Employee')
             .select('employee_id')
-            .eq('business_id', business.business_id)
-            .order('created_at', { ascending: false })
-            .limit(1)
-            .maybeSingle();
+            .eq('business_id', business.business_id);
 
-        let nextSerial = 1;
-        if (lastEmp) {
-            const match = lastEmp.employee_id.match(/EMP(\d{3})/);
-            if (match) nextSerial = parseInt(match[1]) + 1;
+        let maxSerial = 0;
+        for (const e of allEmps || []) {
+            const serial = getNumericSuffix(e.employee_id);
+            if (serial > maxSerial) maxSerial = serial;
         }
-        const employee_id = `EMP${nextSerial.toString().padStart(3, '0')}`;
+        
+        const businessPrefix = generateBusinessPrefix(business.business_name);
+        const employee_id = `${businessPrefix}${formatEmpSuffix(maxSerial + 1)}`;
 
-        // 4. Hash Kiosk PIN
-        let hashedPin = '';
-        if (kiosk_pin) {
-            hashedPin = await bcrypt.hash(kiosk_pin, 10);
-        }
 
         // 4. Create Employee Record (Set to 'active' immediately)
         const { error: empError } = await supabase
@@ -95,7 +90,6 @@ export async function POST(request: NextRequest) {
                 "ABN/TFN/ACN": abnTfnAcn || '',
                 emergency_contact_name: emergency_contact_name || '',
                 emergency_contact_phone: emergency_contact_phone || '',
-                kiosk_pin: hashedPin,
                 role_title: 'New Member',
                 business_id: business.business_id,
                 user_id: authUserId,

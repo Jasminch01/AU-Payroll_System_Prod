@@ -37,7 +37,7 @@ Manual entry/Correction by ManagerAccess: Owner, ManagerBody:{  "employee_i
 ## `POST` /api/attendance/kiosk
 
 ```text
-Handle PIN-based clock in/out from a common device (Kiosk)Access: Restricted (Kiosk Device Token Required)Body:{  "employee_id": "EMP001",  "pin": "1234",  "event_type": "CLOCK_IN" | "CLOCK_OUT" | "BREAK_START" | "BREAK_END",  "device_info": "Front Desk Tablet" (optional)}
+Handle clock in/out from a common device (Kiosk)Access: Restricted (Kiosk Device Token Required)Body:{  "employee_id": "EMP001",  "event_type": "CLOCK_IN" | "CLOCK_OUT" | "BREAK_START" | "BREAK_END",  "device_info": "Front Desk Tablet" (optional)}
 ```
 
 ---
@@ -45,7 +45,7 @@ Handle PIN-based clock in/out from a common device (Kiosk)Access: Restricted (K
 ## `GET` /api/attendance/me
 
 ```text
-Get today's logs for the authenticated employeeAccess: Employee, Manager, Owner
+Get today's logs for the authenticated employeeAccess: Employee, Manager, Owner
 ```
 
 ---
@@ -53,7 +53,7 @@ Get today's logs for the authenticated employeeAccess: Employee, Manager, Owner
 ## `GET` /api/audit-log
 
 ```text
-List audit entries with filtersAccess: OwnerQuery params: table_name, record_id, action, changed_by, from, to
+List audit entries with filtersAccess: OwnerQuery params: table_name, record_id, action, changed_by, from, to
 ```
 
 ---
@@ -61,7 +61,7 @@ List audit entries with filtersAccess: OwnerQuery params: table_name, record_
 ## `POST` /api/auth/login
 
 ```text
-Login for Owner, Manager, or EmployeeAccess: PublicBody:{  "email": "user@example.com",  "password": "password123"}
+Login for Owner, Manager, or EmployeeAccess: PublicBody:{  "email": "user@example.com",  "password": "password123"}
 ```
 
 ---
@@ -69,7 +69,7 @@ Login for Owner, Manager, or EmployeeAccess: PublicBody:{  "email": "user@e
 ## `POST` /api/auth/logout
 
 ```text
-Sign out the current userAccess: Authenticated
+Sign out the current userAccess: Authenticated
 ```
 
 ---
@@ -77,7 +77,7 @@ Sign out the current userAccess: Authenticated
 ## `GET` /api/auth/me
 
 ```text
-Get current authenticated user's profile and roleAccess: Authenticated
+Get current authenticated user's profile and roleAccess: Authenticated
 ```
 
 ---
@@ -85,7 +85,7 @@ Get current authenticated user's profile and roleAccess: Authenticated
 ## `POST` /api/auth/register
 
 ```text
-Register a new Owner + BusinessAccess: PublicBody:{  "email": "owner@example.com",  "password": "securepassword",  "first_name": "John",  "last_name": "Doe",  "business_name": "My Restaurant",  "abn": "12345678901",  "state": "NSW"}
+Register a new Owner + BusinessAccess: PublicBody:{  "email": "owner@example.com",  "password": "securepassword",  "first_name": "John",  "last_name": "Doe",  "business_name": "My Restaurant",  "abn": "12345678901",  "state": "NSW"}
 ```
 
 ---
@@ -93,7 +93,7 @@ Register a new Owner + BusinessAccess: PublicBody:{  "email": "owner@exampl
 ## `GET` /api/cron/generate-timesheets
 
 ```text
-Scheduled task to automatically generate timesheets for "Yesterday"Access: System/Cron (CRON_SECRET)
+Scheduled task to automatically generate timesheets for "Yesterday"Access: System/Cron (CRON_SECRET)
 ```
 
 ---
@@ -101,7 +101,7 @@ Scheduled task to automatically generate timesheets for "Yesterday"Access: Syst
 ## `GET` /api/cron/sync-holidays
 
 ```text
-Fetches AU Public Holidays for the current and next year and syncs them to our DBAccess: System/Cron (CRON_SECRET)
+Fetches AU Public Holidays for the current and next year and syncs them to our DBAccess: System/Cron (CRON_SECRET)
 ```
 
 ---
@@ -109,7 +109,7 @@ Fetches AU Public Holidays for the current and next year and syncs them to our D
 ## `GET` /api/employees
 
 ```text
-List all employees for the businessAccess: Owner, Manager
+List all employees for the businessAccess: Owner, Manager
 ```
 
 ---
@@ -117,7 +117,7 @@ List all employees for the businessAccess: Owner, Manager
 ## `POST` /api/employees
 
 ```text
-Create a new employee and auth accountAccess: Owner, ManagerBody:{  "email": "employee@example.com",  "password": "securepassword",  "first_name": "Mike",  "last_name": "Johnson",  "phone": "0412345678",  "dob": "1995-06-15",  "bank_details": "BSB: 062000, Acc: 12345678",  "emergency_contact_name": "Sarah Johnson",  "emergency_contact_phone": "0498765432",  "employment_type": "full_time",  "role_title": "Barista",  "pay_cycle": "fortnightly",  "kiosk_pin": "1234",  "start_date": "2026-03-01",  "employee_id": "EMP001",  "weekday_rate": 28.50,  "opening_balances": { "LT_ID": 10.5 } (optional)}
+Create a new employee and auth accountAccess: Owner, ManagerBody:{  "email": "employee@example.com",  "password": "securepassword",  "first_name": "Mike",  "last_name": "Johnson",  "phone": "0412345678",  "dob": "1995-06-15",  "bank_details": "BSB: 062000, Acc: 12345678",  "emergency_contact_name": "Sarah Johnson",  "emergency_contact_phone": "0498765432",  "employment_type": "full_time",  "role_title": "Barista",  "pay_cycle": "fortnightly",  "start_date": "2026-03-01",  "employee_id": "EMP001",  "weekday_rate": 28.50,  "opening_balances": { "LT_ID": 10.5 } (optional)}
 ```
 
 ---
@@ -125,7 +125,7 @@ Create a new employee and auth accountAccess: Owner, ManagerBody:{  "email"
 ## `GET` /api/employees/[id]
 
 ```text
-Get a specific employee by employee_idAccess: Owner, Manager
+Get a specific employee by employee_idAccess: Owner, Manager
 ```
 
 ---
@@ -133,7 +133,7 @@ Get a specific employee by employee_idAccess: Owner, Manager
 ## `PUT` /api/employees/[id]
 
 ```text
-Update an employee's detailsAccess: Owner, ManagerBody:{  "first_name": "Mike",  "last_name": "Johnson",  "phone": "0412345678",  "email": "newemail@example.com",  "bank_details": "BSB: 062000, Acc: 87654321",  "emergency_contact_name": "New Contact",  "emergency_contact_phone": "0411111111",  "employment_type": "part_time",  "role_title": "Senior Barista",  "pay_cycle": "weekly",  "kiosk_pin": "5678",  "end_date": "2026-12-31",  "status": "active"}
+Update an employee's detailsAccess: Owner, ManagerBody:{  "first_name": "Mike",  "last_name": "Johnson",  "phone": "0412345678",  "email": "newemail@example.com",  "bank_details": "BSB: 062000, Acc: 87654321",  "emergency_contact_name": "New Contact",  "emergency_contact_phone": "0411111111",  "employment_type": "part_time",  "role_title": "Senior Barista",  "pay_cycle": "weekly",  "end_date": "2026-12-31",  "status": "active"}
 ```
 
 ---
@@ -141,7 +141,7 @@ Update an employee's detailsAccess: Owner, ManagerBody:{  "first_name": "Mi
 ## `DELETE` /api/employees/[id]
 
 ```text
-Deactivate an employee (soft delete)Access: Owner, ManagerQuery params:  ?hard=true (permanent delete)
+Deactivate an employee (soft delete)Access: Owner, ManagerQuery params:  ?hard=true (permanent delete)
 ```
 
 ---
@@ -149,7 +149,7 @@ Deactivate an employee (soft delete)Access: Owner, ManagerQuery params:  ?ha
 ## `GET` /api/employees/[id]/rates
 
 ```text
-Get pay rate history for an employeeAccess: Owner
+Get pay rate history for an employeeAccess: Owner
 ```
 
 ---
@@ -157,7 +157,7 @@ Get pay rate history for an employeeAccess: Owner
 ## `POST` /api/employees/[id]/rates
 
 ```text
-Add a new pay rate for an employee (effective from a date)Access: OwnerBody:{  "weekday_rate": 30.00,  "effective_from": "2026-04-01",  "saturday_multiplier": 1.25,  "sunday_multiplier": 1.50,  "public_holiday_multiplier": 2.50,  "evening_rate": 35.00,  "evening_start_time": 18,  "evening_end_time": 23}
+Add a new pay rate for an employee (effective from a date)Access: OwnerBody:{  "weekday_rate": 30.00,  "effective_from": "2026-04-01",  "saturday_multiplier": 1.25,  "sunday_multiplier": 1.50,  "public_holiday_multiplier": 2.50,  "evening_rate": 35.00,  "evening_start_time": 18,  "evening_end_time": 23}
 ```
 
 ---
@@ -165,7 +165,7 @@ Add a new pay rate for an employee (effective from a date)Access: OwnerBody:
 ## `POST` /api/employees/invite
 
 ```text
-Send an invitation to a new employee or manager.Owner/Manager fills in minimal info; the invitee completes self-onboarding.Access: Owner, ManagerBody:{  "email": "newemployee@example.com",  "first_name": "Jane",  "last_name": "Doe",  "role_title": "Barista",  "employment_type": "casual",          // optional  "weekday_rate": 28.50,  "invite_as": "employee" | "manager"   // defaults to "employee"}
+Send an invitation to a new employee or manager.Owner/Manager fills in minimal info; the invitee completes self-onboarding.Access: Owner, ManagerBody:{  "email": "newemployee@example.com",  "first_name": "Jane",  "last_name": "Doe",  "role_title": "Barista",  "employment_type": "casual",          // optional  "weekday_rate": 28.50,  "invite_as": "employee" | "manager"   // defaults to "employee"}
 ```
 
 ---
@@ -173,7 +173,7 @@ Send an invitation to a new employee or manager.Owner/Manager fills in minimal 
 ## `POST` /api/employees/resend-invite
 
 ```text
-Resend the invitation email for a pending (invited) employee.Access: Owner, ManagerBody:{  "employee_id": "EMP-XXXXX"}
+Resend the invitation email for a pending (invited) employee.Access: Owner, ManagerBody:{  "employee_id": "EMP-XXXXX"}
 ```
 
 ---
@@ -181,7 +181,7 @@ Resend the invitation email for a pending (invited) employee.Access: Owner, Man
 ## `GET` /api/holidays
 
 ```text
-List public holidays for the businessAccess: Authenticated
+List public holidays for the businessAccess: Authenticated
 ```
 
 ---
@@ -189,7 +189,7 @@ List public holidays for the businessAccess: Authenticated
 ## `POST` /api/holidays
 
 ```text
-Manually add a public holidayAccess: Owner, ManagerBody:{  "name": "Christmas Day",  "date": "2026-12-25",  "state": "NSW",  "is_national": true (optional, default false),  "source": "manual" (optional)}
+Manually add a public holidayAccess: Owner, ManagerBody:{  "name": "Christmas Day",  "date": "2026-12-25",  "state": "NSW",  "is_national": true (optional, default false),  "source": "manual" (optional)}
 ```
 
 ---
@@ -197,7 +197,7 @@ Manually add a public holidayAccess: Owner, ManagerBody:{  "name": "Christm
 ## `GET` /api/leave
 
 ```text
-List leave requestsAccess: Owner, Manager, Employee (own)
+List leave requestsAccess: Owner, Manager, Employee (own)
 ```
 
 ---
@@ -205,7 +205,7 @@ List leave requestsAccess: Owner, Manager, Employee (own)
 ## `POST` /api/leave
 
 ```text
-Create a new leave requestAccess: Owner, Manager, EmployeeBody:{  "leave_type_id": "uuid",  "start_date": "2026-12-01",  "end_date": "2026-12-05",  "total_hours": 38,  "reason": "Family trip",  "employee_id": "uuid" (optional, for admin use),  "document_url": "url" (optional)}
+Create a new leave requestAccess: Owner, Manager, EmployeeBody:{  "leave_type_id": "uuid",  "start_date": "2026-12-01",  "end_date": "2026-12-05",  "total_hours": 38,  "reason": "Family trip",  "employee_id": "uuid" (optional, for admin use),  "document_url": "url" (optional)}
 ```
 
 ---
@@ -213,7 +213,7 @@ Create a new leave requestAccess: Owner, Manager, EmployeeBody:{  "leave_ty
 ## `PUT` /api/leave/[id]
 
 ```text
-Update leave status (Approve/Reject)Access: Owner, ManagerBody:{  "status": "approved" | "rejected" | "cancelled",  "rejection_reason": "string" (optional),  "manager_note": "string" (optional)}
+Update leave status (Approve/Reject)Access: Owner, ManagerBody:{  "status": "approved" | "rejected" | "cancelled",  "rejection_reason": "string" (optional),  "manager_note": "string" (optional)}
 ```
 
 ---
@@ -221,7 +221,7 @@ Update leave status (Approve/Reject)Access: Owner, ManagerBody:{  "status":
 ## `DELETE` /api/leave/[id]
 
 ```text
-Cancel a leave requestAccess: Owner, Manager, Employee (if pending)
+Cancel a leave requestAccess: Owner, Manager, Employee (if pending)
 ```
 
 ---
@@ -229,7 +229,7 @@ Cancel a leave requestAccess: Owner, Manager, Employee (if pending)
 ## `GET` /api/leave/balances
 
 ```text
-Get leave balancesAccess: Owner, Manager, Employee (own)
+Get leave balancesAccess: Owner, Manager, Employee (own)
 ```
 
 ---
@@ -237,7 +237,7 @@ Get leave balancesAccess: Owner, Manager, Employee (own)
 ## `PATCH` /api/leave/balances/[id]
 
 ```text
-Manually adjust a leave balanceAccess: Owner, ManagerBody:{  "accrued_hours": 40.5,  "taken_hours": 10,  "reason": "Adjustment" (optional)}
+Manually adjust a leave balanceAccess: Owner, ManagerBody:{  "accrued_hours": 40.5,  "taken_hours": 10,  "reason": "Adjustment" (optional)}
 ```
 
 ---
@@ -245,7 +245,7 @@ Manually adjust a leave balanceAccess: Owner, ManagerBody:{  "accrued_hours
 ## `GET` /api/leave/types
 
 ```text
-List leave types for the businessAccess: Authenticated
+List leave types for the businessAccess: Authenticated
 ```
 
 ---
@@ -253,7 +253,7 @@ List leave types for the businessAccess: Authenticated
 ## `POST` /api/leave/types
 
 ```text
-Create a new leave typeAccess: Owner, ManagerBody:{  "name": "Annual Leave",  "is_paid": true (optional, default true),  "accrual_rate": 0.0769 (optional),  "max_carry_over": 40 (optional),  "requires_doc": false (optional)}
+Create a new leave typeAccess: Owner, ManagerBody:{  "name": "Annual Leave",  "is_paid": true (optional, default true),  "accrual_rate": 0.0769 (optional),  "max_carry_over": 40 (optional),  "requires_doc": false (optional)}
 ```
 
 ---
@@ -261,7 +261,7 @@ Create a new leave typeAccess: Owner, ManagerBody:{  "name": "Annual Leave"
 ## `GET` /api/managers
 
 ```text
-List all managers for the businessAccess: Owner
+List all managers for the businessAccess: Owner
 ```
 
 ---
@@ -269,7 +269,7 @@ List all managers for the businessAccess: Owner
 ## `POST` /api/managers
 
 ```text
-Create/invite a new managerAccess: OwnerBody:{  "email": "manager@example.com",  "password": "tempPassword123",  "first_name": "Jane",  "last_name": "Smith",  "dob": "1990-01-15",  "bank_details": "BSB: 062..., Acc: 123...",  "emergency_contact_name": "John Smith",  "emergency_contact_phone": "0498765432",  "role_title": "Shift Manager",  "kiosk_pin": "5678",  "start_date": "2026-03-01",  "employee_id": "MGR001",  "weekday_rate": 35.00}
+Create/invite a new managerAccess: OwnerBody:{  "email": "manager@example.com",  "password": "tempPassword123",  "first_name": "Jane",  "last_name": "Smith",  "dob": "1990-01-15",  "bank_details": "BSB: 062..., Acc: 123...",  "emergency_contact_name": "John Smith",  "emergency_contact_phone": "0498765432",  "role_title": "Shift Manager",  "start_date": "2026-03-01",  "employee_id": "MGR001",  "weekday_rate": 35.00}
 ```
 
 ---
@@ -277,7 +277,7 @@ Create/invite a new managerAccess: OwnerBody:{  "email": "manager@example.c
 ## `GET` /api/managers/[id]
 
 ```text
-Get a specific manager profileAccess: Owner
+Get a specific manager profileAccess: Owner
 ```
 
 ---
@@ -285,7 +285,7 @@ Get a specific manager profileAccess: Owner
 ## `PUT` /api/managers/[id]
 
 ```text
-Update a manager's profileAccess: OwnerBody:{  "first_name": "Jane",  "last_name": "Smith",  "phone": "0412345678",  "status": "active",  ...}
+Update a manager's profileAccess: OwnerBody:{  "first_name": "Jane",  "last_name": "Smith",  "phone": "0412345678",  "status": "active",  ...}
 ```
 
 ---
@@ -293,7 +293,7 @@ Update a manager's profileAccess: OwnerBody:{  "first_name": "Jane",  "las
 ## `DELETE` /api/managers/[id]
 
 ```text
-Delete a manager profile and accountAccess: Owner
+Delete a manager profile and accountAccess: Owner
 ```
 
 ---
@@ -301,7 +301,7 @@ Delete a manager profile and accountAccess: Owner
 ## `POST` /api/onboarding/complete
 
 ```text
-Complete the self-onboarding process after accepting an invitation.The user must be authenticated (via the invite magic link which auto-signs them in).Access: Authenticated user with 'invited' employee statusBody:{  "password": "newsecurepassword",  "phone": "0412345678",  "dob": "1995-06-15",  "bank_details": "BSB: 062000, Acc: 12345678",  "emergency_contact_name": "Sarah Johnson",  "emergency_contact_phone": "0498765432",  "kiosk_pin": "1234"}
+Complete the self-onboarding process after accepting an invitation.The user must be authenticated (via the invite magic link which auto-signs them in).Access: Authenticated user with 'invited' employee statusBody:{  "password": "newsecurepassword",  "phone": "0412345678",  "dob": "1995-06-15",  "bank_details": "BSB: 062000, Acc: 12345678",  "emergency_contact_name": "Sarah Johnson",  "emergency_contact_phone": "0498765432"}
 ```
 
 ---

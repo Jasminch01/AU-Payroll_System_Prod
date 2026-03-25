@@ -5,6 +5,7 @@ import { requireRole } from '@/lib/auth';
 import { successResponse, errorResponse, validateRequiredFields } from '@/lib/api-helpers';
 import { logAudit } from '@/lib/audit';
 import bcrypt from 'bcryptjs';
+import { generateBusinessPrefix, formatEmpSuffix, getNumericSuffix } from '@/lib/utils/employee-id';
 
 /**
  * GET /api/employees
@@ -153,7 +154,6 @@ export async function POST(request: NextRequest) {
             'emergency_contact_name',
             'emergency_contact_phone',
             'role_title',
-            'kiosk_pin',
             'start_date',
             'employee_id',
             'weekday_rate',
@@ -179,10 +179,10 @@ export async function POST(request: NextRequest) {
             employment_type,
             role_title,
             pay_cycle,
-            kiosk_pin,
             start_date,
             end_date,
             employee_id,
+            invite_as = 'employee',
             // Rate fields
             weekday_rate,
             saturday_multiplier = 1.25,
@@ -193,6 +193,35 @@ export async function POST(request: NextRequest) {
             evening_end_time,
             opening_balances, // Optional: { [leave_type_id]: hours }
         } = body;
+
+        const supabase = await createClient();
+        let finalEmployeeId = employee_id;
+
+        // Ensure employee_id follows the business-prefixed format (e.g. BVL0001)
+        // If it starts with "EMP-" or doesn't match the new format, we regenerate it.
+        const isOldFormat = employee_id.startsWith('EMP-') || !/^[A-Z]{3}\d{4}$/.test(employee_id);
+        
+        if (isOldFormat) {
+            const { data: business } = await supabase
+                .from('Business')
+                .select('business_name')
+                .eq('business_id', authUser.business_id)
+                .single();
+
+            const businessPrefix = business?.business_name ? generateBusinessPrefix(business.business_name) : 'EMP';
+            
+            const { data: allEmps } = await supabase
+                .from('Employee')
+                .select('employee_id')
+                .eq('business_id', authUser.business_id);
+
+            let maxSerial = 0;
+            for (const e of allEmps || []) {
+                const serial = getNumericSuffix(e.employee_id);
+                if (serial > maxSerial) maxSerial = serial;
+            }
+            finalEmployeeId = `${businessPrefix}${formatEmpSuffix(maxSerial + 1)}`;
+        }
 
         if (password.length < 6) {
             return errorResponse('Password must be at least 6 characters', 400);
@@ -216,15 +245,10 @@ export async function POST(request: NextRequest) {
             return errorResponse('Failed to create user account', 500);
         }
 
-        const supabase = await createClient();
-
-        // Step 2: Create Employee record
-        const hashedPin = await bcrypt.hash(kiosk_pin, 10);
-
         const { data: employeeData, error: employeeError } = await supabase
             .from('Employee')
             .insert({
-                employee_id,
+                employee_id: finalEmployeeId,
                 first_name,
                 last_name,
                 phone: phone || null,
@@ -240,7 +264,6 @@ export async function POST(request: NextRequest) {
                 employment_type: employment_type || null,
                 role_title,
                 pay_cycle: pay_cycle || null,
-                kiosk_pin: hashedPin,
                 start_date,
                 end_date: end_date || null,
                 business_id: authUser.business_id,
@@ -279,6 +302,18 @@ export async function POST(request: NextRequest) {
             console.error('Rate history creation failed:', rateError.message);
         }
 
+        // Step 3.5: If manager, create User record
+        if (invite_as === 'manager') {
+            const { error: userError } = await supabase.from('User').insert({
+                user_id: authData.user.id,
+                business_id: authUser.business_id,
+                role: 'manager',
+                first_name,
+                last_name,
+            });
+            if (userError) console.error('Manager User record creation failed:', userError.message);
+        }
+
         // Step 4: Initialize Leave Balances
         const { data: leaveTypes } = await supabase
             .from('LeaveType')
@@ -288,7 +323,7 @@ export async function POST(request: NextRequest) {
         if (leaveTypes && leaveTypes.length > 0) {
             const currentYear = new Date().getFullYear();
             const balanceData = leaveTypes.map(lt => ({
-                employee_id: employee_id,
+                employee_id: finalEmployeeId,
                 leave_type_id: lt.leave_type_id,
                 business_id: authUser.business_id,
                 accrued_hours: opening_balances?.[lt.leave_type_id] || 0,

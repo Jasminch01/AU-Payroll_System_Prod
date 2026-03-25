@@ -46,7 +46,6 @@ export async function POST(request: NextRequest) {
             "ABN/TFN/ACN": abnTfnAcn,
             emergency_contact_name,
             emergency_contact_phone,
-            kiosk_pin
         } = body;
 
         // If password is provided, validate it
@@ -98,10 +97,6 @@ export async function POST(request: NextRequest) {
         if (emergency_contact_name) updatePayload.emergency_contact_name = emergency_contact_name;
         if (emergency_contact_phone) updatePayload.emergency_contact_phone = emergency_contact_phone;
 
-        // Hash Kiosk PIN if provided
-        if (kiosk_pin) {
-            updatePayload.kiosk_pin = await bcrypt.hash(kiosk_pin, 10);
-        }
 
         const { data: updatedEmployee, error: updateError } = await supabase
             .from('Employee')

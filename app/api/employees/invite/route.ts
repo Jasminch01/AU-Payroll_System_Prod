@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server';
 import { requireRole } from '@/lib/auth';
 import { successResponse, errorResponse, validateRequiredFields } from '@/lib/api-helpers';
 import { logAudit } from '@/lib/audit';
+import { generateBusinessPrefix, formatEmpSuffix, getNumericSuffix } from '@/lib/utils/employee-id';
 
 interface InviteResult {
     email: string;
@@ -45,6 +46,15 @@ export async function POST(request: NextRequest) {
         const results: InviteResult[] = [];
         const adminClient = createAdminClient();
         const supabase = await createClient();
+
+        // 3. Fetch Business Name for Prefix
+        const { data: business } = await supabase
+            .from('Business')
+            .select('business_name')
+            .eq('business_id', authUser.business_id)
+            .single();
+
+        const businessPrefix = business?.business_name ? generateBusinessPrefix(business.business_name) : 'EMP';
 
         for (const emp of employeesToInvite) {
             const validationError = validateRequiredFields(emp, ['email', 'first_name', 'last_name', 'role_title']);
@@ -142,7 +152,7 @@ export async function POST(request: NextRequest) {
             // If the owner needs a manual link, they can use the "Resend" feature which 
             // can provide one if the email fails, or they can use the Join Code.
 
-            // Generate a unique Employee ID by finding the true max serial across ALL employees
+            // Generate a unique Employee ID using the new format: PREFIX + 4-digit numeric suffix
             const { data: allEmps } = await supabase
                 .from('Employee')
                 .select('employee_id')
@@ -150,16 +160,13 @@ export async function POST(request: NextRequest) {
 
             let maxSerial = 0;
             for (const e of allEmps || []) {
-                // Match any EMPxxx or EMP-xxx numeric portion
-                const match = e.employee_id.match(/EMP-?(\d+)/i);
-                if (match) {
-                    const num = parseInt(match[1]);
-                    if (num > maxSerial) maxSerial = num;
-                }
+                const serial = getNumericSuffix(e.employee_id);
+                if (serial > maxSerial) maxSerial = serial;
             }
+            
             // Account for employees already successfully added in this bulk request
             const existingInResults: number = results.filter(r => r.success).length;
-            const employee_id = `EMP${(maxSerial + 1 + existingInResults).toString().padStart(3, '0')}`;
+            const employee_id = `${businessPrefix}${formatEmpSuffix(maxSerial + 1 + existingInResults)}`;
 
             const { data: employeeData, error: empError } = await supabase
                 .from('Employee')
@@ -167,7 +174,7 @@ export async function POST(request: NextRequest) {
                     employee_id, first_name, last_name, email, role_title, phone: phone || null,
                     employment_type: employment_type || null, business_id: authUser.business_id,
                     user_id: authUserId, status: 'invited', start_date: new Date().toISOString().split('T')[0],
-                    dob: '1900-01-01', bank_details: '', emergency_contact_name: '', emergency_contact_phone: '', kiosk_pin: '',
+                    dob: '1900-01-01', bank_details: '', emergency_contact_name: '', emergency_contact_phone: '',
                 })
                 .select().single();
 

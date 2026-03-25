@@ -60,8 +60,9 @@ export default function OwnerEmployeesPage() {
         emergency_contact_name: '', emergency_contact_phone: '',
         role_title: '', employment_type: 'full_time', pay_cycle: 'weekly',
         start_date: new Date().toISOString().split('T')[0],
-        weekday_rate: '', kiosk_pin: '',
+        weekday_rate: '',
         password: '',
+        invite_as: 'employee',
         bank_account_name: '', bank_bsb: '', bank_account_number: '', "ABN/TFN/ACN": ''
     });
 
@@ -136,8 +137,9 @@ export default function OwnerEmployeesPage() {
                 emergency_contact_name: '', emergency_contact_phone: '',
                 role_title: '', employment_type: 'full_time', pay_cycle: 'weekly',
                 start_date: new Date().toISOString().split('T')[0],
-                weekday_rate: '', kiosk_pin: '',
+                weekday_rate: '',
                 password: '',
+                invite_as: 'employee',
                 bank_account_name: '', bank_bsb: '', bank_account_number: '', "ABN/TFN/ACN": ''
             });
         },
@@ -146,12 +148,12 @@ export default function OwnerEmployeesPage() {
     });
 
     const handleManualAdd = () => {
-        if (!manualData.email || !manualData.password || !manualData.first_name || !manualData.last_name || !manualData.dob || !manualData.role_title || !manualData.kiosk_pin || !manualData.start_date) {
+        if (!manualData.email || !manualData.password || !manualData.first_name || !manualData.last_name || !manualData.dob || !manualData.role_title || !manualData.start_date) {
             return toast.error("Please fill in all required (*) fields.");
         }
         addManualMutation.mutate({
             ...manualData,
-            employee_id: `EMP-${Math.floor(1000 + Math.random() * 9000)}`,
+            employee_id: "", // Backend will generate a business-prefixed ID
             weekday_rate: manualData.weekday_rate ? parseFloat(manualData.weekday_rate) : undefined
         });
     };
@@ -400,7 +402,7 @@ export default function OwnerEmployeesPage() {
                     <DialogHeader>
                         <DialogTitle>Invite Team Member</DialogTitle>
                         <DialogDescription>
-                            Send an invitation. They&apos;ll set up their own password, bank details, and kiosk PIN during onboarding.
+                            Send an invitation. They&apos;ll set up their own password and bank details during onboarding.
                         </DialogDescription>
                     </DialogHeader>
 
@@ -433,16 +435,16 @@ export default function OwnerEmployeesPage() {
                         </div>
 
                         <div className="grid grid-cols-2 gap-3">
-                            <Input label="First Name" placeholder="Jane" value={invFirstName} onChange={(e) => setInvFirstName(e.target.value)} />
-                            <Input label="Last Name" placeholder="Doe" value={invLastName} onChange={(e) => setInvLastName(e.target.value)} />
+                            <Input label="First Name" showAsterisk placeholder="Jane" value={invFirstName} onChange={(e) => setInvFirstName(e.target.value)} />
+                            <Input label="Last Name" showAsterisk placeholder="Doe" value={invLastName} onChange={(e) => setInvLastName(e.target.value)} />
                         </div>
                         <div className="grid grid-cols-2 gap-3">
-                            <Input label="Email Address" type="email" placeholder="jane@company.com" value={invEmail} onChange={(e) => setInvEmail(e.target.value)} />
+                            <Input label="Email Address" showAsterisk type="email" placeholder="jane@company.com" value={invEmail} onChange={(e) => setInvEmail(e.target.value)} />
                             <Input label="Mobile Number" type="tel" placeholder="0412 345 678" value={invPhone} onChange={(e) => setInvPhone(e.target.value)} />
                         </div>
 
                         <div className="grid grid-cols-2 gap-3">
-                            <Input label="Role Title" placeholder="e.g. Barista" value={invRole} onChange={(e) => setInvRole(e.target.value)} />
+                            <Input label="Role Title" showAsterisk placeholder="e.g. Barista" value={invRole} onChange={(e) => setInvRole(e.target.value)} />
                             <div className="space-y-1.5">
                                 <label className="text-sm font-medium">Employment Type</label>
                                 <select
@@ -705,22 +707,49 @@ export default function OwnerEmployeesPage() {
                     </DialogHeader>
 
                     <div className="space-y-6 py-4">
+                        {/* Access Level Selector */}
+                        <div className="space-y-2">
+                            <label className="text-[12px] font-bold text-[hsl(var(--muted-foreground))] uppercase tracking-wider">Access Level</label>
+                            <div className="flex gap-2 p-1 bg-[hsl(var(--muted))] rounded-xl border border-[hsl(var(--border))]">
+                                <button
+                                    onClick={() => setManualData({ ...manualData, invite_as: "employee" })}
+                                    className={`flex-1 flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition-all ${manualData.invite_as === "employee"
+                                        ? "bg-white text-[hsl(var(--brand))] shadow-sm"
+                                        : "text-[hsl(var(--muted-foreground))] hover:bg-white/50"
+                                        }`}
+                                >
+                                    <User size={16} />
+                                    Employee
+                                </button>
+                                <button
+                                    onClick={() => setManualData({ ...manualData, invite_as: "manager" })}
+                                    className={`flex-1 flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition-all ${manualData.invite_as === "manager"
+                                        ? "bg-white text-[hsl(var(--brand))] shadow-sm"
+                                        : "text-[hsl(var(--muted-foreground))] hover:bg-white/50"
+                                        }`}
+                                >
+                                    <ShieldCheck size={16} />
+                                    Manager
+                                </button>
+                            </div>
+                        </div>
+
                         <section>
                             <h3 className="text-sm font-bold border-b pb-2 mb-3">Identity & Account</h3>
                             <div className="grid grid-cols-2 gap-3 mb-3">
-                                <Input label="First Name *" value={manualData.first_name} onChange={(e) => setManualData({ ...manualData, first_name: e.target.value })} />
-                                <Input label="Last Name *" value={manualData.last_name} onChange={(e) => setManualData({ ...manualData, last_name: e.target.value })} />
-                                <Input label="Email *" type="email" value={manualData.email} onChange={(e) => setManualData({ ...manualData, email: e.target.value })} />
-                                <Input label="Temporary Password *" type="password" value={manualData.password} onChange={(e) => setManualData({ ...manualData, password: e.target.value })} />
+                                <Input label="First Name" showAsterisk value={manualData.first_name} onChange={(e) => setManualData({ ...manualData, first_name: e.target.value })} />
+                                <Input label="Last Name" showAsterisk value={manualData.last_name} onChange={(e) => setManualData({ ...manualData, last_name: e.target.value })} />
+                                <Input label="Email" showAsterisk type="email" value={manualData.email} onChange={(e) => setManualData({ ...manualData, email: e.target.value })} />
+                                <Input label="Temporary Password" showAsterisk type="password" value={manualData.password} onChange={(e) => setManualData({ ...manualData, password: e.target.value })} />
                                 <Input label="Phone" type="tel" value={manualData.phone} onChange={(e) => setManualData({ ...manualData, phone: e.target.value })} />
-                                <Input label="Date of Birth *" type="date" value={manualData.dob} onChange={(e) => setManualData({ ...manualData, dob: e.target.value })} />
+                                <Input label="Date of Birth" showAsterisk type="date" value={manualData.dob} onChange={(e) => setManualData({ ...manualData, dob: e.target.value })} />
                             </div>
                         </section>
 
                         <section>
                             <h3 className="text-sm font-bold border-b pb-2 mb-3">Employment Details</h3>
                             <div className="grid grid-cols-2 gap-3 mb-3">
-                                <Input label="Role Title *" value={manualData.role_title} onChange={(e) => setManualData({ ...manualData, role_title: e.target.value })} />
+                                <Input label="Role Title" showAsterisk value={manualData.role_title} onChange={(e) => setManualData({ ...manualData, role_title: e.target.value })} />
                                 <div className="space-y-1.5">
                                     <label className="text-xs font-semibold ml-0.5">Employment Type</label>
                                     <select value={manualData.employment_type} onChange={(e) => setManualData({ ...manualData, employment_type: e.target.value })} className="flex h-10 w-full rounded-md border border-[hsl(var(--input))] bg-transparent px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]/20">
@@ -738,8 +767,7 @@ export default function OwnerEmployeesPage() {
                                     </select>
                                 </div>
                                 <Input label="Base Hourly Rate ($)" type="number" step="0.01" value={manualData.weekday_rate} onChange={(e) => setManualData({ ...manualData, weekday_rate: e.target.value })} />
-                                <Input label="Start Date *" type="date" value={manualData.start_date} onChange={(e) => setManualData({ ...manualData, start_date: e.target.value })} />
-                                <Input label="Kiosk PIN (4-digits) *" maxLength={4} value={manualData.kiosk_pin} onChange={(e) => setManualData({ ...manualData, kiosk_pin: e.target.value.replace(/[^0-9]/g, '') })} />
+                                <Input label="Start Date" showAsterisk type="date" value={manualData.start_date} onChange={(e) => setManualData({ ...manualData, start_date: e.target.value })} />
                             </div>
                         </section>
 

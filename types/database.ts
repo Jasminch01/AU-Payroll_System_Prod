@@ -17,7 +17,7 @@ export type RosterStatus = 'draft' | 'published';
 
 export type ShiftType = 'morning' | 'afternoon' | 'evening';
 
-export type EventType = 'CLOCK_IN' | 'CLOCK_OUT';
+export type EventType = 'CLOCK_IN' | 'CLOCK_OUT' | 'BREAK_START' | 'BREAK_END';
 export type TimesheetStatus = 'pending' | 'approved' | 'rejected';
 
 export type RateType = 'weekday' | 'saturday' | 'sunday' | 'public_holiday' | 'evening';
@@ -74,7 +74,6 @@ export interface Employee {
   employment_type: EmployeeType | null;
   role_title: string;
   pay_cycle: PayCycle | null;
-  kiosk_pin: string;
   start_date: string;
   end_date: string | null;
   created_at: string;

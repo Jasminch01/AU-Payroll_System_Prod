@@ -99,7 +99,6 @@ export async function POST(request: NextRequest) {
             'emergency_contact_name',
             'emergency_contact_phone',
             'role_title',
-            'kiosk_pin',
             'start_date',
             'employee_id',
             'weekday_rate',
@@ -121,7 +120,6 @@ export async function POST(request: NextRequest) {
             employment_type,
             role_title,
             pay_cycle,
-            kiosk_pin,
             start_date,
             end_date,
             employee_id,
@@ -171,8 +169,6 @@ export async function POST(request: NextRequest) {
             return errorResponse(`Failed to create manager profile: ${userError.message}`, 400);
         }
 
-        // Step 3: Create Employee record
-        const hashedPin = await bcrypt.hash(kiosk_pin, 10);
 
         const { error: employeeError } = await supabase
             .from('Employee')
@@ -189,7 +185,6 @@ export async function POST(request: NextRequest) {
                 employment_type: employment_type || null,
                 role_title,
                 pay_cycle: pay_cycle || null,
-                kiosk_pin: hashedPin,
                 start_date,
                 end_date: end_date || null,
                 business_id: authUser.business_id,

@@ -7,10 +7,11 @@ export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> 
     error?: string;
     label?: string;
     hint?: string;
+    showAsterisk?: boolean;
 }
 
 const Input = React.forwardRef<HTMLInputElement, InputProps>(
-    ({ className, type, error, label, hint, id, ...props }, ref) => {
+    ({ className, type, error, label, hint, id, showAsterisk, ...props }, ref) => {
         const inputId = id || React.useId();
 
         return (
@@ -20,7 +21,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
                         htmlFor={inputId}
                         className="text-sm font-medium text-[hsl(var(--foreground))]"
                     >
-                        {label}
+                        {label} {showAsterisk && <span className="text-[#FF4A4A] ml-0.5">*</span>}
                     </label>
                 )}
                 <input

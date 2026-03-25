@@ -116,7 +116,7 @@ export default function ProfilePage() {
             actions={null}
         >
             <div className="space-y-6 max-w-5xl mx-auto">
-                <Card className="overflow-hidden border-none shadow-md bg-gradient-to-br from-[hsl(var(--brand))]/10 via-transparent to-transparent">
+                <Card className="overflow-hidden border-none shadow-md bg-linear-to-br from-[hsl(var(--brand))]/10 via-transparent to-transparent">
                     <CardContent className="p-10 flex flex-col md:flex-row items-center gap-10">
                         <div className="relative">
                             <div className="flex h-32 w-32 items-center justify-center rounded-full bg-[hsl(var(--brand-light))] text-[hsl(var(--brand))] text-4xl font-bold border-8 border-[hsl(var(--background))] shadow-2xl transition-transform hover:scale-105 duration-300">
@@ -153,7 +153,6 @@ export default function ProfilePage() {
                                         bank_bsb: data.bank_bsb,
                                         bank_account_number: data.bank_account_number,
                                         "ABN/TFN/ACN": data["ABN/TFN/ACN"],
-                                        kiosk_pin: data.kiosk_pin,
                                     };
                                     if (role === 'owner' && data.Business) {
                                         payload.business = {
@@ -227,26 +226,6 @@ export default function ProfilePage() {
                     </TabsContent>
 
                     <TabsContent value="security" className="space-y-6 outline-none">
-                        {role !== 'owner' && (
-                            <Card>
-                                <CardHeader>
-                                    <CardTitle className="text-base flex items-center gap-2"><Lock size={18} /> Kiosk Access</CardTitle>
-                                </CardHeader>
-                                <CardContent className="space-y-4">
-                                    <p className="text-sm text-[hsl(var(--muted-foreground))]">
-                                        To protect privacy, existing PINs are hidden. Entering a new value will overwrite the current PIN.
-                                    </p>
-                                    <Input
-                                        label="New Kiosk PIN"
-                                        type="password"
-                                        maxLength={4}
-                                        value={data.kiosk_pin || ""}
-                                        onChange={(e) => updateField("kiosk_pin", e.target.value.replace(/[^0-9]/g, ''))}
-                                        placeholder="Enter 4 digits to update"
-                                    />
-                                </CardContent>
-                            </Card>
-                        )}
 
                         <Card>
                             <CardHeader>
