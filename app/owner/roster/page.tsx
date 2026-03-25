@@ -290,7 +290,7 @@ export default function OwnerRosterPage() {
         onMutate: async (updatedShift) => {
             await queryClient.cancelQueries({ queryKey: ["shifts", rangeStart, rangeEnd] });
             const previousShifts = queryClient.getQueryData(["shifts", rangeStart, rangeEnd]);
-            queryClient.setQueryData(["shifts", rangeStart, rangeEnd], (old: any[] = []) => 
+            queryClient.setQueryData(["shifts", rangeStart, rangeEnd], (old: any[] = []) =>
                 old.map((s: any) => s.shift_id === editingShiftId ? { ...s, ...updatedShift } : s)
             );
             return { previousShifts };
@@ -316,7 +316,7 @@ export default function OwnerRosterPage() {
         onMutate: async (shiftId) => {
             await queryClient.cancelQueries({ queryKey: ["shifts", rangeStart, rangeEnd] });
             const previousShifts = queryClient.getQueryData(["shifts", rangeStart, rangeEnd]);
-            queryClient.setQueryData(["shifts", rangeStart, rangeEnd], (old: any[] = []) => 
+            queryClient.setQueryData(["shifts", rangeStart, rangeEnd], (old: any[] = []) =>
                 old.filter((s: any) => s.shift_id !== shiftId)
             );
             return { previousShifts };
@@ -355,7 +355,7 @@ export default function OwnerRosterPage() {
         onMutate: async (shiftId) => {
             await queryClient.cancelQueries({ queryKey: ["shifts", rangeStart, rangeEnd] });
             const previousShifts = queryClient.getQueryData(["shifts", rangeStart, rangeEnd]);
-            queryClient.setQueryData(["shifts", rangeStart, rangeEnd], (old: any[] = []) => 
+            queryClient.setQueryData(["shifts", rangeStart, rangeEnd], (old: any[] = []) =>
                 old.map((s: any) => s.shift_id === shiftId ? { ...s, status: 'published' } : s)
             );
             return { previousShifts };
@@ -417,7 +417,7 @@ export default function OwnerRosterPage() {
         onMutate: async () => {
             await queryClient.cancelQueries({ queryKey: ["shifts", rangeStart, rangeEnd] });
             const previousShifts = queryClient.getQueryData(["shifts", rangeStart, rangeEnd]);
-            queryClient.setQueryData(["shifts", rangeStart, rangeEnd], (old: any[] = []) => 
+            queryClient.setQueryData(["shifts", rangeStart, rangeEnd], (old: any[] = []) =>
                 old.map((s: any) => (s.status === 'draft' || !s.status) ? { ...s, status: 'published' } : s)
             );
             return { previousShifts };
@@ -761,17 +761,6 @@ export default function OwnerRosterPage() {
                         <ChevronRight size={18} />
                     </Button>
 
-                    <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-9 px-3 text-xs font-bold text-[hsl(var(--brand))] hover:bg-[hsl(var(--brand))]/5"
-                        onClick={() => {
-                            setOffset(0);
-                            setCalendarMonth(new Date());
-                        }}
-                    >
-                        Today
-                    </Button>
                 </div>
 
                 <div className="flex items-center gap-3 flex-1 max-w-md mx-4">

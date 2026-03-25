@@ -237,7 +237,10 @@ export default function OwnerEmployeeDetailPage() {
                                     <h1 className="text-lg font-bold text-[hsl(var(--foreground))] leading-tight">
                                         {employee.first_name} {employee.last_name}
                                     </h1>
-                                    <p className="text-xs text-[hsl(var(--muted-foreground))] mt-1">{employee.role_title || 'Employee'}</p>
+                                    <p className="text-xs text-[hsl(var(--muted-foreground))] mt-1">
+                                        {employee.role_title || 'Employee'} 
+                                        {employee.role && <span className="opacity-70 ml-1">({employee.role})</span>}
+                                    </p>
                                 </div>
                             </div>
                         </div>
@@ -435,7 +438,8 @@ export default function OwnerEmployeeDetailPage() {
                                             <p className="text-sm text-[hsl(var(--muted-foreground))]">Role and contractual details.</p>
                                         </div>
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                            <Input label="Position / Role" value={data.role_title || ""} onChange={(e) => updateField("role_title", e.target.value)} />
+                                            <Input label="Position / Role (Job Title)" value={data.role_title || ""} onChange={(e) => updateField("role_title", e.target.value)} />
+                                            <Input label="System Access Level" value={data.role || "employee"} disabled className="capitalize" />
                                             <div className="space-y-1.5">
                                                 <label className="text-xs font-semibold text-[hsl(var(--muted-foreground))] ml-0.5">Employment Basis</label>
                                                 <select

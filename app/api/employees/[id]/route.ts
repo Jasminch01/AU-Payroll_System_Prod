@@ -61,8 +61,16 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
             employee.bank_details = null;
         }
 
+        // Get system role from User table
+        const { data: userData } = await supabase
+            .from('User')
+            .select('role')
+            .eq('user_id', employee.user_id)
+            .maybeSingle();
+
         return successResponse({
             ...employee,
+            role: userData?.role || 'employee',
             current_rate: (authUser.role === 'manager' && !isSelf) ? null : (currentRate || null),
             certificates: certificates || [],
         });

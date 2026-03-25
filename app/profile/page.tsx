@@ -128,7 +128,7 @@ export default function ProfilePage() {
                             <div>
                                 <h1 className="text-3xl font-bold tracking-tight">{data.first_name} {data.last_name}</h1>
                                 <p className="text-[hsl(var(--muted-foreground))] font-medium mt-1 flex items-center justify-center md:justify-start gap-2">
-                                    <Shield size={16} /> {data.role_title || role}
+                                    <Shield size={16} /> {data.role_title} ({data.role || role})
                                 </p>
                             </div>
                             <div className="flex flex-wrap justify-center md:justify-start gap-4 pt-2">
@@ -267,7 +267,8 @@ export default function ProfilePage() {
                                 <CardContent>
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                         <Input label="Employee ID" value={data.employee_id || ""} disabled />
-                                        <Input label="Role" value={data.role_title || ""} disabled />
+                                        <Input label="Job Title" value={data.role_title || ""} disabled />
+                                        <Input label="Access Level" value={data.role || role || ""} className="capitalize" disabled />
                                         <Input label="Employment Type" value={data.employment_type?.replace("_", " ") || ""} className="capitalize" disabled />
                                         <Input label="Current Base Rate" value={data.current_rate?.weekday_rate ? `$${data.current_rate.weekday_rate.toFixed(2)}/hr` : "Not set"} disabled />
                                         <Input label="Status" value={data.status || ""} className="capitalize" disabled />
