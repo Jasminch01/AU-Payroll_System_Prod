@@ -3,6 +3,8 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 import { requireRole } from '@/lib/auth';
 import { successResponse, errorResponse } from '@/lib/api-helpers';
+import bcrypt from 'bcryptjs';
+import { logAudit } from '@/lib/audit';
 
 interface RouteParams {
     params: Promise<{ id: string }>;
@@ -13,8 +15,6 @@ interface RouteParams {
  * 
  * Get a specific employee by employee_id
  * Access: Owner, Manager
- * 
- * Also returns the current pay rate from EmployeeRateHistory
  */
 export async function GET(request: NextRequest, { params }: RouteParams) {
     try {
@@ -29,7 +29,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         // Get employee
         const { data: employee, error } = await supabase
             .from('Employee')
-            .select('*')
+            .select('employee_id, first_name, last_name, phone, email, dob, bank_details, bank_account_name, bank_bsb, bank_account_number, "ABN/TFN/ACN", emergency_contact_name, emergency_contact_phone, employment_type, role_title, pay_cycle, start_date, end_date, created_at, updated_at, business_id, user_id, status')
             .eq('employee_id', id)
             .eq('business_id', authUser.business_id)
             .single();
@@ -55,9 +55,23 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
             .select('*')
             .eq('employee_id', id);
 
+        // Security: Remove sensitive data if requester is a manager (and not viewing their own profile)
+        const isSelf = authUser.employee_id === id;
+        if (authUser.role === 'manager' && !isSelf) {
+            employee.bank_details = null;
+        }
+
+        // Get system role from User table
+        const { data: userData } = await supabase
+            .from('User')
+            .select('role')
+            .eq('user_id', employee.user_id)
+            .maybeSingle();
+
         return successResponse({
             ...employee,
-            current_rate: currentRate || null,
+            role: userData?.role || 'employee',
+            current_rate: (authUser.role === 'manager' && !isSelf) ? null : (currentRate || null),
             certificates: certificates || [],
         });
     } catch (error) {
@@ -70,9 +84,9 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
  * PUT /api/employees/[id]
  * 
  * Update an employee's details
- * Access: Owner and manager
+ * Access: Owner, Manager
  * 
- * Body (all optional):
+ * Body:
  * {
  *   "first_name": "Mike",
  *   "last_name": "Johnson",
@@ -91,7 +105,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
  */
 export async function PUT(request: NextRequest, { params }: RouteParams) {
     try {
-        const authUser = await requireRole('owner', "manager");
+        const authUser = await requireRole('owner', "manager", "employee");
         if (!authUser) {
             return errorResponse('Unauthorized. Owner access required.', 401);
         }
@@ -99,6 +113,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
         const { id } = await params;
         const body = await request.json();
         const supabase = await createClient();
+        const adminClient = createAdminClient();
 
         // Whitelist updatable fields
         const allowedFields = [
@@ -106,16 +121,19 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
             'last_name',
             'phone',
             'email',
-            'bank_details',
             'emergency_contact_name',
             'emergency_contact_phone',
             'employment_type',
             'role_title',
             'pay_cycle',
-            'kiosk_pin',
             'end_date',
             'status',
         ];
+
+        // Only owners (or the employee themselves, if we supported it) can update bank details and pin via this endpoint
+        if (authUser.role === 'owner' || authUser.role === 'employee') {
+            allowedFields.push('bank_details', 'bank_account_name', 'bank_bsb', 'bank_account_number', 'ABN/TFN/ACN');
+        }
 
         const updateData: Record<string, unknown> = {};
         for (const field of allowedFields) {
@@ -130,7 +148,15 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 
         updateData.updated_at = new Date().toISOString();
 
-        const { data: updatedEmployee, error } = await supabase
+        // Fetch before value for audit log
+        const { data: beforeValue } = await supabase
+            .from('Employee')
+            .select('*')
+            .eq('employee_id', id)
+            .eq('business_id', authUser.business_id)
+            .single();
+
+        const { data: updatedEmployee, error } = await adminClient
             .from('Employee')
             .update(updateData)
             .eq('employee_id', id)
@@ -139,8 +165,20 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
             .single();
 
         if (error || !updatedEmployee) {
+            console.error('Employee update failed:', error?.message, error?.details);
             return errorResponse('Employee not found or update failed', 404);
         }
+
+        await logAudit({
+            businessId: authUser.business_id,
+            tableName: 'Employee',
+            recordId: updatedEmployee.employee_id,
+            action: 'UPDATE',
+            changedBy: authUser.user_id,
+            beforeValue,
+            afterValue: updatedEmployee,
+            reason: 'Employee details updated'
+        });
 
         return successResponse(updatedEmployee, 'Employee updated successfully');
     } catch (error) {
@@ -152,9 +190,11 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 /**
  * DELETE /api/employees/[id]
  * 
- * Deactivate an employee (soft delete — sets status to 'inactive')
- * To hard delete, pass ?hard=true (also removes auth account)
- * Access: Owner and manager
+ * Deactivate an employee (soft delete)
+ * Access: Owner, Manager
+ * 
+ * Query params:
+ *   ?hard=true (permanent delete)
  */
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
     try {
@@ -196,6 +236,16 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
             const adminClient = createAdminClient();
             await adminClient.auth.admin.deleteUser(employee.user_id);
 
+            await logAudit({
+                businessId: authUser.business_id,
+                tableName: 'Employee',
+                recordId: id,
+                action: 'DELETE',
+                changedBy: authUser.user_id,
+                beforeValue: employee,
+                reason: 'Employee permanently deleted'
+            });
+
             return successResponse(null, 'Employee permanently deleted');
         } else {
             // Soft delete: set status to inactive + set end_date
@@ -213,6 +263,17 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
             if (updateError) {
                 return errorResponse(`Failed to deactivate employee: ${updateError.message}`, 400);
             }
+
+            await logAudit({
+                businessId: authUser.business_id,
+                tableName: 'Employee',
+                recordId: id,
+                action: 'UPDATE',
+                changedBy: authUser.user_id,
+                beforeValue: employee,
+                afterValue: updatedEmployee,
+                reason: 'Employee deactivated (soft delete)'
+            });
 
             return successResponse(updatedEmployee, 'Employee deactivated');
         }

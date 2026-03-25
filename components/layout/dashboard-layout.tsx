@@ -1,0 +1,115 @@
+"use client";
+
+import React, { useState } from "react";
+import { Sidebar } from "./sidebar";
+import { TopNav } from "./topnav";
+import { motion, AnimatePresence } from "framer-motion";
+import { useAuth } from "@/hooks/use-auth";
+import { cn } from "@/lib/utils";
+
+interface DashboardLayoutProps {
+    children: React.ReactNode;
+    role: "owner" | "manager" | "employee";
+    pageTitle: string;
+    pageDescription?: string;
+    businessName?: string;
+    actions?: React.ReactNode;
+    defaultCollapsed?: boolean;
+}
+
+export function DashboardLayout({
+    children,
+    role,
+    pageTitle,
+    pageDescription,
+    businessName,
+    actions,
+    defaultCollapsed = false,
+}: DashboardLayoutProps) {
+    const { user } = useAuth();
+    const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+    const [isCollapsed, setIsCollapsed] = useState(defaultCollapsed);
+
+    return (
+        <div className="flex min-h-screen bg-[hsl(var(--background))]">
+            {/* Desktop Sidebar */}
+            <div className="hidden lg:block">
+                <Sidebar
+                    role={role}
+                    businessName={businessName || user?.business?.business_name}
+                    isCollapsed={isCollapsed}
+                    onToggleCollapse={() => setIsCollapsed(!isCollapsed)}
+                />
+            </div>
+
+            {/* Mobile Sidebar Overlay */}
+            <AnimatePresence>
+                {mobileMenuOpen && (
+                    <>
+                        {/* Backdrop */}
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            transition={{ duration: 0.2 }}
+                            className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm lg:hidden"
+                            onClick={() => setMobileMenuOpen(false)}
+                        />
+                        {/* Sidebar */}
+                        <motion.div
+                            initial={{ x: -280 }}
+                            animate={{ x: 0 }}
+                            exit={{ x: -280 }}
+                            transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
+                            className="fixed left-0 top-0 z-50 lg:hidden"
+                        >
+                            <Sidebar
+                                role={role}
+                                businessName={businessName || user?.business?.business_name}
+                            />
+                        </motion.div>
+                    </>
+                )}
+            </AnimatePresence>
+
+            {/* Main Content Area — dynamically offset by sidebar width */}
+            <div 
+                className={cn(
+                    "flex flex-1 flex-col min-w-0 transition-[margin] duration-200 ease-[0.4,0,0.2,1]",
+                    isCollapsed ? "lg:ml-[72px]" : "lg:ml-[260px]"
+                )}
+            >
+                <TopNav
+                    onMenuClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                />
+
+                {/* Page Content with fade-in animation */}
+                <motion.main
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
+                    className="flex-1 p-6"
+                >
+                    {/* Page Content with fade-in animation */}
+                    {(pageTitle || actions) && (
+                        <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
+                            <div>
+                                <h1 className="text-2xl font-bold tracking-tight text-[hsl(var(--foreground))]">{pageTitle}</h1>
+                                {pageDescription && (
+                                    <p className="text-[hsl(var(--muted-foreground))] mt-1">{pageDescription}</p>
+                                )}
+                            </div>
+                            {actions && (
+                                <div className="flex items-center gap-3 shrink-0">
+                                    {actions}
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {children}
+                </motion.main>
+            </div>
+        </div>
+    );
+}

@@ -3,14 +3,16 @@ import { createClient } from '@/lib/supabase/server';
 import { requireRole } from '@/lib/auth';
 import { successResponse, errorResponse } from '@/lib/api-helpers';
 
+import { notifyRosterPublished } from '@/lib/notifications';
+
 interface RouteParams {
     params: Promise<{ id: string }>;
 }
 
 /**
  * GET /api/rosters/[id]
- *
- * Get a specific roster with all its shifts + employee names
+ * 
+ * Get a specific roster with shifts
  * Access: Owner, Manager
  */
 export async function GET(request: NextRequest, { params }: RouteParams) {
@@ -45,15 +47,15 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
 /**
  * PUT /api/rosters/[id]
- *
+ * 
  * Update roster dates or publish it
  * Access: Owner, Manager
- *
- * Body (all optional):
+ * 
+ * Body:
  * {
  *   "start_date": "2026-03-03",
  *   "end_date": "2026-03-09",
- *   "status": "published"          ← set to 'published' to lock roster
+ *   "status": "published"
  * }
  */
 export async function PUT(request: NextRequest, { params }: RouteParams) {
@@ -80,12 +82,6 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
         if (body.start_date) updateData.start_date = body.start_date;
         if (body.end_date) updateData.end_date = body.end_date;
 
-        // Publish roster
-        if (body.status === 'published' && existing.status === 'draft') {
-            updateData.status = 'published';
-            updateData.published_at = new Date().toISOString();
-        }
-
         if (Object.keys(updateData).length === 0) {
             return errorResponse('No valid fields to update', 400);
         }
@@ -101,7 +97,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 
         if (error) return errorResponse(error.message, 400);
 
-        return successResponse(updated, 'Roster updated successfully');
+        return successResponse(updated);
     } catch (err) {
         console.error('Update roster error:', err);
         return errorResponse('Internal server error', 500);
@@ -110,8 +106,8 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 
 /**
  * DELETE /api/rosters/[id]
- *
- * Delete a roster and all its shifts (only if still in 'draft' status)
+ * 
+ * Delete a roster (draft only)
  * Access: Owner, Manager
  */
 export async function DELETE(request: NextRequest, { params }: RouteParams) {

@@ -3,12 +3,13 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 import { requireRole } from '@/lib/auth';
 import { successResponse, errorResponse, validateRequiredFields } from '@/lib/api-helpers';
+import bcrypt from 'bcryptjs';
 
 /**
  * GET /api/managers
  * 
- * List all managers for the authenticated owner's business
- * Access: Owner only
+ * List all managers for the business
+ * Access: Owner
  */
 export async function GET() {
     try {
@@ -19,16 +20,34 @@ export async function GET() {
 
         const supabase = await createClient();
 
-        const { data: managers, error } = await supabase
+        // Fetch Users (managers) first
+        const { data: users, error: userError } = await supabase
             .from('User')
             .select('*')
             .eq('business_id', authUser.business_id)
             .eq('role', 'manager')
             .order('created_at', { ascending: false });
 
-        if (error) {
-            return errorResponse(error.message, 400);
+        if (userError) {
+            return errorResponse(userError.message, 400);
         }
+
+        if (!users || users.length === 0) {
+            return successResponse([], 'No managers found');
+        }
+
+        // Fetch corresponding Employee details separately to avoid schema cache join issues
+        const userIds = users.map(u => u.user_id);
+        const { data: employees, error: empError } = await supabase
+            .from('Employee')
+            .select('employee_id, first_name, last_name, phone, email, dob, bank_details, emergency_contact_name, emergency_contact_phone, employment_type, role_title, pay_cycle, start_date, end_date, created_at, updated_at, business_id, user_id, status')
+            .in('user_id', userIds);
+
+        // Merge the data manually
+        const managers = users.map(user => ({
+            ...user,
+            Employee: employees?.find(e => e.user_id === user.user_id) || null
+        }));
 
         return successResponse(managers, `Found ${managers.length} manager(s)`);
     } catch (error) {
@@ -40,8 +59,8 @@ export async function GET() {
 /**
  * POST /api/managers
  * 
- * Create/invite a new manager (Dual Record: User + Employee)
- * Access: Owner only
+ * Create/invite a new manager
+ * Access: Owner
  * 
  * Body:
  * {
@@ -49,14 +68,11 @@ export async function GET() {
  *   "password": "tempPassword123",
  *   "first_name": "Jane",
  *   "last_name": "Smith",
- *   "phone": "0412345678",
  *   "dob": "1990-01-15",
- *   "bank_details": "BSB: 062000, Acc: 12345678",
+ *   "bank_details": "BSB: 062..., Acc: 123...",
  *   "emergency_contact_name": "John Smith",
  *   "emergency_contact_phone": "0498765432",
- *   "employment_type": "full_time",
  *   "role_title": "Shift Manager",
- *   "pay_cycle": "fortnightly",
  *   "kiosk_pin": "5678",
  *   "start_date": "2026-03-01",
  *   "employee_id": "MGR001",
@@ -83,7 +99,6 @@ export async function POST(request: NextRequest) {
             'emergency_contact_name',
             'emergency_contact_phone',
             'role_title',
-            'kiosk_pin',
             'start_date',
             'employee_id',
             'weekday_rate',
@@ -105,7 +120,6 @@ export async function POST(request: NextRequest) {
             employment_type,
             role_title,
             pay_cycle,
-            kiosk_pin,
             start_date,
             end_date,
             employee_id,
@@ -155,7 +169,7 @@ export async function POST(request: NextRequest) {
             return errorResponse(`Failed to create manager profile: ${userError.message}`, 400);
         }
 
-        // Step 3: Create Employee record
+
         const { error: employeeError } = await supabase
             .from('Employee')
             .insert({
@@ -171,7 +185,6 @@ export async function POST(request: NextRequest) {
                 employment_type: employment_type || null,
                 role_title,
                 pay_cycle: pay_cycle || null,
-                kiosk_pin,
                 start_date,
                 end_date: end_date || null,
                 business_id: authUser.business_id,

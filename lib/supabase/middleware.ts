@@ -30,7 +30,57 @@ export async function updateSession(request: NextRequest) {
     );
 
     // Refresh the auth session
-    await supabase.auth.getUser();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    const pathname = request.nextUrl.pathname;
+    const isOwnerRoute = pathname.startsWith('/owner');
+    const isManagerRoute = pathname.startsWith('/manager');
+    const isEmployeeRoute = pathname.startsWith('/employee');
+
+    if (isOwnerRoute || isManagerRoute || isEmployeeRoute) {
+        if (!user) {
+            return NextResponse.redirect(new URL('/login', request.url));
+        }
+
+        // Fetch user role
+        // Check User table first (Owner/Manager)
+        const { data: userRecord } = await supabase
+            .from('User')
+            .select('role')
+            .eq('user_id', user.id)
+            .single();
+
+        let role: string | null = userRecord?.role || null;
+
+        if (!role) {
+            // Check Employee table
+            const { data: employeeRecord } = await supabase
+                .from('Employee')
+                .select('employee_id')
+                .eq('user_id', user.id)
+                .single();
+
+            if (employeeRecord) {
+                role = 'employee';
+            }
+        }
+
+        // Enforce role-based access
+        if (isOwnerRoute && role !== 'owner') {
+            const fallback = role === 'manager' ? '/manager/dashboard' : '/employee/dashboard';
+            return NextResponse.redirect(new URL(role ? fallback : '/login', request.url));
+        }
+
+        if (isManagerRoute && role !== 'manager' && role !== 'owner') {
+            const fallback = role === 'owner' ? '/owner/dashboard' : '/employee/dashboard';
+            return NextResponse.redirect(new URL(role ? fallback : '/login', request.url));
+        }
+
+        if (isEmployeeRoute && role !== 'employee') {
+            const fallback = role === 'owner' ? '/owner/dashboard' : '/manager/dashboard';
+            return NextResponse.redirect(new URL(role ? fallback : '/login', request.url));
+        }
+    }
 
     return supabaseResponse;
 }

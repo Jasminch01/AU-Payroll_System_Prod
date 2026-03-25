@@ -5,7 +5,7 @@ import { successResponse, errorResponse } from '@/lib/api-helpers';
  * GET /api/auth/me
  * 
  * Get current authenticated user's profile and role
- * Returns user info, role, and business details
+ * Access: Authenticated
  */
 export async function GET() {
     try {
@@ -26,6 +26,13 @@ export async function GET() {
             .single();
 
         if (userRecord) {
+            // Check if manager/owner also has an employee profile
+            const { data: linkedEmp } = await supabase
+                .from('Employee')
+                .select('employee_id')
+                .eq('user_id', user.id)
+                .single();
+
             return successResponse({
                 user_id: user.id,
                 email: user.email,
@@ -34,6 +41,7 @@ export async function GET() {
                 last_name: userRecord.last_name,
                 business_id: userRecord.business_id,
                 business: userRecord.Business,
+                employee_id: linkedEmp?.employee_id,
             });
         }
 

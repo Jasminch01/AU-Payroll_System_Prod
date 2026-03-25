@@ -1,12 +1,13 @@
 import { NextRequest } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { successResponse, errorResponse, validateRequiredFields } from '@/lib/api-helpers';
+import { syncBusinessHolidays } from '@/lib/holiday-sync';
 
 /**
  * POST /api/auth/register
  * 
  * Register a new Owner + Business
- * Creates: auth.users → Business → User (role=owner)
+ * Access: Public
  * 
  * Body:
  * {
@@ -101,6 +102,15 @@ export async function POST(request: NextRequest) {
 
         if (userError) {
             return errorResponse(`Failed to create user profile: ${userError.message}`, 400);
+        }
+
+        // Step 4: Sync Public Holidays for the new business
+        // We do this in the background/non-blocking if possible, or just await it
+        try {
+            await syncBusinessHolidays(businessData.business_id, state);
+        } catch (syncErr) {
+            console.error('Failed to sync holidays during registration:', syncErr);
+            // We don't fail the whole registration if this fails, but we log it
         }
 
         return successResponse(

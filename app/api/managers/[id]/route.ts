@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 import { requireRole } from '@/lib/auth';
 import { successResponse, errorResponse } from '@/lib/api-helpers';
+import bcrypt from 'bcryptjs';
 
 interface RouteParams {
     params: Promise<{ id: string }>;
@@ -11,8 +12,8 @@ interface RouteParams {
 /**
  * GET /api/managers/[id]
  * 
- * Get a specific manager by user_id
- * Access: Owner only
+ * Get a specific manager profile
+ * Access: Owner
  */
 export async function GET(request: NextRequest, { params }: RouteParams) {
     try {
@@ -24,17 +25,35 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         const { id } = await params;
         const supabase = await createClient();
 
-        const { data: manager, error } = await supabase
+        // 1. Fetch User Record
+        const { data: user, error: userError } = await supabase
             .from('User')
-            .select('*, Employee!inner(*)')
+            .select('*')
             .eq('user_id', id)
             .eq('business_id', authUser.business_id)
             .eq('role', 'manager')
             .single();
 
-        if (error || !manager) {
+        if (userError || !user) {
             return errorResponse('Manager not found', 404);
         }
+
+        // 2. Fetch Employee Record separately
+        const { data: employee, error: empError } = await supabase
+            .from('Employee')
+            .select('employee_id, first_name, last_name, phone, email, dob, bank_details, emergency_contact_name, emergency_contact_phone, employment_type, role_title, pay_cycle, start_date, end_date, created_at, updated_at, business_id, user_id, status')
+            .eq('user_id', id)
+            .single();
+
+        if (empError) {
+            // Log it but we still have the user profile
+            console.error('Error fetching employee details for manager:', empError);
+        }
+
+        const manager = {
+            ...user,
+            Employee: employee || null
+        };
 
         return successResponse(manager);
     } catch (error) {
@@ -46,8 +65,17 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 /**
  * PUT /api/managers/[id]
  * 
- * Update a manager's profile (Both User and Employee records)
- * Access: Owner only
+ * Update a manager's profile
+ * Access: Owner
+ * 
+ * Body:
+ * {
+ *   "first_name": "Jane",
+ *   "last_name": "Smith",
+ *   "phone": "0412345678",
+ *   "status": "active",
+ *   ...
+ * }
  */
 export async function PUT(request: NextRequest, { params }: RouteParams) {
     try {
@@ -81,12 +109,14 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
         const allowedEmployeeFields = [
             'first_name', 'last_name', 'phone', 'dob', 'bank_details',
             'emergency_contact_name', 'emergency_contact_phone',
-            'employment_type', 'role_title', 'pay_cycle', 'kiosk_pin',
+            'employment_type', 'role_title', 'pay_cycle',
             'end_date', 'status'
         ];
 
         for (const field of allowedEmployeeFields) {
-            if (body[field] !== undefined) employeeFields[field] = body[field];
+            if (body[field] !== undefined) {
+                employeeFields[field] = body[field];
+            }
         }
 
         if (Object.keys(employeeFields).length > 0) {
@@ -110,8 +140,8 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 /**
  * DELETE /api/managers/[id]
  * 
- * Delete a manager (removes User record + Employee record + Auth account)
- * Access: Owner only
+ * Delete a manager profile and account
+ * Access: Owner
  */
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
     try {

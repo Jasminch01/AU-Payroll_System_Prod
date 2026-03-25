@@ -1,0 +1,1596 @@
+"use client";
+
+import React, { useState, useMemo, useCallback } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { DashboardLayout } from "@/components/layout";
+import { Button } from "@/components/ui/button";
+import Link from "next/link";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import {
+    Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter
+} from "@/components/ui/dialog";
+import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/api-client";
+import { useEffect } from "react";
+import { toast } from "sonner";
+import { Plus, ChevronLeft, ChevronRight, Clock, Trash2, CheckCircle2, FileText, RefreshCcw, Copy, Bell, CalendarDays, Search, Filter, ChevronsLeft, ChevronsRight, GripVertical, MoreHorizontal, Users } from "lucide-react";
+import { Reorder, AnimatePresence } from "framer-motion";
+import { cn } from "@/lib/utils";
+import { createClient } from "@/lib/supabase/client";
+import { useAuth } from "@/hooks/use-auth";
+import {
+    Popover, PopoverTrigger, PopoverContent
+} from "@/components/ui/popover";
+import {
+    DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem
+} from "@/components/ui/dropdown-menu";
+import {
+    format, addMonths, subMonths, startOfMonth, endOfMonth,
+    startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth,
+    isSameDay, addDays, differenceInWeeks, differenceInDays
+} from "date-fns";
+
+type RosterPeriod = "weekly" | "fortnightly" | "monthly";
+
+function getRosterDates(offset: number, period: RosterPeriod): Date[] {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const start = new Date(today);
+
+    // Normalize to Monday of current week
+    const day = today.getDay();
+    const diffToMonday = (day === 0 ? -6 : 1 - day);
+
+    if (period === "weekly") {
+        start.setDate(today.getDate() + diffToMonday + offset * 7);
+        return Array.from({ length: 7 }, (_, i) => {
+            const d = new Date(start);
+            d.setDate(start.getDate() + i);
+            return d;
+        });
+    } else if (period === "fortnightly") {
+        start.setDate(today.getDate() + diffToMonday + offset * 14);
+        return Array.from({ length: 14 }, (_, i) => {
+            const d = new Date(start);
+            d.setDate(start.getDate() + i);
+            return d;
+        });
+    } else {
+        // Monthly
+        const monthStart = new Date(today.getFullYear(), today.getMonth() + offset, 1);
+        const lastDay = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0).getDate();
+        return Array.from({ length: lastDay }, (_, i) => {
+            const d = new Date(monthStart);
+            d.setDate(1 + i);
+            return d;
+        });
+    }
+}
+
+function formatDate(d: Date | string) {
+    if (!d) return "";
+    if (typeof d === "string") {
+        const match = d.match(/^\d{4}-\d{2}-\d{2}/);
+        if (match) return match[0];
+    }
+    const dateObj = d instanceof Date ? d : new Date(d);
+    if (isNaN(dateObj.getTime())) return "";
+    return `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, "0")}-${String(dateObj.getDate()).padStart(2, "0")}`;
+}
+
+function getPeriodOptions(period: RosterPeriod, count: number = 12): { label: string, start: string, end: string, offset: number }[] {
+    const options: { label: string, start: string, end: string, offset: number }[] = [];
+
+    for (let i = -Math.floor(count / 3); i <= count - Math.floor(count / 3); i++) {
+        const dates = getRosterDates(i, period);
+        const start = dates[0];
+        const end = dates[dates.length - 1];
+
+        let prefix = "";
+        if (i === 0) prefix = period === "weekly" ? "This week, " : period === "fortnightly" ? "This fortnight, " : "This month, ";
+        else if (i === 1) prefix = period === "weekly" ? "Next week, " : period === "fortnightly" ? "Next fortnight, " : "Next month, ";
+        else if (i === -1) prefix = period === "weekly" ? "Last week, " : period === "fortnightly" ? "Last fortnight, " : "Last month, ";
+
+        const label = `${prefix}${format(start, "MMM d")} - ${format(end, "MMM d")}`;
+        options.push({
+            label,
+            start: formatDate(start),
+            end: formatDate(end),
+            offset: i
+        });
+    }
+    return options;
+}
+
+export default function OwnerRosterPage() {
+    const queryClient = useQueryClient();
+    const [offset, setOffset] = useState(0);
+    const [rosterPeriod, setRosterPeriod] = useState<RosterPeriod>("weekly");
+    const [addShiftOpen, setAddShiftOpen] = useState(false);
+    const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+    const [selectedDate, setSelectedDate] = useState("");
+    const [editingShiftId, setEditingShiftId] = useState<string | null>(null);
+
+    // Shift form
+    const [shiftEmployee, setShiftEmployee] = useState("");
+    const [shiftStart, setShiftStart] = useState("09:00");
+    const [shiftEnd, setShiftEnd] = useState("17:00");
+    const [shiftType, setShiftType] = useState("morning");
+    const [initialFormState, setInitialFormState] = useState<any>(null);
+
+    // Expansion confirmation state
+    const [expansionOpen, setExpansionOpen] = useState(false);
+    const [pendingShiftData, setPendingShiftData] = useState<any>(null);
+
+    const rosterDates = useMemo(() => getRosterDates(offset, rosterPeriod), [offset, rosterPeriod]);
+    const rangeStart = formatDate(rosterDates[0]);
+    const rangeEnd = formatDate(rosterDates[rosterDates.length - 1]);
+
+    // Copy Shifts state
+    const [copyOption, setCopyOption] = useState<'next_week' | 'prev_week'>('next_week');
+
+    // Copy Review & Undo state
+    const [copyResult, setCopyResult] = useState<{
+        copiedCount: number, overlapCount: number, overlapDetails: string[]
+    } | null>(null);
+    const [resultModalOpen, setResultModalOpen] = useState(false);
+    const [lastNewShiftIds, setLastNewShiftIds] = useState<string[]>([]);
+    const [undoConfirmOpen, setUndoConfirmOpen] = useState(false);
+
+    const periodOptions = useMemo(() => getPeriodOptions(rosterPeriod), [rosterPeriod]);
+
+    // Search, Filter & Pagination State
+    const [searchQuery, setSearchQuery] = useState("");
+    const [roleFilter, setRoleFilter] = useState("all");
+    const [currentPage, setCurrentPage] = useState(1);
+    const pageSize = 10;
+
+    const { data: employees = [] } = useQuery({
+        queryKey: ["employees"],
+        queryFn: () => apiGet<any[]>("/employees"),
+    });
+
+    // Local order for drag-and-drop reordering
+    const [orderedEmployeeIds, setOrderedEmployeeIds] = useState<string[]>([]);
+
+    useEffect(() => {
+        if (employees.length > 0 && orderedEmployeeIds.length === 0) {
+            setOrderedEmployeeIds(employees.filter((e: any) => e.status === "active").map((e: any) => e.employee_id));
+        }
+    }, [employees, orderedEmployeeIds.length]);
+
+    const filteredEmployees = useMemo(() => {
+        const active = employees.filter((e: any) => e.status === "active");
+
+        // Sort by the local ordered list
+        const sorted = [...active].sort((a, b) => {
+            const indexA = orderedEmployeeIds.indexOf(a.employee_id);
+            const indexB = orderedEmployeeIds.indexOf(b.employee_id);
+            if (indexA === -1 && indexB === -1) return 0;
+            if (indexA === -1) return 1;
+            if (indexB === -1) return -1;
+            return indexA - indexB;
+        });
+
+        return sorted.filter((e: any) => {
+            const matchesSearch = `${e.first_name} ${e.last_name}`.toLowerCase().includes(searchQuery.toLowerCase());
+            const matchesRole = roleFilter === "all" || e.role_title?.toLowerCase() === roleFilter;
+            return matchesSearch && matchesRole;
+        });
+    }, [employees, searchQuery, roleFilter, orderedEmployeeIds]);
+
+    const paginatedEmployees = useMemo(() => {
+        const start = (currentPage - 1) * pageSize;
+        return filteredEmployees.slice(start, start + pageSize);
+    }, [filteredEmployees, currentPage, pageSize]);
+
+    const totalPages = Math.ceil(filteredEmployees.length / pageSize);
+
+    // Get unique roles for filter
+    const roles = useMemo(() => {
+        const allRoles = employees.map((e: any) => e.role_title).filter(Boolean);
+        return Array.from(new Set(allRoles));
+    }, [employees]);
+
+    const { data: shifts = [], isLoading, isFetching } = useQuery({
+        queryKey: ["shifts", rangeStart, rangeEnd],
+        queryFn: () => apiGet<any[]>("/shift", { from: rangeStart, to: rangeEnd }),
+    });
+
+    const { data: rosters = [], isFetching: isFetchingRosters } = useQuery({
+        queryKey: ["rosters"],
+        queryFn: () => apiGet<any[]>("/rosters"),
+    });
+
+    // Real-time listener
+    useEffect(() => {
+        const supabase = createClient();
+        const channel = supabase
+            .channel('owner-roster-realtime')
+            .on(
+                'postgres_changes',
+                {
+                    event: '*',
+                    schema: 'public',
+                    table: 'Shift'
+                },
+                () => {
+                    queryClient.invalidateQueries({ queryKey: ["shifts"] });
+                    queryClient.invalidateQueries({ queryKey: ["rosters"] });
+                }
+            )
+            .on(
+                'postgres_changes',
+                {
+                    event: '*',
+                    schema: 'public',
+                    table: 'Roster'
+                },
+                () => {
+                    queryClient.invalidateQueries({ queryKey: ["shifts"] });
+                    queryClient.invalidateQueries({ queryKey: ["rosters"] });
+                }
+            )
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [queryClient]);
+
+    // Auto-detect roster period from data on load
+    const [hasAutoSet, setHasAutoSet] = useState(false);
+    useEffect(() => {
+        if (!hasAutoSet && rosters.length > 0) {
+            // Find the most recent roster
+            const latest = rosters[0]; // Roster API usually returns newest first
+            if (latest) {
+                const start = new Date(latest.start_date);
+                const end = new Date(latest.end_date);
+                const diffDays = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+
+                if (diffDays > 20) setRosterPeriod("monthly");
+                else if (diffDays > 10) setRosterPeriod("fortnightly");
+                else setRosterPeriod("weekly");
+
+                setHasAutoSet(true);
+            }
+        }
+    }, [rosters, hasAutoSet]);
+
+    const createShiftMutation = useMutation({
+        mutationFn: (data: any) => apiPost("/shift", data),
+        onMutate: async (newShift) => {
+            await queryClient.cancelQueries({ queryKey: ["shifts", rangeStart, rangeEnd] });
+            const previousShifts = queryClient.getQueryData(["shifts", rangeStart, rangeEnd]);
+            queryClient.setQueryData(["shifts", rangeStart, rangeEnd], (old: any[] = []) => [
+                ...old,
+                { ...newShift, shift_id: `temp_${Date.now()}`, status: 'draft' }
+            ]);
+            return { previousShifts };
+        },
+        onSuccess: () => {
+            toast.success("Shift created");
+            setAddShiftOpen(false);
+        },
+        onError: (err: Error, newShift, context: any) => {
+            toast.error(err.message);
+            if (context?.previousShifts) {
+                queryClient.setQueryData(["shifts", rangeStart, rangeEnd], context.previousShifts);
+            }
+        },
+        onSettled: () => {
+            queryClient.invalidateQueries({ queryKey: ["shifts"] });
+            queryClient.invalidateQueries({ queryKey: ["rosters"] });
+        },
+    });
+
+    const updateShiftMutation = useMutation({
+        mutationFn: (data: any) => apiPut(`/shift/${editingShiftId}`, data),
+        onMutate: async (updatedShift) => {
+            await queryClient.cancelQueries({ queryKey: ["shifts", rangeStart, rangeEnd] });
+            const previousShifts = queryClient.getQueryData(["shifts", rangeStart, rangeEnd]);
+            queryClient.setQueryData(["shifts", rangeStart, rangeEnd], (old: any[] = []) =>
+                old.map((s: any) => s.shift_id === editingShiftId ? { ...s, ...updatedShift } : s)
+            );
+            return { previousShifts };
+        },
+        onSuccess: () => {
+            toast.success("Shift updated");
+            setAddShiftOpen(false);
+        },
+        onError: (err: Error, updatedShift, context: any) => {
+            toast.error(err.message);
+            if (context?.previousShifts) {
+                queryClient.setQueryData(["shifts", rangeStart, rangeEnd], context.previousShifts);
+            }
+        },
+        onSettled: () => {
+            queryClient.invalidateQueries({ queryKey: ["shifts"] });
+            queryClient.invalidateQueries({ queryKey: ["rosters"] });
+        },
+    });
+
+    const deleteShiftMutation = useMutation({
+        mutationFn: (shiftId: string) => apiDelete(`/shift/${shiftId}`),
+        onMutate: async (shiftId) => {
+            await queryClient.cancelQueries({ queryKey: ["shifts", rangeStart, rangeEnd] });
+            const previousShifts = queryClient.getQueryData(["shifts", rangeStart, rangeEnd]);
+            queryClient.setQueryData(["shifts", rangeStart, rangeEnd], (old: any[] = []) =>
+                old.filter((s: any) => s.shift_id !== shiftId)
+            );
+            return { previousShifts };
+        },
+        onSuccess: () => {
+            toast.success("Shift deleted");
+            setDeleteConfirmOpen(false);
+            setAddShiftOpen(false);
+        },
+        onError: (err: Error, shiftId, context: any) => {
+            toast.error(err.message);
+            if (context?.previousShifts) {
+                queryClient.setQueryData(["shifts", rangeStart, rangeEnd], context.previousShifts);
+            }
+        },
+        onSettled: () => {
+            queryClient.invalidateQueries({ queryKey: ["shifts"] });
+            queryClient.invalidateQueries({ queryKey: ["rosters"] });
+        },
+    });
+
+    const [deleteRosterConfirmOpen, setDeleteRosterConfirmOpen] = useState(false);
+    const deleteRosterMutation = useMutation({
+        mutationFn: (rosterId: string) => apiDelete(`/rosters/${rosterId}`),
+        onSuccess: () => {
+            toast.success("Roster deleted successfully");
+            queryClient.invalidateQueries({ queryKey: ["rosters"] });
+            queryClient.invalidateQueries({ queryKey: ["shifts"] });
+            setDeleteRosterConfirmOpen(false);
+        },
+        onError: (err: Error) => toast.error(err.message),
+    });
+
+    const notifyShiftMutation = useMutation({
+        mutationFn: (shiftId: string) => apiPost(`/shift/${shiftId}/notify`, {}),
+        onMutate: async (shiftId) => {
+            await queryClient.cancelQueries({ queryKey: ["shifts", rangeStart, rangeEnd] });
+            const previousShifts = queryClient.getQueryData(["shifts", rangeStart, rangeEnd]);
+            queryClient.setQueryData(["shifts", rangeStart, rangeEnd], (old: any[] = []) =>
+                old.map((s: any) => s.shift_id === shiftId ? { ...s, status: 'published' } : s)
+            );
+            return { previousShifts };
+        },
+        onSuccess: () => {
+            toast.success("Shift published & employee notified!", { icon: "🔔" });
+        },
+        onError: (err: Error, shiftId, context: any) => {
+            toast.error(err.message);
+            if (context?.previousShifts) {
+                queryClient.setQueryData(["shifts", rangeStart, rangeEnd], context.previousShifts);
+            }
+        },
+        onSettled: () => {
+            queryClient.invalidateQueries({ queryKey: ["shifts"] });
+        },
+    });
+
+    const [duplicateOpen, setDuplicateOpen] = useState(false);
+    const [targetDuplicateDate, setTargetDuplicateDate] = useState("");
+    const duplicateRosterMutation = useMutation({
+        mutationFn: (data: { source_from: string; source_to: string; target_start: string }) =>
+            apiPost(`/rosters/copy-shifts`, data),
+        onSuccess: (res: any) => {
+            setCopyResult({
+                copiedCount: res.copiedCount,
+                overlapCount: res.overlapCount,
+                overlapDetails: res.overlapDetails
+            });
+            setLastNewShiftIds(res.newShiftIds || []);
+            setResultModalOpen(true);
+
+            queryClient.invalidateQueries({ queryKey: ["rosters"] });
+            queryClient.invalidateQueries({ queryKey: ["shifts"] });
+            setDuplicateOpen(false);
+
+            // Auto-jump to the target period
+            setOffset(offset + 1);
+        },
+        onError: (err: Error) => toast.error(err.message),
+    });
+
+    const undoLastCopyMutation = useMutation({
+        mutationFn: () => apiPost("/shift/delete-many", { ids: lastNewShiftIds }),
+        onSuccess: () => {
+            toast.success("Last copy operation undone successfully");
+            queryClient.invalidateQueries({ queryKey: ["shifts"] });
+            queryClient.invalidateQueries({ queryKey: ["rosters"] });
+            setUndoConfirmOpen(false);
+            setResultModalOpen(false);
+            // Optionally jump back?
+            setOffset(offset - 1);
+        },
+        onError: (err: Error) => toast.error(err.message),
+    });
+
+    const publishRosterMutation = useMutation({
+        mutationFn: (rosterId: string) => apiPost(`/rosters/${rosterId}/publish`, {}),
+        onMutate: async () => {
+            await queryClient.cancelQueries({ queryKey: ["shifts", rangeStart, rangeEnd] });
+            const previousShifts = queryClient.getQueryData(["shifts", rangeStart, rangeEnd]);
+            queryClient.setQueryData(["shifts", rangeStart, rangeEnd], (old: any[] = []) =>
+                old.map((s: any) => (s.status === 'draft' || !s.status) ? { ...s, status: 'published' } : s)
+            );
+            return { previousShifts };
+        },
+        onSuccess: () => {
+            toast.success("Shifts published and employees notified!");
+        },
+        onError: (err: Error, rosterId, context: any) => {
+            toast.error(err.message);
+            if (context?.previousShifts) {
+                queryClient.setQueryData(["shifts", rangeStart, rangeEnd], context.previousShifts);
+            }
+        },
+        onSettled: () => {
+            queryClient.invalidateQueries({ queryKey: ["rosters"] });
+            queryClient.invalidateQueries({ queryKey: ["shifts"] });
+        },
+    });
+
+    const handleAddShift = () => {
+        if (!shiftEmployee || !selectedDate) {
+            toast.error("Please select an employee and date");
+            return;
+        }
+
+        const now = new Date();
+        const start = new Date(`${selectedDate}T${shiftStart}:00`);
+        if (start < now && !editingShiftId) {
+            toast.error("Cannot create a shift that starts in the past.");
+            return;
+        }
+
+        const payload = {
+            employee_id: shiftEmployee,
+            shift_date: selectedDate,
+            start_time: `${selectedDate}T${shiftStart}:00`,
+            end_time: `${selectedDate}T${shiftEnd}:00`,
+            shift_type: shiftType,
+            roster_start: rangeStart,
+            roster_end: rangeEnd,
+        };
+
+        // Check for expansion
+        if (currentRoster) {
+            const rosterStart = formatDate(currentRoster.start_date);
+            const rosterEnd = formatDate(currentRoster.end_date);
+
+            if (selectedDate < rosterStart || selectedDate > rosterEnd) {
+                setPendingShiftData(payload);
+                setExpansionOpen(true);
+                return;
+            }
+        }
+
+        if (editingShiftId) {
+            updateShiftMutation.mutate(payload);
+        } else {
+            createShiftMutation.mutate(payload);
+        }
+    };
+
+    const confirmExpansion = () => {
+        if (!pendingShiftData) return;
+        if (editingShiftId) {
+            updateShiftMutation.mutate(pendingShiftData);
+        } else {
+            createShiftMutation.mutate(pendingShiftData);
+        }
+        setExpansionOpen(false);
+        setPendingShiftData(null);
+    };
+
+    const openAddShift = (date: string, empId = "", shift: any = null) => {
+        setSelectedDate(date);
+        setShiftEmployee(empId);
+
+        if (shift) {
+            setEditingShiftId(shift.shift_id);
+            setShiftStart(new Date(shift.start_time).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }));
+            setShiftEnd(new Date(shift.end_time).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }));
+            setShiftType(shift.shift_type);
+            setInitialFormState({
+                employee_id: empId,
+                shift_date: date,
+                start_time: new Date(shift.start_time).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }),
+                end_time: new Date(shift.end_time).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }),
+                shift_type: shift.shift_type
+            });
+        } else {
+            setEditingShiftId(null);
+            setInitialFormState(null);
+            const now = new Date();
+            const todayStr = formatDate(now);
+
+            if (date === todayStr) {
+                const hour = now.getHours() + 1;
+                const startStr = `${String(hour > 23 ? 23 : hour).padStart(2, "0")}:00`;
+                const endHour = hour + 8;
+                const endStr = `${String(endHour > 23 ? 23 : endHour).padStart(2, "0")}:00`;
+                setShiftStart(startStr);
+                setShiftEnd(endStr);
+            } else {
+                setShiftStart("09:00");
+                setShiftEnd("17:00");
+            }
+            setShiftType("morning");
+        }
+        setAddShiftOpen(true);
+    };
+
+    const isDirty = useMemo(() => {
+        if (!editingShiftId || !initialFormState) return true;
+        return (
+            shiftEmployee !== initialFormState.employee_id ||
+            selectedDate !== initialFormState.shift_date ||
+            shiftStart !== initialFormState.start_time ||
+            shiftEnd !== initialFormState.end_time ||
+            shiftType !== initialFormState.shift_type
+        );
+    }, [editingShiftId, initialFormState, shiftEmployee, selectedDate, shiftStart, shiftEnd, shiftType]);
+
+    const shiftGrid = useMemo(() => {
+        const grid: Record<string, Record<string, any[]>> = {};
+        for (const s of shifts) {
+            const empId = s.employee_id || "unassigned";
+            const date = s.shift_date?.split("T")[0] || s.shift_date;
+            if (!grid[empId]) grid[empId] = {};
+            if (!grid[empId][date]) grid[empId][date] = [];
+            grid[empId][date].push(s);
+        }
+        return grid;
+    }, [shifts]);
+
+    const activeEmployees = employees.filter((e: any) => e.status === "active");
+
+    const currentRoster = useMemo(() => {
+        // Find the roster record that encompasses the current view range
+        return rosters.find((r: any) =>
+            formatDate(r.start_date) <= rangeEnd &&
+            formatDate(r.end_date) >= rangeStart
+        );
+    }, [rosters, rangeStart, rangeEnd]);
+
+    // Use explicit shift_status field for published check
+    const isShiftPublished = useCallback((shift: any) => {
+        return shift.shift_status === 'published';
+    }, []);
+
+    const statusSummary = useMemo(() => {
+        let published = 0;
+        let drafts = 0;
+        let total = 0;
+
+        for (const s of shifts) {
+            const d = s.shift_date?.split('T')[0] || s.shift_date;
+            if (d < rangeStart || d > rangeEnd) continue;
+
+            total++;
+            if (s.shift_status === 'published') {
+                published++;
+            } else {
+                drafts++;
+            }
+        }
+        return {
+            total,
+            published,
+            drafts,
+            modified: 0,
+            allPublished: total > 0 && total === published
+        };
+    }, [shifts, rangeStart, rangeEnd]);
+
+    const [calendarMonth, setCalendarMonth] = useState(new Date());
+    const [isCalendarOpen, setIsCalendarOpen] = useState(false);
+
+    const handleDateSelect = (date: Date) => {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        // Find Monday of today's week
+        const day = today.getDay();
+        const diffToMonday = (day === 0 ? -6 : 1 - day);
+        const todayMonday = new Date(today);
+        todayMonday.setDate(today.getDate() + diffToMonday);
+
+        let newOffset = 0;
+        if (rosterPeriod === "weekly") {
+            const diffDays = Math.floor((date.getTime() - todayMonday.getTime()) / (1000 * 60 * 60 * 24));
+            newOffset = Math.floor(diffDays / 7);
+        } else if (rosterPeriod === "fortnightly") {
+            const diffDays = Math.floor((date.getTime() - todayMonday.getTime()) / (1000 * 60 * 60 * 24));
+            newOffset = Math.floor(diffDays / 14);
+        } else {
+            newOffset = (date.getFullYear() - today.getFullYear()) * 12 + (date.getMonth() - today.getMonth());
+        }
+
+        setOffset(newOffset);
+        setIsCalendarOpen(false);
+    };
+
+    return (
+        <DashboardLayout
+            role="owner"
+            pageTitle="Roster Management"
+            defaultCollapsed={true}
+            pageDescription={`${rosterPeriod.charAt(0).toUpperCase() + rosterPeriod.slice(1)} Roster: ${rosterDates[0].toLocaleDateString("en-AU", { month: "short", day: "numeric" })} – ${rosterDates[rosterDates.length - 1].toLocaleDateString("en-AU", { month: "short", day: "numeric", year: "numeric" })}`}
+            actions={
+                <div className="flex items-center gap-3">
+                    <div className="flex bg-[hsl(var(--muted))] p-1 rounded-lg border border-[hsl(var(--border))]">
+                        {(["weekly", "fortnightly", "monthly"] as const).map((p) => (
+                            <button
+                                key={p}
+                                onClick={() => {
+                                    setRosterPeriod(p);
+                                    setOffset(0);
+                                    setCurrentPage(1);
+                                }}
+                                className={cn(
+                                    "px-4 py-1.5 text-xs font-extrabold rounded-md transition-all tracking-tight",
+                                    rosterPeriod === p
+                                        ? "bg-white text-[hsl(var(--brand))] shadow-sm ring-1 ring-black/5"
+                                        : "text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"
+                                )}
+                            >
+                                {p.charAt(0).toUpperCase() + p.slice(1)}
+                            </button>
+                        ))}
+                    </div>
+                    <Button
+                        onClick={() => openAddShift(formatDate(new Date()))}
+                        disabled={isFetching || isFetchingRosters}
+                        className="shadow-lg shadow-[hsl(var(--brand))]/10"
+                    >
+                        <Plus size={16} className="mr-2" /> Add Shift
+                    </Button>
+                </div>
+            }
+        >
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 gap-4 min-h-[44px]">
+                <div className="flex items-center gap-2">
+                    <Button variant="outline" size="icon" className="h-9 w-9 rounded-lg" onClick={() => setOffset(offset - 1)}>
+                        <ChevronLeft size={18} />
+                    </Button>
+
+                    <Popover open={isCalendarOpen} onOpenChange={setIsCalendarOpen}>
+                        <PopoverTrigger asChild>
+                            <button
+                                className={cn(
+                                    "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all border",
+                                    offset === 0
+                                        ? "bg-[hsl(var(--brand))]/10 text-[hsl(var(--brand))] border-[hsl(var(--brand))]/20"
+                                        : "bg-white text-[hsl(var(--foreground))] border-[hsl(var(--border))] hover:bg-[hsl(var(--brand))]/5"
+                                )}
+                            >
+                                <CalendarDays size={14} />
+                                <span>
+                                    {rosterDates[0].toLocaleDateString("en-AU", { month: "short", day: "numeric" })}
+                                    {" – "}
+                                    {rosterDates[rosterDates.length - 1].toLocaleDateString("en-AU", { month: "short", day: "numeric" })}
+                                </span>
+                            </button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-80 p-0 overflow-hidden rounded-xl shadow-2xl border-[hsl(var(--border))]" align="start">
+                            <div className="p-4 bg-white">
+                                <div className="flex items-center justify-between mb-4 px-1">
+                                    <h4 className="font-bold text-[hsl(var(--foreground))] text-base">
+                                        {format(calendarMonth, "MMM yyyy")}
+                                    </h4>
+                                    <div className="flex gap-1">
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="h-8 w-8 rounded-full"
+                                            onClick={() => setCalendarMonth(subMonths(calendarMonth, 1))}
+                                        >
+                                            <ChevronLeft size={16} />
+                                        </Button>
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="h-8 w-8 rounded-full"
+                                            onClick={() => setCalendarMonth(addMonths(calendarMonth, 1))}
+                                        >
+                                            <ChevronRight size={16} />
+                                        </Button>
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-7 gap-1 mb-2">
+                                    {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
+                                        <div key={day} className="text-center text-[10px] font-bold uppercase tracking-wider text-[hsl(var(--muted-foreground))] py-2">
+                                            {day[0]}
+                                        </div>
+                                    ))}
+                                    {(() => {
+                                        const start = startOfWeek(startOfMonth(calendarMonth));
+                                        const end = endOfWeek(endOfMonth(calendarMonth));
+                                        const days = eachDayOfInterval({ start, end });
+
+                                        return days.map((day) => {
+                                            const isSelected = rosterDates.some(d => isSameDay(d, day));
+                                            const inMonth = isSameMonth(day, calendarMonth);
+                                            const isToday = isSameDay(day, new Date());
+
+                                            return (
+                                                <button
+                                                    key={day.toISOString()}
+                                                    onClick={() => handleDateSelect(day)}
+                                                    className={cn(
+                                                        "h-9 w-9 text-xs rounded-full flex items-center justify-center transition-all",
+                                                        !inMonth && "text-[hsl(var(--muted-foreground))]/30 hover:bg-transparent",
+                                                        inMonth && !isSelected && "hover:bg-[hsl(var(--brand))]/10 text-[hsl(var(--foreground))]",
+                                                        isSelected && "bg-[hsl(var(--brand))] text-white font-bold shadow-lg shadow-[hsl(var(--brand))]/20",
+                                                        isToday && !isSelected && "border-2 border-[hsl(var(--brand))]/40"
+                                                    )}
+                                                >
+                                                    {format(day, "d")}
+                                                </button>
+                                            );
+                                        });
+                                    })()}
+                                </div>
+                                <div className="mt-4 pt-4 border-t flex justify-center">
+                                    <Button
+                                        variant="outline"
+                                        className="w-full bg-[hsl(var(--brand))]/5 border-[hsl(var(--brand))]/20 text-[hsl(var(--brand))] font-bold hover:bg-[hsl(var(--brand))]/10 transition-colors py-5"
+                                        onClick={() => {
+                                            setOffset(0);
+                                            setCalendarMonth(new Date());
+                                            setIsCalendarOpen(false);
+                                        }}
+                                    >
+                                        Jump to Current Week
+                                    </Button>
+                                </div>
+                            </div>
+                        </PopoverContent>
+                    </Popover>
+
+                    <Button variant="outline" size="icon" className="h-9 w-9 rounded-lg" onClick={() => setOffset(offset + 1)}>
+                        <ChevronRight size={18} />
+                    </Button>
+
+                </div>
+
+                <div className="flex items-center gap-3 flex-1 max-w-md mx-4">
+                    <div className="relative flex-1 group">
+                        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[hsl(var(--muted-foreground))] group-focus-within:text-[hsl(var(--brand))] transition-colors" />
+                        <Input
+                            placeholder="Search employee..."
+                            className="pl-9 h-10 bg-white border-[hsl(var(--border))] rounded-xl focus:ring-[hsl(var(--brand))]/10"
+                            value={searchQuery}
+                            onChange={(e) => {
+                                setSearchQuery(e.target.value);
+                                setCurrentPage(1);
+                            }}
+                        />
+                    </div>
+                    <div className="relative w-40">
+                        <Filter size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[hsl(var(--muted-foreground))]" />
+                        <select
+                            value={roleFilter}
+                            onChange={(e) => {
+                                setRoleFilter(e.target.value);
+                                setCurrentPage(1);
+                            }}
+                            className="w-full pl-9 h-10 rounded-xl border border-[hsl(var(--border))] bg-white text-xs font-medium focus:ring-2 focus:ring-[hsl(var(--brand))]/10 outline-none appearance-none cursor-pointer"
+                        >
+                            <option value="all">All Roles</option>
+                            {roles.map(r => (
+                                <option key={r} value={r.toLowerCase()}>
+                                    {r.split(' ').map((word: string) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join(' ')}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+                </div>
+
+                <div className="flex items-center gap-3">
+                    {isFetching || isFetchingRosters ? (
+                        <div className="flex items-center gap-2 text-xs text-[hsl(var(--muted-foreground))] animate-pulse">
+                            <RefreshCcw size={14} className="animate-spin text-[hsl(var(--brand))]" />
+                            <span>Syncing...</span>
+                        </div>
+                    ) : (
+                        statusSummary.total > 0 ? (
+                            <div className="flex items-center gap-3">
+                                <div className="flex flex-col items-end">
+                                    <div className="flex items-center gap-2">
+                                        <Badge
+                                            variant={statusSummary.allPublished ? "default" : "outline"}
+                                            className={statusSummary.allPublished
+                                                ? "bg-[hsl(var(--success))] hover:bg-[hsl(var(--success))] text-white"
+                                                : "border-[hsl(var(--warning-foreground))] text-[hsl(var(--warning-foreground))] bg-[hsl(var(--warning))]/10"
+                                            }
+                                        >
+                                            {statusSummary.allPublished ? (
+                                                <div className="flex items-center gap-1">
+                                                    <CheckCircle2 size={12} />
+                                                    <span>Published</span>
+                                                </div>
+                                            ) : (
+                                                <div className="flex items-center gap-1">
+                                                    <FileText size={12} />
+                                                    <span>Draft ({statusSummary.total - statusSummary.published} shifts)</span>
+                                                </div>
+                                            )}
+                                        </Badge>
+                                        {currentRoster && (
+                                            <div className="flex items-center gap-2">
+                                                <Button
+                                                    size="sm"
+                                                    variant="outline"
+                                                    onClick={() => {
+                                                        const nextDate = new Date(currentRoster.end_date);
+                                                        nextDate.setDate(nextDate.getDate() + 1);
+                                                        setTargetDuplicateDate(formatDate(nextDate));
+                                                        setDuplicateOpen(true);
+                                                    }}
+                                                    className="h-7 px-3 text-xs"
+                                                >
+                                                    <Copy size={12} className="mr-1" /> Duplicate
+                                                </Button>
+                                                {currentRoster.status === 'draft' && (
+                                                    <Button
+                                                        size="sm"
+                                                        variant="outline"
+                                                        onClick={() => setDeleteRosterConfirmOpen(true)}
+                                                        className="h-7 px-3 text-xs text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 hover:border-red-300"
+                                                    >
+                                                        <Trash2 size={12} className="mr-1" /> Delete
+                                                    </Button>
+                                                )}
+                                                {statusSummary.drafts > 0 && (
+                                                    <Button
+                                                        size="sm"
+                                                        onClick={() => publishRosterMutation.mutate(currentRoster.roster_id)}
+                                                        className="h-7 px-3 text-xs bg-[hsl(var(--brand))] hover:bg-[hsl(var(--brand-hover))]"
+                                                    >
+                                                        <Bell size={12} className="mr-1" /> Publish {statusSummary.drafts} Shift{statusSummary.drafts > 1 ? 's' : ''}
+                                                    </Button>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                    <span className="text-[10px] text-[hsl(var(--muted-foreground))] uppercase tracking-wider font-medium mt-1">
+                                        {statusSummary.published} of {statusSummary.total} shifts notified
+                                    </span>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="flex items-center gap-2">
+                                <Badge variant="outline" className="border-[hsl(var(--muted-foreground))] text-[hsl(var(--muted-foreground))] bg-[hsl(var(--muted))]/10">
+                                    No shifts
+                                </Badge>
+                                <span className="text-xs text-[hsl(var(--muted-foreground))] italic hidden sm:inline">Add a shift to start rostering</span>
+                            </div>
+                        )
+                    )}
+                </div>
+            </div>
+
+            <div className="w-full max-w-full rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] overflow-hidden shadow-md relative">
+                <div className={cn(
+                    "overflow-y-auto w-full max-h-[calc(100vh-320px)] scrollbar-thin",
+                    (rosterPeriod === "monthly" || rosterPeriod === "fortnightly") ? "overflow-x-hidden" : "overflow-x-auto"
+                )}>
+                    <table className={cn(
+                        "w-full text-sm border-separate border-spacing-0",
+                        (rosterPeriod === "monthly" || rosterPeriod === "fortnightly") ? "table-fixed" : ""
+                    )}>
+                        <thead className="sticky top-0 z-40">
+                            <tr className="bg-[hsl(var(--muted))]">
+                                <th className={cn(
+                                    "sticky left-0 top-0 z-50 bg-[hsl(var(--muted))] py-4 font-bold text-[hsl(var(--muted-foreground))] border-b border-r border-[hsl(var(--border))] shadow-[inset_-1px_-1px_0_hsl(var(--border))] text-center",
+                                    rosterPeriod === "monthly" ? "w-14 min-w-14 px-1" : "w-48 min-w-48 px-4"
+                                )}>
+                                    <Users size={16} className="mx-auto opacity-70" />
+                                </th>
+                                {rosterDates.map((d, i) => {
+                                    const isToday = formatDate(d) === formatDate(new Date());
+                                    const today = new Date();
+                                    today.setHours(0, 0, 0, 0);
+                                    const dMidnight = new Date(d);
+                                    dMidnight.setHours(0, 0, 0, 0);
+                                    const isPast = dMidnight < today;
+                                    const dayName = d.toLocaleDateString("en-AU", { weekday: "short" });
+
+                                    return (
+                                        <th
+                                            key={i}
+                                            className={cn(
+                                                "px-1 py-4 text-center font-bold border-b border-l border-[hsl(var(--border))] first:border-l-0 last:border-r-0 transition-colors",
+                                                isToday ? "text-[hsl(var(--brand))] bg-[hsl(var(--brand-light))]/30" : (isPast ? "text-[hsl(var(--muted-foreground))] bg-[hsl(var(--muted))]/30" : "text-[hsl(var(--muted-foreground))]")
+                                            )}
+                                            style={{
+                                                minWidth: (rosterPeriod === "monthly" || rosterPeriod === "fortnightly") ? "0" : "140px",
+                                                width: (rosterPeriod === "monthly" || rosterPeriod === "fortnightly") ? `${100 / (rosterDates.length + 2)}%` : "auto"
+                                            }}
+                                        >
+                                            {(rosterPeriod === "monthly" || rosterPeriod === "fortnightly") ? (
+                                                <div className="flex flex-col items-center">
+                                                    <div className="text-[9px] uppercase tracking-tighter opacity-50 font-black">{dayName}</div>
+                                                    <div className="text-[11px] font-black">{d.getDate()}</div>
+                                                </div>
+                                            ) : (
+                                                <>
+                                                    <div className="text-[10px] uppercase tracking-wider opacity-60 mb-0.5">{dayName}</div>
+                                                    <div className="text-sm font-black">{d.getDate()}</div>
+                                                </>
+                                            )}
+                                        </th>
+                                    );
+                                })}
+                            </tr>
+                        </thead>
+                        <Reorder.Group
+                            as="tbody"
+                            axis="y"
+                            values={paginatedEmployees.map(e => e.employee_id)}
+                            onReorder={(newOrder) => {
+                                // Update only the current page's order in the main list
+                                const start = (currentPage - 1) * pageSize;
+                                const updated = [...orderedEmployeeIds];
+                                const pageIds = paginatedEmployees.map(e => e.employee_id);
+                                const firstIndex = updated.indexOf(pageIds[0]);
+                                if (firstIndex !== -1) {
+                                    updated.splice(firstIndex, pageIds.length, ...newOrder);
+                                    setOrderedEmployeeIds(updated);
+                                }
+                            }}
+                            className="relative"
+                        >
+                            {paginatedEmployees.length === 0 ? (
+                                <tr>
+                                    <td colSpan={rosterDates.length + 1} className="px-4 py-12 text-center text-[hsl(var(--muted-foreground))] bg-white">
+                                        No employees found matching your filters.
+                                    </td>
+                                </tr>
+                            ) : (
+                                paginatedEmployees.map((emp: any) => (
+                                    <Reorder.Item
+                                        as="tr"
+                                        key={emp.employee_id}
+                                        value={emp.employee_id}
+                                        dragListener={true}
+                                        className="border-b border-[hsl(var(--border))] hover:bg-[hsl(var(--muted))]/30 transition-colors bg-white group"
+                                    >
+                                        <td className={cn(
+                                            "sticky left-0 z-30 bg-white group-hover:bg-[hsl(var(--muted))]/30 py-3 border-r border-[hsl(var(--border))] shadow-[inset_-1px_0_0_hsl(var(--border))]",
+                                            rosterPeriod === "monthly" ? "w-14 px-0.5" : "px-4"
+                                        )}>
+                                            <div className={cn(
+                                                "flex items-center group/profile gap-2",
+                                                rosterPeriod === "monthly" ? "justify-center relative" : ""
+                                            )}>
+                                                {/* Grip Icon (Only for non-monthly) */}
+                                                {rosterPeriod !== "monthly" && (
+                                                    <div className="cursor-grab active:cursor-grabbing text-[hsl(var(--muted-foreground))] opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                                                        <GripVertical size={14} />
+                                                    </div>
+                                                )}
+
+                                                {/* Profile Avatar */}
+                                                <div className={cn(
+                                                    "shrink-0 items-center justify-center rounded-full bg-[hsl(var(--brand-light))] text-[hsl(var(--brand))] font-bold shadow-sm flex transition-all",
+                                                    rosterPeriod === "monthly" ? "h-9 w-9 text-xs" : "h-8 w-8 text-xs"
+                                                )}>
+                                                    {emp.first_name?.[0]}{emp.last_name?.[0]}
+                                                </div>
+
+                                                {/* Name and Role (Identification Message Bubble - Reveals strictly on profile hover) */}
+                                                <div className={cn(
+                                                    "flex flex-col min-w-0 transition-all",
+                                                    rosterPeriod === "monthly"
+                                                        ? "absolute left-[calc(100%-14px)] z-50 bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-2xl shadow-2xl p-3 px-4 opacity-0 group-hover/profile:opacity-100 group-hover/profile:visible pointer-events-none scale-90 group-hover/profile:scale-100 transform origin-left min-w-[160px] invisible animate-in fade-in slide-in-from-left-2 duration-200"
+                                                        : ""
+                                                )}>
+                                                    {/* Message bubble tail (carets) */}
+                                                    {rosterPeriod === "monthly" && (
+                                                        <div className="absolute top-1/2 -left-2 -translate-y-1/2 w-4 h-4 bg-[hsl(var(--card))] border-l border-b border-[hsl(var(--border))] rotate-45 rounded-sm" />
+                                                    )}
+
+                                                    <span className={cn(
+                                                        "font-bold truncate text-[hsl(var(--foreground))] relative z-10",
+                                                        rosterPeriod === "monthly" ? "text-xs mb-0.5" : "text-sm"
+                                                    )}>{emp.first_name} {emp.last_name}</span>
+                                                    <span className={cn(
+                                                        "font-black uppercase tracking-widest relative z-10",
+                                                        rosterPeriod === "monthly" ? "text-[8px] text-[hsl(var(--brand))]" : "text-[10px] text-[hsl(var(--muted-foreground))]"
+                                                    )}>{emp.role_title}</span>
+                                                </div>
+
+                                                {/* Actions Menu - Always on hover, kept compact within column */}
+                                                <div className={cn(
+                                                    "shrink-0",
+                                                    rosterPeriod === "monthly" ? "absolute right-0 z-10" : ""
+                                                )}>
+                                                    <DropdownMenu>
+                                                        <DropdownMenuTrigger asChild>
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                className={cn(
+                                                                    "h-7 w-7 rounded-full transition-all opacity-0 group-hover/profile:opacity-100 ring-2 ring-transparent group-hover/profile:ring-[hsl(var(--brand))]/10 hover:bg-transparent hover:text-blue-600",
+                                                                    rosterPeriod === "monthly" && "h-5 w-5"
+                                                                )}
+                                                            >
+                                                                <MoreHorizontal size={rosterPeriod === "monthly" ? 12 : 14} className="text-[hsl(var(--muted-foreground))] hover:text-blue-600" />
+                                                            </Button>
+                                                        </DropdownMenuTrigger>
+                                                        <DropdownMenuContent
+                                                            align="end"
+                                                            side="bottom"
+                                                            sideOffset={8}
+                                                            className="min-w-[140px] p-1 bg-white/95 backdrop-blur-md border-[hsl(var(--border))] rounded-2xl shadow-2xl animate-in fade-in zoom-in-95 duration-200"
+                                                        >
+                                                            <DropdownMenuItem asChild className="focus:bg-transparent focus:text-blue-600 data-highlighted:bg-transparent data-highlighted:text-blue-600">
+                                                                <Link
+                                                                    href={`/owner/employees/${emp.employee_id}`}
+                                                                    className="font-bold text-[10px] uppercase tracking-[0.15em] cursor-pointer w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl hover:text-blue-600 transition-all group/action"
+                                                                >
+                                                                    View Profile
+                                                                    <div className="opacity-0 group-hover/action:opacity-100 -translate-x-2 group-hover/action:translate-x-0 transition-all">
+                                                                        →
+                                                                    </div>
+                                                                </Link>
+                                                            </DropdownMenuItem>
+                                                        </DropdownMenuContent>
+                                                    </DropdownMenu>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        {rosterDates.map((d, i) => {
+                                            const dateStr = formatDate(d);
+                                            const dayShifts = shiftGrid[emp.employee_id]?.[dateStr] || [];
+                                            const today = new Date();
+                                            today.setHours(0, 0, 0, 0);
+                                            const dMidnight = new Date(d);
+                                            dMidnight.setHours(0, 0, 0, 0);
+                                            const isPast = dMidnight < today;
+
+                                            return (
+                                                <td
+                                                    key={dateStr}
+                                                    className={cn(
+                                                        "border-b border-l border-[hsl(var(--border))] align-top transition-colors relative group/cell",
+                                                        rosterPeriod === "monthly" ? "p-1 min-w-0" : "p-2 min-w-[140px]",
+                                                        formatDate(d) === formatDate(new Date()) ? "bg-[hsl(var(--brand-light))]/5" : "",
+                                                        isPast ? "bg-[hsl(var(--muted))]/10" : "hover:bg-[hsl(var(--brand))]/5"
+                                                    )}
+                                                    onClick={() => !isPast && rosterPeriod !== "monthly" && openAddShift(dateStr, emp.employee_id)}
+                                                >
+                                                    {/* Hover Plus Icon for Quick Add - Only for empty cells */}
+                                                    {!isPast && dayShifts.length === 0 && (
+                                                        <button
+                                                            className="absolute top-1 right-1 z-10 p-0.5 rounded-md bg-[hsl(var(--brand))] text-white opacity-0 group-hover/cell:opacity-100 transition-opacity shadow-sm hover:scale-110 active:scale-95"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                openAddShift(dateStr, emp.employee_id);
+                                                            }}
+                                                        >
+                                                            <Plus size={10} strokeWidth={4} />
+                                                        </button>
+                                                    )}
+
+                                                    {dayShifts.length > 0 && (
+                                                        <div className={cn(
+                                                            "flex flex-col gap-1 w-full h-full py-1",
+                                                            rosterPeriod === "monthly" ? "min-h-[64px]" : "min-h-[72px]"
+                                                        )}>
+                                                            {dayShifts.map((s: any) => {
+                                                                const isPublished = s.shift_status === 'published';
+                                                                const startTimeStr = new Date(s.start_time).toLocaleTimeString("en-AU", { hour: "numeric", hour12: true }).replace(" ", "").toLowerCase();
+                                                                const endTimeStr = new Date(s.end_time).toLocaleTimeString("en-AU", { hour: "numeric", hour12: true }).replace(" ", "").toLowerCase();
+
+                                                                return (
+                                                                    <div
+                                                                        key={s.shift_id}
+                                                                        className={cn(
+                                                                            "rounded-lg px-2 py-1.5 font-bold mb-1 transition-all cursor-pointer border relative group/shift overflow-hidden flex flex-col h-full min-h-[64px] shadow-sm",
+                                                                            isPublished
+                                                                                ? "bg-[#E8F5E9] border-[#C8E6C9] text-green-900"
+                                                                                : "bg-[#F5F5F5] border-[#E0E0E0] text-gray-700",
+                                                                            isPast ? "opacity-60 grayscale-[0.5]" : "hover:shadow-md hover:-translate-y-0.5"
+                                                                        )}
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            openAddShift(dateStr, emp.employee_id, s);
+                                                                        }}
+                                                                    >
+                                                                        <div className="flex flex-col gap-0.5">
+                                                                            <span className="text-[10px] leading-none uppercase tabular-nums">
+                                                                                {startTimeStr}
+                                                                            </span>
+                                                                            <span className="text-[10px] leading-none uppercase tabular-nums">
+                                                                                {endTimeStr}
+                                                                            </span>
+                                                                        </div>
+                                                                        <div className="mt-auto pt-1">
+                                                                            <span className="text-[9px] font-black uppercase tracking-tighter truncate block opacity-80">
+                                                                                {s.shift_type}
+                                                                            </span>
+                                                                        </div>
+                                                                        {/* Bottom Accent Bar as requested in reference image */}
+                                                                        <div className={cn(
+                                                                            "absolute bottom-0 left-0 right-0 h-1.5",
+                                                                            isPublished ? "bg-green-500" : "bg-red-500"
+                                                                        )} />
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    )}
+                                                </td>
+                                            );
+                                        })}
+                                    </Reorder.Item>
+                                ))
+                            )}
+                        </Reorder.Group>
+                    </table>
+                </div>
+
+                {/* Pagination Controls */}
+                <div className="flex items-center justify-between px-6 py-4 bg-[hsl(var(--muted))]/20 border-t border-[hsl(var(--border))]">
+                    <div className="text-xs text-[hsl(var(--muted-foreground))] font-medium">
+                        Showing <span className="text-[hsl(var(--foreground))] font-bold">{Math.min(filteredEmployees.length, (currentPage - 1) * pageSize + 1)}</span> to <span className="text-[hsl(var(--foreground))] font-bold">{Math.min(filteredEmployees.length, currentPage * pageSize)}</span> of <span className="text-[hsl(var(--foreground))] font-bold">{filteredEmployees.length}</span> employees
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                        <Button
+                            variant="outline"
+                            size="icon"
+                            disabled={currentPage === 1}
+                            onClick={() => setCurrentPage(1)}
+                            className="h-8 w-8 rounded-lg border-[hsl(var(--border))]"
+                        >
+                            <ChevronsLeft size={14} />
+                        </Button>
+                        <Button
+                            variant="outline"
+                            size="icon"
+                            disabled={currentPage === 1}
+                            onClick={() => setCurrentPage(currentPage - 1)}
+                            className="h-8 w-8 rounded-lg border-[hsl(var(--border))]"
+                        >
+                            <ChevronLeft size={14} />
+                        </Button>
+
+                        <div className="flex items-center gap-1 mx-2">
+                            {Array.from({ length: totalPages }, (_, i) => i + 1)
+                                .filter(p => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 1)
+                                .map((p, i, arr) => {
+                                    if (i > 0 && p !== arr[i - 1] + 1) {
+                                        return <span key={`dots-${p}`} className="text-[hsl(var(--muted-foreground))]">...</span>;
+                                    }
+                                    return (
+                                        <button
+                                            key={p}
+                                            onClick={() => setCurrentPage(p)}
+                                            className={cn(
+                                                "h-8 w-8 text-xs font-bold rounded-lg transition-all",
+                                                currentPage === p
+                                                    ? "bg-[hsl(var(--brand))] text-white shadow-md shadow-[hsl(var(--brand))]/20"
+                                                    : "hover:bg-[hsl(var(--muted))] text-[hsl(var(--foreground))]"
+                                            )}
+                                        >
+                                            {p}
+                                        </button>
+                                    );
+                                })}
+                        </div>
+
+                        <Button
+                            variant="outline"
+                            size="icon"
+                            disabled={currentPage >= totalPages}
+                            onClick={() => setCurrentPage(currentPage + 1)}
+                            className="h-8 w-8 rounded-lg border-[hsl(var(--border))]"
+                        >
+                            <ChevronRight size={14} />
+                        </Button>
+                        <Button
+                            variant="outline"
+                            size="icon"
+                            disabled={currentPage >= totalPages}
+                            onClick={() => setCurrentPage(totalPages)}
+                            className="h-8 w-8 rounded-lg border-[hsl(var(--border))]"
+                        >
+                            <ChevronsRight size={14} />
+                        </Button>
+                    </div>
+                </div>
+            </div>
+
+            <Dialog open={addShiftOpen} onOpenChange={setAddShiftOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>{editingShiftId ? 'Edit Shift' : 'Add Shift'}</DialogTitle>
+                        <DialogDescription>
+                            {editingShiftId ? (
+                                new Date() >= (new Date((shifts.find((s: any) => s.shift_id === editingShiftId) || {}).start_time))
+                                    ? "This shift has already started and cannot be modified."
+                                    : "Modify shift details or remove it"
+                            ) : `Assign a shift for ${selectedDate ? new Date(selectedDate + "T00:00:00").toLocaleDateString("en-AU", { weekday: "long", month: "short", day: "numeric" }) : ""}`}
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="space-y-4 py-2">
+                        <Input
+                            label="Shift Date"
+                            type="date"
+                            value={selectedDate}
+                            onChange={(e) => setSelectedDate(e.target.value)}
+                            disabled={editingShiftId ? new Date() >= (new Date((shifts.find((s: any) => s.shift_id === editingShiftId) || {}).start_time)) : false}
+                        />
+                        <div className="space-y-1.5">
+                            <label className="text-sm font-medium">Employee</label>
+                            <select
+                                value={shiftEmployee}
+                                onChange={(e) => setShiftEmployee(e.target.value)}
+                                className="flex h-10 w-full rounded-lg border border-[hsl(var(--input))] bg-transparent px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]/20 focus:border-[hsl(var(--brand))]"
+                            >
+                                <option value="">Select employee</option>
+                                {activeEmployees.map((emp: any) => (
+                                    <option key={emp.employee_id} value={emp.employee_id}>
+                                        {emp.first_name} {emp.last_name}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+                            <Input label="Start Time" type="time" value={shiftStart} onChange={(e) => setShiftStart(e.target.value)} />
+                            <Input label="End Time" type="time" value={shiftEnd} onChange={(e) => setShiftEnd(e.target.value)} />
+                        </div>
+
+                        <div className="space-y-1.5">
+                            <label className="text-sm font-medium">Shift Type</label>
+                            <select
+                                value={shiftType}
+                                onChange={(e) => setShiftType(e.target.value)}
+                                className="flex h-10 w-full rounded-lg border border-[hsl(var(--input))] bg-transparent px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]/20 focus:border-[hsl(var(--brand))]"
+                            >
+                                <option value="morning">Morning</option>
+                                <option value="afternoon">Afternoon</option>
+                                <option value="evening">Evening</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <DialogFooter className="flex items-center justify-between sm:justify-between w-full">
+                        <div className="flex items-center gap-2">
+                            {editingShiftId && (
+                                <Button
+                                    variant="outline"
+                                    disabled={new Date() >= (new Date((shifts.find((s: any) => s.shift_id === editingShiftId) || {}).start_time))}
+                                    className="text-[hsl(var(--danger))] border-[hsl(var(--danger))]/20 hover:bg-[hsl(var(--danger))]/10 disabled:opacity-30"
+                                    onClick={() => setDeleteConfirmOpen(true)}
+                                    loading={deleteShiftMutation.isPending}
+                                >
+                                    <Trash2 size={16} className="mr-2" /> Delete
+                                </Button>
+                            )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <Button variant="outline" onClick={() => setAddShiftOpen(false)}>Cancel</Button>
+                            <Button
+                                onClick={handleAddShift}
+                                loading={createShiftMutation.isPending || updateShiftMutation.isPending}
+                                disabled={editingShiftId ? (!isDirty || (new Date() >= (new Date((shifts.find((s: any) => s.shift_id === editingShiftId) || {}).start_time)))) : false}
+                            >
+                                {editingShiftId ? 'Update Shift' : (
+                                    <>
+                                        <Plus size={16} className="mr-2" /> Create Shift
+                                    </>
+                                )}
+                            </Button>
+                        </div>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Confirm Deletion</DialogTitle>
+                        <DialogDescription>
+                            Are you sure you want to delete this shift? This action cannot be undone.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setDeleteConfirmOpen(false)}>Cancel</Button>
+                        <Button
+                            variant="default"
+                            className="bg-[hsl(var(--danger))] text-white hover:bg-[hsl(var(--danger))]/90"
+                            onClick={() => editingShiftId && deleteShiftMutation.mutate(editingShiftId)}
+                            loading={deleteShiftMutation.isPending}
+                        >
+                            Delete Shift
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={expansionOpen} onOpenChange={setExpansionOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Expand Roster Duration?</DialogTitle>
+                        <DialogDescription>
+                            The date you selected falls outside the current roster range ({currentRoster ? `${formatDate(currentRoster.start_date)} to ${formatDate(currentRoster.end_date)}` : ""}).
+                            Adding this shift will automatically switch and expand your current roster to a larger period (Monthly/Fortnightly).
+                            <br /><br />
+                            Do you want to switch the current roster?
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setExpansionOpen(false)}>Decline (Cancel Add)</Button>
+                        <Button
+                            variant="default"
+                            className="bg-[hsl(var(--brand))] text-white hover:bg-[hsl(var(--brand-hover))]"
+                            onClick={confirmExpansion}
+                        >
+                            Accept & Expand
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={deleteRosterConfirmOpen} onOpenChange={setDeleteRosterConfirmOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Delete Entire Roster?</DialogTitle>
+                        <DialogDescription>
+                            Are you sure you want to delete this roster and **all its shifts**? This action cannot be undone.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setDeleteRosterConfirmOpen(false)}>Cancel</Button>
+                        <Button
+                            variant="default"
+                            className="bg-red-600 text-white hover:bg-red-700"
+                            onClick={() => currentRoster && deleteRosterMutation.mutate(currentRoster.roster_id)}
+                            loading={deleteRosterMutation.isPending}
+                        >
+                            Delete Roster
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={duplicateOpen} onOpenChange={setDuplicateOpen}>
+                <DialogContent className="max-w-md p-0 overflow-hidden rounded-2xl border-none shadow-2xl">
+                    <div className="bg-white p-6">
+                        <DialogHeader className="mb-6">
+                            <div className="flex items-center justify-between">
+                                <DialogTitle className="text-2xl font-bold text-[hsl(var(--foreground))]">Copy shifts</DialogTitle>
+                            </div>
+                        </DialogHeader>
+
+                        <div className="space-y-6">
+                            <div>
+                                <h3 className="text-sm font-bold text-[hsl(var(--muted-foreground))] uppercase tracking-wider mb-4">Dates</h3>
+                                <div className="space-y-3">
+                                    {[
+                                        {
+                                            id: 'next_week',
+                                            label: `Copy to next ${rosterPeriod === 'weekly' ? 'week' : rosterPeriod === 'fortnightly' ? 'fortnight' : 'month'}`
+                                        },
+                                        {
+                                            id: 'prev_week',
+                                            label: `Copy from previous ${rosterPeriod === 'weekly' ? 'week' : rosterPeriod === 'fortnightly' ? 'fortnight' : 'month'}`
+                                        }
+                                    ].map((opt) => (
+                                        <label
+                                            key={opt.id}
+                                            className={cn(
+                                                "flex items-center gap-3 p-3 rounded-xl border-2 transition-all cursor-pointer",
+                                                copyOption === opt.id
+                                                    ? "border-[hsl(var(--brand))] bg-[hsl(var(--brand))]/5"
+                                                    : "border-[hsl(var(--border))] hover:border-[hsl(var(--brand))]/30"
+                                            )}
+                                        >
+                                            <div className={cn(
+                                                "w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all",
+                                                copyOption === opt.id ? "border-[hsl(var(--brand))]" : "border-[hsl(var(--border))]"
+                                            )}>
+                                                {copyOption === opt.id && <div className="w-2.5 h-2.5 rounded-full bg-[hsl(var(--brand))]" />}
+                                            </div>
+                                            <input
+                                                type="radio"
+                                                className="hidden"
+                                                name="copyOption"
+                                                value={opt.id}
+                                                checked={copyOption === opt.id}
+                                                onChange={() => setCopyOption(opt.id as any)}
+                                            />
+                                            <span className="font-semibold text-sm">{opt.label}</span>
+                                        </label>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Advanced removed by request */}
+                        </div>
+
+                        <div className="flex justify-end mt-8">
+                            <Button
+                                className="px-8 py-6 rounded-xl bg-[hsl(var(--brand))] text-white hover:bg-[hsl(var(--brand-hover))] font-bold text-lg shadow-lg shadow-[hsl(var(--brand))]/20"
+                                onClick={() => {
+                                    let payload: any = { source_from: "", source_to: "", target_start: "" };
+
+                                    if (copyOption === 'next_week') {
+                                        let daysToAdd = 7;
+                                        if (rosterPeriod === 'fortnightly') daysToAdd = 14;
+
+                                        if (rosterPeriod === 'monthly') {
+                                            const dSource = new Date(rangeStart + 'T00:00:00Z');
+                                            const dTarget = new Date(dSource);
+                                            dTarget.setMonth(dTarget.getUTCMonth() + 1);
+
+                                            payload = {
+                                                source_from: rangeStart,
+                                                source_to: rangeEnd,
+                                                target_start: formatDate(dTarget)
+                                            };
+                                        } else {
+                                            payload = {
+                                                source_from: rangeStart,
+                                                source_to: rangeEnd,
+                                                target_start: formatDate(addDays(new Date(rangeStart + 'T00:00:00Z'), daysToAdd))
+                                            };
+                                        }
+                                    } else {
+                                        let daysToSub = 7;
+                                        if (rosterPeriod === 'fortnightly') daysToSub = 14;
+
+                                        if (rosterPeriod === 'monthly') {
+                                            const dSource = new Date(rangeStart + 'T00:00:00Z');
+                                            const dTarget = new Date(dSource);
+                                            dTarget.setMonth(dTarget.getUTCMonth() - 1);
+
+                                            // Source is prev month, target is current
+                                            const dPrevEnd = new Date(dSource);
+                                            dPrevEnd.setUTCDate(dPrevEnd.getUTCDate() - 1);
+
+                                            payload = {
+                                                source_from: formatDate(dTarget),
+                                                source_to: formatDate(dPrevEnd),
+                                                target_start: rangeStart
+                                            };
+                                        } else {
+                                            payload = {
+                                                source_from: formatDate(addDays(new Date(rangeStart + 'T00:00:00Z'), -daysToSub)),
+                                                source_to: formatDate(addDays(new Date(rangeEnd + 'T00:00:00Z'), -daysToSub)),
+                                                target_start: rangeStart
+                                            };
+                                        }
+                                    }
+
+                                    duplicateRosterMutation.mutate(payload);
+                                }}
+                                loading={duplicateRosterMutation.isPending}
+                            >
+                                Copy
+                            </Button>
+                        </div>
+                    </div>
+                </DialogContent>
+            </Dialog>
+            {/* Copy Result / Conflict Review Modal */}
+            <Dialog open={resultModalOpen} onOpenChange={setResultModalOpen}>
+                <DialogContent className="max-w-md rounded-2xl border-none shadow-2xl p-0 overflow-hidden bg-white">
+                    <DialogHeader className="p-6 pb-2 bg-[hsl(var(--brand))]/5">
+                        <DialogTitle className="flex items-center gap-2 text-xl font-bold text-[hsl(var(--brand))]">
+                            <CheckCircle2 className="w-6 h-6" />
+                            Copy Shifts Result
+                        </DialogTitle>
+                        <DialogDescription className="text-sm font-medium">
+                            Review the outcome of your duplication
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="p-6 space-y-4">
+                        <div className="grid grid-cols-2 gap-3">
+                            <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-100 text-center">
+                                <p className="text-2xl font-bold text-emerald-600">{copyResult?.copiedCount}</p>
+                                <p className="text-[10px] uppercase tracking-wider font-bold text-emerald-500">Copied Successfully</p>
+                            </div>
+                            <div className={cn(
+                                "p-4 rounded-xl text-center border",
+                                (copyResult?.overlapCount ?? 0) > 0
+                                    ? "bg-amber-50 border-amber-100 text-amber-600"
+                                    : "bg-gray-50 border-gray-100 text-gray-400"
+                            )}>
+                                <p className="text-2xl font-bold">{copyResult?.overlapCount}</p>
+                                <p className="text-[10px] uppercase tracking-wider font-bold">Issues / Overlaps</p>
+                            </div>
+                        </div>
+
+                        {(copyResult?.overlapCount ?? 0) > 0 && (
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest pl-1">Conflict Details</label>
+                                <div className="max-h-48 overflow-y-auto rounded-xl border border-gray-100 bg-gray-50/50 p-2 space-y-2">
+                                    {copyResult?.overlapDetails.map((detail, i) => (
+                                        <div key={i} className="flex gap-3 text-xs leading-relaxed text-gray-600 p-2 rounded-lg bg-white shadow-sm border border-gray-100/50">
+                                            <div className="mt-0.5 rounded-full bg-amber-100 p-1 shrink-0">
+                                                <RefreshCcw className="w-3 h-3 text-amber-600" />
+                                            </div>
+                                            {detail}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    <DialogFooter className="p-6 pt-0 bg-gray-50/50 flex flex-row gap-3">
+                        <Button
+                            variant="outline"
+                            className="flex-1 rounded-xl h-12 font-bold border-gray-200 hover:bg-amber-50 hover:text-amber-600 hover:border-amber-100 transition-all group"
+                            onClick={() => setUndoConfirmOpen(true)}
+                        >
+                            <RefreshCcw className="w-4 h-4 mr-2 group-hover:rotate-180 transition-transform duration-500" />
+                            Undo Last Copy
+                        </Button>
+                        <Button
+                            className="flex-1 rounded-xl h-12 font-bold bg-[hsl(var(--brand))] hover:bg-[hsl(var(--brand))]/90 shadow-lg shadow-[hsl(var(--brand))]/20"
+                            onClick={() => setResultModalOpen(false)}
+                        >
+                            Done
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Undo Confirmation Modal */}
+            <Dialog open={undoConfirmOpen} onOpenChange={setUndoConfirmOpen}>
+                <DialogContent className="max-w-sm rounded-2xl border-none shadow-2xl p-6 bg-white animate-in zoom-in-95 duration-200">
+                    <div className="space-y-4">
+                        <div className="w-12 h-12 rounded-2xl bg-amber-100 flex items-center justify-center mx-auto">
+                            <Clock className="w-6 h-6 text-amber-600" />
+                        </div>
+
+                        <div className="text-center space-y-2">
+                            <h3 className="text-lg font-bold text-gray-900">Undo Copy?</h3>
+                            <p className="text-sm text-gray-500 leading-relaxed px-2">
+                                Are you sure you want to undo the last copy? This will remove
+                                <span className="font-bold text-gray-900 mx-1">{lastNewShiftIds.length}</span>
+                                newly created shifts.
+                            </p>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3 pt-2">
+                            <Button
+                                variant="outline"
+                                className="rounded-xl h-11 font-bold border-gray-200"
+                                onClick={() => setUndoConfirmOpen(false)}
+                            >
+                                Cancel
+                            </Button>
+                            <Button
+                                variant="danger"
+                                className="rounded-xl h-11 font-bold shadow-lg shadow-red-100"
+                                onClick={() => undoLastCopyMutation.mutate()}
+                                disabled={undoLastCopyMutation.isPending}
+                            >
+                                {undoLastCopyMutation.isPending ? "Undoing..." : "Yes, Undo IT"}
+                            </Button>
+                        </div>
+                    </div>
+                </DialogContent>
+            </Dialog>
+        </DashboardLayout>
+    );
+}

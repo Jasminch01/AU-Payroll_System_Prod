@@ -11,13 +11,13 @@ interface RouteParams {
  * GET /api/employees/[id]/rates
  * 
  * Get pay rate history for an employee
- * Access: Owner only
+ * Access: Owner
  */
 export async function GET(request: NextRequest, { params }: RouteParams) {
     try {
-        const authUser = await requireRole('owner');
+        const authUser = await requireRole('owner', 'manager');
         if (!authUser) {
-            return errorResponse('Unauthorized. Owner access required.', 401);
+            return errorResponse('Unauthorized. Access required.', 401);
         }
 
         const { id } = await params;
@@ -45,8 +45,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
  * POST /api/employees/[id]/rates
  * 
  * Add a new pay rate for an employee (effective from a date)
- * The previous rate's effective_to will be set automatically
- * Access: Owner only
+ * Access: Owner
  * 
  * Body:
  * {
@@ -62,9 +61,9 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
  */
 export async function POST(request: NextRequest, { params }: RouteParams) {
     try {
-        const authUser = await requireRole('owner');
+        const authUser = await requireRole('owner', 'manager');
         if (!authUser) {
-            return errorResponse('Unauthorized. Owner access required.', 401);
+            return errorResponse('Unauthorized. Access required.', 401);
         }
 
         const { id } = await params;
@@ -131,6 +130,70 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         return successResponse(newRate, 'Pay rate added successfully', 201);
     } catch (error) {
         console.error('Create rate error:', error);
+        return errorResponse('Internal server error', 500);
+    }
+}
+
+/**
+ * PATCH /api/employees/[id]/rates
+ * 
+ * Update an existing pay rate record
+ * Access: Owner
+ */
+export async function PATCH(request: NextRequest, { params }: RouteParams) {
+    try {
+        const authUser = await requireRole('owner', 'manager');
+        if (!authUser) {
+            return errorResponse('Unauthorized. Access required.', 401);
+        }
+
+        const { id } = await params;
+        const body = await request.json();
+
+        if (!body.rate_history_id) {
+            return errorResponse('Rate history ID is required', 400);
+        }
+
+        const supabase = await createClient();
+
+        // Verify record belongs to this employee and business
+        const { data: existingRate } = await supabase
+            .from('EmployeeRateHistory')
+            .select('rate_history_id')
+            .eq('rate_history_id', body.rate_history_id)
+            .eq('employee_id', id)
+            .eq('business_id', authUser.business_id)
+            .single();
+
+        if (!existingRate) {
+            return errorResponse('Rate record not found', 404);
+        }
+
+        // Update rate record
+        const { data: updatedRate, error: updateError } = await supabase
+            .from('EmployeeRateHistory')
+            .update({
+                weekday_rate: body.weekday_rate,
+                saturday_multiplier: body.saturday_multiplier,
+                sunday_multiplier: body.sunday_multiplier,
+                public_holiday_multiplier: body.public_holiday_multiplier,
+                evening_rate: body.evening_rate,
+                evening_start_time: body.evening_start_time,
+                evening_end_time: body.evening_end_time,
+                effective_from: body.effective_from,
+                effective_to: body.effective_to,
+            })
+            .eq('rate_history_id', body.rate_history_id)
+            .select()
+            .single();
+
+        if (updateError) {
+            return errorResponse(`Failed to update rate: ${updateError.message}`, 400);
+        }
+
+        return successResponse(updatedRate, 'Pay rate updated successfully');
+    } catch (error) {
+        console.error('Update rate error:', error);
         return errorResponse('Internal server error', 500);
     }
 }
