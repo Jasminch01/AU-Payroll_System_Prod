@@ -16,7 +16,9 @@ import {
   BarChart3,
   Zap,
   Check,
+  Download,
 } from "lucide-react";
+import { usePWA } from "@/hooks/use-pwa";
 
 const features = [
   {
@@ -65,6 +67,7 @@ const item = {
 };
 
 export default function LandingPage() {
+  const { isInstallable, installPWA } = usePWA();
   return (
     <div className="min-h-screen bg-[hsl(var(--background))]">
       {/* Nav */}
@@ -85,6 +88,11 @@ export default function LandingPage() {
                 Get Started <ArrowRight size={16} />
               </Button>
             </Link>
+            {isInstallable && (
+              <Button variant="outline" size="icon" onClick={installPWA} title="Download App">
+                <Download size={18} />
+              </Button>
+            )}
           </div>
         </div>
       </nav>
@@ -126,6 +134,11 @@ export default function LandingPage() {
                   View Demo
                 </Button>
               </Link>
+              {isInstallable && (
+                <Button variant="ghost" size="xl" onClick={installPWA} className="gap-2">
+                  <Download size={20} /> Install App
+                </Button>
+              )}
             </div>
           </motion.div>
         </div>

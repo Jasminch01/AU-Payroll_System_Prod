@@ -20,8 +20,10 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { apiGet, apiPost, apiDelete } from "@/lib/api-client";
 import { toast } from "sonner";
-import { UserPlus, Users, Send, RefreshCw, Copy, Check, MoreHorizontal, Eye, ExternalLink, Trash2, AlertTriangle, Filter, X, Briefcase, User, ShieldCheck } from "lucide-react";
+import { UserPlus, Users, Send, RefreshCw, Copy, Check, MoreHorizontal, Eye, ExternalLink, Trash2, AlertTriangle, Filter, X, Briefcase, User, ShieldCheck, UserPlus2 } from "lucide-react";
 import type { Employee } from "@/types/database";
+import { useAuth } from "@/hooks/use-auth";
+import { generateBusinessPrefix, formatEmpSuffix, getNumericSuffix } from "@/lib/utils/employee-id";
 
 type StatusFilter = "all" | "active" | "invited" | "inactive";
 
@@ -66,10 +68,28 @@ export default function OwnerEmployeesPage() {
         bank_account_name: '', bank_bsb: '', bank_account_number: '', "ABN/TFN/ACN": ''
     });
 
+    const { user } = useAuth();
     const { data: employees = [], isLoading } = useQuery({
         queryKey: ["employees"],
         queryFn: () => apiGet<Employee[]>("/employees"),
     });
+
+    // Auto-generate employee_id for manual add
+    React.useEffect(() => {
+        if (manualAddOpen && user?.business?.business_name) {
+            const prefix = generateBusinessPrefix(user.business.business_name);
+            const activeEmps = employees.map(e => e.employee_id);
+            
+            let maxSerial = 0;
+            for (const id of activeEmps) {
+                const serial = getNumericSuffix(id);
+                if (serial > maxSerial) maxSerial = serial;
+            }
+            
+            const nextId = `${prefix}${formatEmpSuffix(maxSerial + 1)}`;
+            setManualData((prev: any) => ({ ...prev, employee_id: nextId }));
+        }
+    }, [manualAddOpen, user?.business?.business_name, employees]);
 
     const filteredEmployees = useMemo(() => {
         if (statusFilter === "all") return employees;
@@ -140,6 +160,7 @@ export default function OwnerEmployeesPage() {
                 weekday_rate: '',
                 password: '',
                 invite_as: 'employee',
+                employee_id: '',
                 bank_account_name: '', bank_bsb: '', bank_account_number: '', "ABN/TFN/ACN": ''
             });
         },
@@ -153,7 +174,6 @@ export default function OwnerEmployeesPage() {
         }
         addManualMutation.mutate({
             ...manualData,
-            employee_id: "", // Backend will generate a business-prefixed ID
             weekday_rate: manualData.weekday_rate ? parseFloat(manualData.weekday_rate) : undefined
         });
     };

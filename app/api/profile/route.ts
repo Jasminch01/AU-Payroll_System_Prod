@@ -32,6 +32,13 @@ export async function GET(request: NextRequest) {
             .single();
 
         if (employeeRecord) {
+            // Fetch role from User table
+            const { data: userData } = await supabase
+                .from('User')
+                .select('role')
+                .eq('user_id', user.id)
+                .maybeSingle();
+
             // Sort to get current rate
             let current_rate = null;
             if (employeeRecord.EmployeeRateHistory && employeeRecord.EmployeeRateHistory.length > 0) {
@@ -41,7 +48,11 @@ export async function GET(request: NextRequest) {
                 current_rate = sorted[0];
             }
             const { ...safeEmployeeRecord } = employeeRecord;
-            return successResponse({ ...safeEmployeeRecord, current_rate });
+            return successResponse({ 
+                ...safeEmployeeRecord, 
+                current_rate,
+                role: userData?.role || 'employee'
+            });
         }
 
         return errorResponse('Profile not found', 404);
