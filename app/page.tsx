@@ -134,11 +134,6 @@ export default function LandingPage() {
                   View Demo
                 </Button>
               </Link>
-              {isInstallable && (
-                <Button variant="ghost" size="xl" onClick={installPWA} className="gap-2 flex md:hidden">
-                  <Download size={20} /> Install App
-                </Button>
-              )}
             </div>
           </motion.div>
         </div>
