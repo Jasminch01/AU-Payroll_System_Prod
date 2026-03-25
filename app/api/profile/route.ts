@@ -40,8 +40,7 @@ export async function GET(request: NextRequest) {
                 );
                 current_rate = sorted[0];
             }
-            // Remove sensitive kiosk_pin from frontend data
-            const { kiosk_pin, ...safeEmployeeRecord } = employeeRecord;
+            const { ...safeEmployeeRecord } = employeeRecord;
             return successResponse({ ...safeEmployeeRecord, current_rate });
         }
 
@@ -105,7 +104,6 @@ export async function PUT(request: NextRequest) {
                     "ABN/TFN/ACN": body["ABN/TFN/ACN"],
                     emergency_contact_name: body.emergency_contact_name,
                     emergency_contact_phone: body.emergency_contact_phone,
-                    kiosk_pin: body.kiosk_pin,
                 };
             } else {
                 return errorResponse('Profile not found', 404);
@@ -165,10 +163,6 @@ export async function PUT(request: NextRequest) {
             return successResponse(null, 'Profile updated successfully');
         }
 
-        // Must be employee if we reached here without returning 404 early
-        if (allowedUpdates.kiosk_pin) {
-            allowedUpdates.kiosk_pin = await bcrypt.hash(allowedUpdates.kiosk_pin, 10);
-        }
 
         const { error: updateError } = await supabase
             .from('Employee')

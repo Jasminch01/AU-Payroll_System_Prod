@@ -124,17 +124,13 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 
         // Only owners (or the employee themselves, if we supported it) can update bank details and pin via this endpoint
         if (authUser.role === 'owner' || authUser.role === 'employee') {
-            allowedFields.push('bank_details', 'kiosk_pin', 'bank_account_name', 'bank_bsb', 'bank_account_number', 'ABN/TFN/ACN');
+            allowedFields.push('bank_details', 'bank_account_name', 'bank_bsb', 'bank_account_number', 'ABN/TFN/ACN');
         }
 
         const updateData: Record<string, unknown> = {};
         for (const field of allowedFields) {
             if (body[field] !== undefined) {
-                if (field === 'kiosk_pin') {
-                    updateData[field] = await bcrypt.hash(body[field], 10);
-                } else {
-                    updateData[field] = body[field];
-                }
+                updateData[field] = body[field];
             }
         }
 

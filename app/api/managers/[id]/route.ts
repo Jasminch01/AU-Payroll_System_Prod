@@ -109,17 +109,13 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
         const allowedEmployeeFields = [
             'first_name', 'last_name', 'phone', 'dob', 'bank_details',
             'emergency_contact_name', 'emergency_contact_phone',
-            'employment_type', 'role_title', 'pay_cycle', 'kiosk_pin',
+            'employment_type', 'role_title', 'pay_cycle',
             'end_date', 'status'
         ];
 
         for (const field of allowedEmployeeFields) {
             if (body[field] !== undefined) {
-                if (field === 'kiosk_pin') {
-                    employeeFields[field] = await bcrypt.hash(body[field], 10);
-                } else {
-                    employeeFields[field] = body[field];
-                }
+                employeeFields[field] = body[field];
             }
         }
 

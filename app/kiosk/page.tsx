@@ -1,97 +1,112 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Clock } from "lucide-react";
-import { apiPost } from "@/lib/api-client";
+import { Clock, ArrowLeft, LogOut, CheckCircle2 } from "lucide-react";
+import { apiGet, apiPost } from "@/lib/api-client";
 import { toast } from "sonner";
+import { EventType } from "@/types/database";
+
+type KioskAction = {
+    type: EventType;
+    label: string;
+    variant: 'default' | 'outline' | 'destructive';
+};
 
 export default function KioskPage() {
     const [currentTime, setCurrentTime] = useState(new Date());
+    const [step, setStep] = useState<'id' | 'board' | 'success'>('id');
     const [employeeId, setEmployeeId] = useState("");
-    const [pin, setPin] = useState("");
+    const [employeeData, setEmployeeData] = useState<{ name: string; available_actions: KioskAction[] } | null>(null);
     const [isLoading, setIsLoading] = useState(false);
+    const [lastAction, setLastAction] = useState<string>("");
 
-    // Status message state
-    const [statusMessage, setStatusMessage] = useState<{ text: string, type: 'success' | 'error' } | null>(null);
+    // Timers for auto-reset
+    const resetTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-    // Live clock clock
+    // Live clock
     useEffect(() => {
         const timer = setInterval(() => setCurrentTime(new Date()), 1000);
         return () => clearInterval(timer);
     }, []);
 
-    const resetForm = () => {
+    const resetToHome = () => {
+        if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
+        setStep('id');
         setEmployeeId("");
-        setPin("");
-        setStatusMessage(null);
+        setEmployeeData(null);
+        setLastAction("");
+        setIsLoading(false);
     };
 
-    const handleEnter = async (e: React.FormEvent) => {
-        e.preventDefault();
-
-        if (!employeeId || !pin) {
-            setStatusMessage({ text: "Please enter both Employee ID and PIN", type: "error" });
-            setTimeout(resetForm, 3000);
-            return;
-        }
+    const handleIdentify = async (val?: string) => {
+        const idToSubmit = val || employeeId;
+        if (idToSubmit.length !== 4) return;
 
         setIsLoading(true);
-        setStatusMessage(null);
-
         try {
-            // Create a local timestamp string: YYYY-MM-DDTHH:mm:ss
-            const now = new Date();
-            const year = now.getFullYear();
-            const month = String(now.getMonth() + 1).padStart(2, '0');
-            const day = String(now.getDate()).padStart(2, '0');
-            const hours = String(now.getHours()).padStart(2, '0');
-            const minutes = String(now.getMinutes()).padStart(2, '0');
-            const seconds = String(now.getSeconds()).padStart(2, '0');
-            const localTimestamp = `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
-
-            const res: any = await apiPost("/attendance/kiosk", {
-                employee_id: employeeId,
-                pin: pin,
-                timestamp: localTimestamp,
+            const res: any = await apiGet(`/attendance/kiosk/status?employee_id=${idToSubmit}`);
+            setEmployeeData({
+                name: res.employee_name,
+                available_actions: res.available_actions
             });
-
-            // Assuming standard API helper response { data: { log: {}, employee_name: "" }, message: "" }
-            const eventTypeRaw = res.data?.log?.event_type || res.log?.event_type;
-            const eventTypePretty = eventTypeRaw === 'CLOCK_IN' ? 'Clocked IN' : (eventTypeRaw === 'CLOCK_OUT' ? 'Clocked OUT' : 'Processed');
-            const empName = res.data?.employee_name || res.employee_name || employeeId;
-
-            setStatusMessage({
-                text: `${empName} - Successfully ${eventTypePretty}`,
-                type: "success"
-            });
-
-            // Auto close/reset after 3 seconds
-            setTimeout(resetForm, 3000);
-
+            setStep('board');
+            
+            // Auto reset if inactive on board for 15 seconds
+            startAutoReset(15000);
         } catch (err: any) {
-            console.error("Kiosk Error:", err);
-            setStatusMessage({
-                text: err.message || "Invalid Employee ID or PIN",
-                type: "error"
-            });
-
-            // Auto close/reset after 3 seconds
-            setTimeout(() => {
-                setPin(""); // Only clear PIN on error so they don't re-type ID if it was just a typo
-                setStatusMessage(null);
-            }, 3000);
+            toast.error(err.message || "Invalid Employee ID");
+            setEmployeeId("");
         } finally {
             setIsLoading(false);
         }
     };
 
-    return (
-        <div className="flex min-h-screen flex-col items-center justify-center bg-[hsl(var(--background))] p-4">
+    const handleKeypadPress = (digit: string) => {
+        if (employeeId.length < 4) {
+            const newId = employeeId + digit;
+            setEmployeeId(newId);
+            if (newId.length === 4) {
+                handleIdentify(newId);
+            }
+        }
+    };
 
+    const handleBackspace = () => {
+        setEmployeeId(employeeId.slice(0, -1));
+    };
+
+    const handleAction = async (action: KioskAction) => {
+        setIsLoading(true);
+        try {
+            const res: any = await apiPost("/attendance/kiosk", {
+                employee_id: employeeId.toUpperCase(),
+                event_type: action.type
+            });
+
+            setLastAction(action.label);
+            setStep('success');
+            
+            // Reset to home after 3 seconds
+            startAutoReset(3000);
+        } catch (err: any) {
+            toast.error(err.message || "Action failed");
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const startAutoReset = (ms: number) => {
+        if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
+        resetTimerRef.current = setTimeout(resetToHome, ms);
+    };
+
+    return (
+        <div className="flex min-h-screen flex-col items-center justify-center bg-[hsl(var(--background))] p-4 overflow-hidden">
+            
             {/* Minimalist Clock Header */}
-            <div className="mb-12 flex flex-col items-center">
+            <div className="mb-12 flex flex-col items-center animate-in fade-in slide-in-from-top-4 duration-700">
                 <Clock className="mb-4 text-[hsl(var(--brand))]" size={48} />
                 <h1 className="text-6xl sm:text-7xl font-bold tracking-tight text-[hsl(var(--foreground))] tabular-nums">
                     {currentTime.toLocaleTimeString("en-AU", { hour: "numeric", minute: "2-digit" })}
@@ -102,70 +117,108 @@ export default function KioskPage() {
             </div>
 
             {/* Kiosk Terminal Box */}
-            <div className="w-full max-w-sm rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-8 shadow-2xl">
-
-                {statusMessage ? (
-                    <div className={`flex flex-col items-center justify-center py-8 text-center animate-in fade-in zoom-in duration-300`}>
-                        <div className={`mb-4 flex h-16 w-16 items-center justify-center rounded-full ${statusMessage.type === 'success' ? 'bg-[hsl(var(--success))]/20 text-[hsl(var(--success))]' : 'bg-[hsl(var(--danger))]/20 text-[hsl(var(--danger))]'}`}>
-                            {statusMessage.type === 'success' ? (
-                                <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                            ) : (
-                                <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-                            )}
+            <div className={`w-full max-w-lg rounded-3xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-8 md:p-12 shadow-2xl transition-all duration-500`}>
+                
+                {step === 'id' && (
+                    <div className="animate-in fade-in zoom-in-95 duration-300">
+                        <div className="mb-10 text-center">
+                            <h2 className="text-3xl font-bold">Welcome</h2>
+                            <p className="text-[hsl(var(--muted-foreground))]">Enter your 4-digit ID to begin</p>
                         </div>
-                        <h2 className={`text-xl font-bold ${statusMessage.type === 'success' ? 'text-[hsl(var(--success))]' : 'text-[hsl(var(--danger))]'}`}>
-                            {statusMessage.text}
-                        </h2>
+                        
+                        <div className="flex justify-center gap-3 mb-10">
+                            {[0, 1, 2, 3].map((i) => (
+                                <div
+                                    key={i}
+                                    className={`h-16 w-16 rounded-2xl border-2 flex items-center justify-center text-3xl font-black transition-all ${
+                                        employeeId.length > i 
+                                        ? "border-[hsl(var(--brand))] bg-[hsl(var(--brand))]/5 text-[hsl(var(--brand))]" 
+                                        : "border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))]"
+                                    }`}
+                                >
+                                    {employeeId[i] || ""}
+                                </div>
+                            ))}
+                        </div>
+
+                        <div className="grid grid-cols-3 gap-3 max-w-[320px] mx-auto">
+                            {["1", "2", "3", "4", "5", "6", "7", "8", "9", "", "0", "⌫"].map((key) => (
+                                <Button
+                                    key={key}
+                                    variant="ghost"
+                                    className={`h-16 text-2xl font-bold rounded-2xl transition-all ${
+                                        !key ? "invisible" : "hover:bg-[hsl(var(--muted))] active:scale-90"
+                                    } ${key === "⌫" ? "text-[hsl(var(--danger))]" : ""}`}
+                                    onClick={() => key === "⌫" ? handleBackspace() : key && handleKeypadPress(key)}
+                                    disabled={isLoading}
+                                >
+                                    {key}
+                                </Button>
+                            ))}
+                        </div>
                     </div>
-                ) : (
-                    <form onSubmit={handleEnter} className="space-y-6 animate-in fade-in duration-300">
-                        <div className="space-y-2">
-                            <label className="text-sm font-medium text-[hsl(var(--muted-foreground))] uppercase tracking-wider">
-                                Employee ID
-                            </label>
-                            <Input
-                                type="text"
-                                placeholder="e.g. EMP001"
-                                value={employeeId}
-                                onChange={(e) => setEmployeeId(e.target.value.toUpperCase())}
-                                className="h-14 text-center text-xl font-bold uppercase tracking-widest bg-[hsl(var(--muted))]/50"
-                                required
-                                disabled={isLoading}
-                                autoFocus
-                            />
+                )}
+
+                {step === 'board' && employeeData && (
+                    <div className="animate-in fade-in slide-in-from-right-8 duration-500">
+                        <div className="mb-10 flex items-center justify-between">
+                            <div>
+                                <h2 className="text-sm font-medium uppercase tracking-widest text-[hsl(var(--muted-foreground))]">Identified Employee</h2>
+                                <h3 className="text-3xl font-black text-[hsl(var(--brand))]">{employeeData.name}</h3>
+                            </div>
+                            <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                onClick={resetToHome}
+                                className="h-12 w-12 rounded-full hover:bg-[hsl(var(--danger))]/10 hover:text-[hsl(var(--danger))]"
+                            >
+                                <LogOut size={24} />
+                            </Button>
                         </div>
 
-                        <div className="space-y-2">
-                            <label className="text-sm font-medium text-[hsl(var(--muted-foreground))] uppercase tracking-wider">
-                                PIN
-                            </label>
-                            <Input
-                                type="password"
-                                placeholder="••••"
-                                maxLength={4}
-                                pattern="[0-9]*"
-                                inputMode="numeric"
-                                value={pin}
-                                onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))} // strictly numbers
-                                className="h-14 text-center text-3xl font-bold tracking-[1em] bg-[hsl(var(--muted))]/50"
-                                required
-                                disabled={isLoading}
-                            />
+                        <div className="grid grid-cols-1 gap-4">
+                            {employeeData.available_actions.map((action) => (
+                                <Button
+                                    key={action.type}
+                                    variant={action.variant === 'destructive' ? 'danger' : 'default'}
+                                    className={`h-24 text-2xl font-bold rounded-2xl shadow-lg border-b-4 active:border-b-0 active:translate-y-1 transition-all
+                                        ${action.variant === 'outline' ? 'bg-white text-black border-2 border-black hover:bg-black hover:text-white dark:invert' : ''}
+                                    `}
+                                    onClick={() => handleAction(action)}
+                                    disabled={isLoading}
+                                >
+                                    {action.label}
+                                </Button>
+                            ))}
                         </div>
 
-                        <Button
-                            type="submit"
-                            className="w-full h-14 text-lg font-bold mt-4"
-                            loading={isLoading}
-                        >
-                            Enter
-                        </Button>
-                    </form>
+                        <div className="mt-8 flex justify-center">
+                            <Button variant="ghost" onClick={resetToHome} className="text-[hsl(var(--muted-foreground))]">
+                                <ArrowLeft className="mr-2" size={18} />
+                                Back to Start
+                            </Button>
+                        </div>
+                    </div>
+                )}
+
+                {step === 'success' && (
+                    <div className="flex flex-col items-center justify-center py-12 animate-in fade-in zoom-in duration-500">
+                        <div className="mb-6 flex h-24 w-24 items-center justify-center rounded-full bg-[hsl(var(--success))]/20 text-[hsl(var(--success))]">
+                            <CheckCircle2 size={64} />
+                        </div>
+                        <h2 className="text-4xl font-black mb-2">Success!</h2>
+                        <p className="text-xl text-[hsl(var(--muted-foreground))] text-center">
+                            {employeeData?.name} - {lastAction} successful.
+                        </p>
+                        <p className="mt-8 text-sm text-[hsl(var(--muted-foreground))] animate-pulse">
+                            Resetting for next employee...
+                        </p>
+                    </div>
                 )}
             </div>
 
-            <p className="mt-8 text-sm text-[hsl(var(--muted-foreground))]">
-                Enter your Employee ID and PIN to clock in or out.
+            <p className="mt-8 text-sm text-[hsl(var(--muted-foreground))] opacity-50">
+                Shared Kiosk Mode • Authorized Device
             </p>
         </div>
     );

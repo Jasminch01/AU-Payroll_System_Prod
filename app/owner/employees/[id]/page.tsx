@@ -162,8 +162,7 @@ export default function OwnerEmployeeDetailPage() {
             role_title: formData.role_title,
             employment_type: formData.employment_type,
             pay_cycle: formData.pay_cycle,
-            status: formData.status,
-            kiosk_pin: formData.kiosk_pin,
+            status: formData.status
         };
 
         //  console.log("Data being sent to API:", dataToSend);
@@ -368,29 +367,6 @@ export default function OwnerEmployeeDetailPage() {
                                         </TabsContent>
 
                                         <TabsContent value="auth" className="mt-0">
-                                            <div className="max-w-2xl space-y-6">
-                                                <div>
-                                                    <h3 className="text-lg font-bold text-[hsl(var(--foreground))]">Kiosk Security</h3>
-                                                    <p className="text-sm text-[hsl(var(--muted-foreground))]">Access credentials for onsite hardware.</p>
-                                                </div>
-                                                <div className="bg-[hsl(var(--muted))]/10 p-6 rounded-xl border border-[hsl(var(--border))] space-y-4">
-                                                    <div className="space-y-1">
-                                                        <h4 className="text-sm font-semibold flex items-center gap-2"><Lock size={14} /> Personal Access Code</h4>
-                                                        <p className="text-xs text-[hsl(var(--muted-foreground))]">Used to clock in/out on the centralized terminal.</p>
-                                                    </div>
-                                                    <div className="max-w-xs">
-                                                        <Input
-                                                            label="4-Digit PIN"
-                                                            type="text"
-                                                            maxLength={4}
-                                                            value={data.kiosk_pin || ""}
-                                                            onChange={(e) => updateField("kiosk_pin", e.target.value.replace(/[^0-9]/g, ''))}
-                                                            placeholder="----"
-                                                            className="text-center font-mono tracking-widest"
-                                                        />
-                                                    </div>
-                                                </div>
-                                            </div>
                                         </TabsContent>
 
                                         <TabsContent value="compliance" className="mt-0">

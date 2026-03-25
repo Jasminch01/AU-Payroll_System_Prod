@@ -34,7 +34,6 @@ export default function OnboardingPage() {
     const [abnTfnAcn, setAbnTfnAcn] = useState("");
     const [emergencyName, setEmergencyName] = useState("");
     const [emergencyPhone, setEmergencyPhone] = useState("");
-    const [kioskPin, setKioskPin] = useState("");
 
     const initialized = React.useRef(false);
 
@@ -226,8 +225,7 @@ export default function OnboardingPage() {
                     bank_account_number: bankAccountNumber,
                     "ABN/TFN/ACN": abnTfnAcn,
                     emergency_contact_name: emergencyName,
-                    emergency_contact_phone: emergencyPhone,
-                    kiosk_pin: kioskPin
+                    emergency_contact_phone: emergencyPhone
                 }),
             });
             const data = await res.json();
@@ -269,8 +267,7 @@ export default function OnboardingPage() {
                     bank_account_number: bankAccountNumber,
                     "ABN/TFN/ACN": abnTfnAcn,
                     emergency_contact_name: emergencyName,
-                    emergency_contact_phone: emergencyPhone,
-                    kiosk_pin: kioskPin,
+                    emergency_contact_phone: emergencyPhone
                 }),
             });
 
@@ -357,72 +354,56 @@ export default function OnboardingPage() {
                         <form onSubmit={handleJoin} className="space-y-[18px] text-left">
                             <div className="grid grid-cols-2 gap-3">
                                 <div className="space-y-[6px]">
-                                    <label className="text-[12px] font-bold text-slate-800 ml-1">First name</label>
-                                    <Input placeholder="Jane" value={firstName} onChange={e => setFirstName(e.target.value)} required className="h-10 text-sm" />
+                                    <Input label="First name" showAsterisk placeholder="Jane" value={firstName} onChange={e => setFirstName(e.target.value)} required className="h-10 text-sm" />
                                 </div>
                                 <div className="space-y-[6px]">
-                                    <label className="text-[12px] font-bold text-slate-800 ml-1">Last name</label>
-                                    <Input placeholder="Doe" value={lastName} onChange={e => setLastName(e.target.value)} required className="h-10 text-sm" />
+                                    <Input label="Last name" showAsterisk placeholder="Doe" value={lastName} onChange={e => setLastName(e.target.value)} required className="h-10 text-sm" />
                                 </div>
                             </div>
                             <div className="space-y-[6px]">
-                                <label className="text-[12px] font-bold text-slate-800 ml-1">Email address</label>
-                                <Input type="email" placeholder="jane@email.com" value={email} onChange={e => setEmail(e.target.value)} required className="h-10 text-sm" />
+                                <Input label="Email address" showAsterisk type="email" placeholder="jane@email.com" value={email} onChange={e => setEmail(e.target.value)} required className="h-10 text-sm" />
                             </div>
                             <div className="space-y-[6px]">
-                                <label className="text-[12px] font-bold text-slate-800 ml-1">Set Password</label>
-                                <Input type="password" placeholder="6+ characters" value={password} onChange={e => setPassword(e.target.value)} required className="h-10 text-sm" />
+                                <Input label="Set Password" showAsterisk type="password" placeholder="6+ characters" value={password} onChange={e => setPassword(e.target.value)} required className="h-10 text-sm" />
                             </div>
 
                             <hr className="my-4 border-slate-100" />
                             <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Payroll Details</p>
 
                             <div className="space-y-[6px]">
-                                <label className="text-[12px] font-bold text-slate-800 ml-1">Mobile number</label>
-                                <Input type="tel" placeholder="0412 345 678" value={phone} onChange={(e) => setPhone(e.target.value)} required className="h-10 text-sm" />
+                                <Input label="Mobile number" showAsterisk type="tel" placeholder="0412 345 678" value={phone} onChange={(e) => setPhone(e.target.value)} required className="h-10 text-sm" />
                             </div>
 
                             <div className="space-y-[6px]">
-                                <label className="text-[12px] font-bold text-slate-800 ml-1">Date of Birth</label>
-                                <Input type="date" value={dob} onChange={(e) => setDob(e.target.value)} required className="h-10 text-sm" />
+                                <Input label="Date of Birth" showAsterisk type="date" value={dob} onChange={(e) => setDob(e.target.value)} required className="h-10 text-sm" />
                             </div>
 
                             <div className="space-y-[14px]">
                                 <div className="space-y-[6px]">
-                                    <label className="text-[12px] font-bold text-slate-800 ml-1">Bank Account Name <span className="text-red-500">*</span></label>
-                                    <Input placeholder="John Doe" value={bankAccountName} onChange={(e) => setBankAccountName(e.target.value)} required className="h-10 text-sm" />
+                                    <Input label="Bank Account Name" showAsterisk placeholder="John Doe" value={bankAccountName} onChange={(e) => setBankAccountName(e.target.value)} required className="h-10 text-sm" />
                                 </div>
                                 <div className="grid grid-cols-2 gap-3">
                                     <div className="space-y-[6px]">
-                                        <label className="text-[12px] font-bold text-slate-800 ml-1">Bank BSB <span className="text-red-500">*</span></label>
-                                        <Input placeholder="000-000" value={bankBsb} onChange={(e) => setBankBsb(e.target.value)} required className="h-10 text-sm" />
+                                        <Input label="Bank BSB" showAsterisk placeholder="000-000" value={bankBsb} onChange={(e) => setBankBsb(e.target.value)} required className="h-10 text-sm" />
                                     </div>
                                     <div className="space-y-[6px]">
-                                        <label className="text-[12px] font-bold text-slate-800 ml-1">Account Number <span className="text-red-500">*</span></label>
-                                        <Input placeholder="00000000" value={bankAccountNumber} onChange={(e) => setBankAccountNumber(e.target.value)} required className="h-10 text-sm" />
+                                        <Input label="Account Number" showAsterisk placeholder="00000000" value={bankAccountNumber} onChange={(e) => setBankAccountNumber(e.target.value)} required className="h-10 text-sm" />
                                     </div>
                                 </div>
                                 <div className="space-y-[6px]">
-                                    <label className="text-[12px] font-bold text-slate-800 ml-1">ABN / TFN / ACN</label>
-                                    <Input placeholder="Optional" value={abnTfnAcn} onChange={(e) => setAbnTfnAcn(e.target.value)} className="h-10 text-sm" />
+                                    <Input label="ABN / TFN / ACN" placeholder="Optional" value={abnTfnAcn} onChange={(e) => setAbnTfnAcn(e.target.value)} className="h-10 text-sm" />
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-2 gap-3">
+                             <div className="grid grid-cols-2 gap-3">
                                 <div className="space-y-[6px]">
-                                    <label className="text-[12px] font-bold text-slate-800 ml-1">Emergency Name</label>
-                                    <Input placeholder="Name" value={emergencyName} onChange={(e) => setEmergencyName(e.target.value)} required className="h-10 text-sm" />
+                                    <Input label="Emergency Name" showAsterisk placeholder="Name" value={emergencyName} onChange={(e) => setEmergencyName(e.target.value)} required className="h-10 text-sm" />
                                 </div>
                                 <div className="space-y-[6px]">
-                                    <label className="text-[12px] font-bold text-slate-800 ml-1">Emergency Phone</label>
-                                    <Input type="tel" placeholder="Phone" value={emergencyPhone} onChange={(e) => setEmergencyPhone(e.target.value)} required className="h-10 text-sm" />
+                                    <Input label="Emergency Phone" showAsterisk type="tel" placeholder="Phone" value={emergencyPhone} onChange={(e) => setEmergencyPhone(e.target.value)} required className="h-10 text-sm" />
                                 </div>
                             </div>
 
-                            <div className="space-y-[6px]">
-                                <label className="text-[12px] font-bold text-slate-800 ml-1">Kiosk PIN (4 digits)</label>
-                                <Input maxLength={4} placeholder="e.g. 1234" value={kioskPin} onChange={(e) => setKioskPin(e.target.value.replace(/\D/g, ''))} required className="h-10 text-sm" />
-                            </div>
 
                             <Button type="submit" className="w-full h-11 text-[14px] font-medium bg-[#3724B3] hover:bg-[#261C7F] rounded-[8px] mt-4" loading={loading}>
                                 Join & Complete Onboarding
@@ -438,59 +419,46 @@ export default function OnboardingPage() {
                                 </div>
                             )}
 
-                            {!prefilledPhone && (
+                             {!prefilledPhone && (
                                 <div className="space-y-[6px]">
-                                    <label className="text-[12px] font-bold text-slate-800 ml-1">Mobile number</label>
-                                    <Input type="tel" placeholder="0412 345 678" value={phone} onChange={(e) => setPhone(e.target.value)} required className="h-10 text-sm" />
+                                    <Input label="Mobile number" showAsterisk type="tel" placeholder="0412 345 678" value={phone} onChange={(e) => setPhone(e.target.value)} required className="h-10 text-sm" />
                                 </div>
                             )}
 
                             <div className="space-y-[6px]">
-                                <label className="text-[12px] font-bold text-slate-800 ml-1">Date of Birth</label>
-                                <Input type="date" value={dob} onChange={(e) => setDob(e.target.value)} required className="h-10 text-sm" />
+                                <Input label="Date of Birth" showAsterisk type="date" value={dob} onChange={(e) => setDob(e.target.value)} required className="h-10 text-sm" />
                             </div>
 
                             <div className="space-y-[14px]">
                                 <div className="space-y-[6px]">
-                                    <label className="text-[12px] font-bold text-slate-800 ml-1">Bank Account Name <span className="text-red-500">*</span></label>
-                                    <Input placeholder="John Doe" value={bankAccountName} onChange={(e) => setBankAccountName(e.target.value)} required className="h-10 text-sm" />
+                                    <Input label="Bank Account Name" showAsterisk placeholder="John Doe" value={bankAccountName} onChange={(e) => setBankAccountName(e.target.value)} required className="h-10 text-sm" />
                                 </div>
                                 <div className="grid grid-cols-2 gap-3">
                                     <div className="space-y-[6px]">
-                                        <label className="text-[12px] font-bold text-slate-800 ml-1">Bank BSB <span className="text-red-500">*</span></label>
-                                        <Input placeholder="000-000" value={bankBsb} onChange={(e) => setBankBsb(e.target.value)} required className="h-10 text-sm" />
+                                        <Input label="Bank BSB" showAsterisk placeholder="000-000" value={bankBsb} onChange={(e) => setBankBsb(e.target.value)} required className="h-10 text-sm" />
                                     </div>
                                     <div className="space-y-[6px]">
-                                        <label className="text-[12px] font-bold text-slate-800 ml-1">Account Number <span className="text-red-500">*</span></label>
-                                        <Input placeholder="00000000" value={bankAccountNumber} onChange={(e) => setBankAccountNumber(e.target.value)} required className="h-10 text-sm" />
+                                        <Input label="Account Number" showAsterisk placeholder="00000000" value={bankAccountNumber} onChange={(e) => setBankAccountNumber(e.target.value)} required className="h-10 text-sm" />
                                     </div>
                                 </div>
                                 <div className="space-y-[6px]">
-                                    <label className="text-[12px] font-bold text-slate-800 ml-1">ABN / TFN / ACN</label>
-                                    <Input placeholder="Optional" value={abnTfnAcn} onChange={(e) => setAbnTfnAcn(e.target.value)} className="h-10 text-sm" />
+                                    <Input label="ABN / TFN / ACN" placeholder="Optional" value={abnTfnAcn} onChange={(e) => setAbnTfnAcn(e.target.value)} className="h-10 text-sm" />
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-2 gap-3">
+                             <div className="grid grid-cols-2 gap-3">
                                 <div className="space-y-[6px]">
-                                    <label className="text-[12px] font-bold text-slate-800 ml-1">Emergency Name</label>
-                                    <Input placeholder="Name" value={emergencyName} onChange={(e) => setEmergencyName(e.target.value)} required className="h-10 text-sm" />
+                                    <Input label="Emergency Name" showAsterisk placeholder="Name" value={emergencyName} onChange={(e) => setEmergencyName(e.target.value)} required className="h-10 text-sm" />
                                 </div>
                                 <div className="space-y-[6px]">
-                                    <label className="text-[12px] font-bold text-slate-800 ml-1">Emergency Phone</label>
-                                    <Input type="tel" placeholder="Phone" value={emergencyPhone} onChange={(e) => setEmergencyPhone(e.target.value)} required className="h-10 text-sm" />
+                                    <Input label="Emergency Phone" showAsterisk type="tel" placeholder="Phone" value={emergencyPhone} onChange={(e) => setEmergencyPhone(e.target.value)} required className="h-10 text-sm" />
                                 </div>
                             </div>
 
-                            <div className="space-y-[6px]">
-                                <label className="text-[12px] font-bold text-slate-800 ml-1">Kiosk PIN (4 digits)</label>
-                                <Input maxLength={4} placeholder="e.g. 1234" value={kioskPin} onChange={(e) => setKioskPin(e.target.value.replace(/\D/g, ''))} required className="h-10 text-sm" />
-                            </div>
 
                             {!isExistingUser && (
                                 <div className="space-y-[6px]">
-                                    <label className="text-[12px] font-bold text-slate-800 ml-1">Set Password</label>
-                                    <Input type="password" placeholder="Minimum 6 characters" value={password} onChange={(e) => setPassword(e.target.value)} required className="h-10 text-sm" />
+                                    <Input label="Set Password" showAsterisk type="password" placeholder="Minimum 6 characters" value={password} onChange={(e) => setPassword(e.target.value)} required className="h-10 text-sm" />
                                 </div>
                             )}
 
