@@ -101,7 +101,7 @@ export async function POST(request: NextRequest) {
             let authUserId = '';
             let isExistingUser = false;
             let actionLink = null;
-            const redirectUrl = `${getSiteUrl()}/onboarding`;
+            const redirectUrl = `${getSiteUrl(request)}/onboarding`;
 
             const { data: inviteData, error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(email, {
                 data: { first_name, last_name, business_id: authUser.business_id, invite_as, invited_by: authUser.user_id },
