@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { DashboardLayout } from "@/components/layout";
 import { Card, CardContent, MetricCard } from "@/components/ui/card";
@@ -71,6 +71,27 @@ export default function ManagerTimesheetsPage() {
     const [editNotes, setEditNotes] = useState("");
     const [editFlags, setEditFlags] = useState("");
     const [editStatus, setEditStatus] = useState<TimesheetStatus>("pending");
+
+    // Reset generate form when dialog closes
+    useEffect(() => {
+        if (!generateOpen) {
+            setGenStartDate("");
+            setGenEndDate("");
+            setGenEmployeeId("");
+        }
+    }, [generateOpen]);
+
+    // Reset edit form when dialog closes
+    useEffect(() => {
+        if (!editOpen) {
+            setEditingTs(null);
+            setEditHours("");
+            setEditGrossPay("");
+            setEditNotes("");
+            setEditFlags("");
+            setEditStatus("pending");
+        }
+    }, [editOpen]);
 
     /* ── Queries ────────────────────────────────────────── */
 

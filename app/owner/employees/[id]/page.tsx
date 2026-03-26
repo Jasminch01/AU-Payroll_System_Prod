@@ -51,6 +51,21 @@ export default function OwnerEmployeeDetailPage() {
     const [eveningEndTime, setEveningEndTime] = useState("");
     const [editingRateId, setEditingRateId] = useState<string | null>(null);
 
+    // Reset rate form when dialog closes
+    useEffect(() => {
+        if (!rateOpen) {
+            setEditingRateId(null);
+            setNewRate("");
+            setEffectiveFrom("");
+            setSaturdayMultiplier("1.25");
+            setSundayMultiplier("1.50");
+            setPublicHolidayMultiplier("2.50");
+            setEveningRate("");
+            setEveningStartTime("");
+            setEveningEndTime("");
+        }
+    }, [rateOpen]);
+
     const { data: employee, isLoading: isLoadingEmployee } = useQuery({
         queryKey: ["employee", employeeId],
         queryFn: () => apiGet<any>(`/employees/${employeeId}`),
