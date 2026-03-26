@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { DashboardLayout } from "@/components/layout";
@@ -111,6 +111,13 @@ export default function ManagerTeamPage() {
         setInvAs("employee");
         setBulkData([{ first_name: '', last_name: '', email: '', role_title: '', phone: '' }]);
     };
+
+    // Reset form when dialogs close
+    useEffect(() => {
+        if (!inviteOpen && !bulkInviteOpen) {
+            resetForm();
+        }
+    }, [inviteOpen, bulkInviteOpen]);
 
     const handleInvite = () => {
         if (!invEmail || !invFirstName || !invLastName || !invRole) {

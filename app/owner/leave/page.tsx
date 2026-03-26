@@ -52,6 +52,13 @@ export default function OwnerLeavePage() {
     const [typeRequiresDoc, setTypeRequiresDoc] = useState(false);
     const [editTypeTarget, setEditTypeTarget] = useState<LeaveTypeRecord | null>(null);
 
+    // Reset form when dialog closes
+    React.useEffect(() => {
+        if (!typeDialogOpen) {
+            resetTypeForm();
+        }
+    }, [typeDialogOpen]);
+
     // Data queries
     const { data: leaveRequests = [], isLoading } = useQuery({
         queryKey: ["leave-requests"],

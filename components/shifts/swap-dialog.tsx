@@ -60,6 +60,16 @@ export function ShiftSwapDialog({ open, onOpenChange, shift, role }: ShiftSwapDi
         setTargetShift("");
     }, [offerType]);
 
+    // Reset all state when dialog closes
+    useEffect(() => {
+        if (!open) {
+            setTargetEmployee("");
+            setTargetShift("");
+            setOfferType("transfer");
+            setPoolType("transfer");
+        }
+    }, [open]);
+
     const swapMutation = useMutation({
         mutationFn: (data: any) => apiPost("/shifts/swaps", data),
         onSuccess: () => {

@@ -136,6 +136,29 @@ export default function OwnerEmployeesPage() {
         onError: (err: Error) => toast.error(err.message),
     });
 
+    // Reset invitation forms when dialogs close
+    React.useEffect(() => {
+        if (!inviteOpen && !bulkInviteOpen) {
+            resetForm();
+        }
+    }, [inviteOpen, bulkInviteOpen]);
+
+    // Reset manual add form when dialog closes
+    React.useEffect(() => {
+        if (!manualAddOpen) {
+            setManualData({
+                first_name: '', last_name: '', email: '', phone: '', dob: '',
+                emergency_contact_name: '', emergency_contact_phone: '',
+                role_title: '', employment_type: 'full_time', pay_cycle: 'weekly',
+                start_date: new Date().toISOString().split('T')[0],
+                weekday_rate: '',
+                password: '',
+                invite_as: 'employee',
+                bank_account_name: '', bank_bsb: '', bank_account_number: '', abn: '', tfn: ''
+            });
+        }
+    }, [manualAddOpen]);
+
     const resendInviteMutation = useMutation({
         mutationFn: (employeeId: string) => apiPost("/employees/resend-invite", { employee_id: employeeId }),
         onSuccess: (response: any) => {
