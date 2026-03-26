@@ -2,8 +2,8 @@
 
 import * as React from "react";
 import { cn } from "@/lib/utils";
-import { StatusBadge } from "@/components/ui/badge";
 import { ChevronUp, ChevronDown, Search } from "lucide-react";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 /* ============================================
    DataTable — Reusable sortable, filterable table
@@ -29,6 +29,7 @@ interface DataTableProps<T> {
     className?: string;
     loading?: boolean;
     actions?: React.ReactNode;
+    mobileCardRender?: (row: T) => React.ReactNode;
 }
 
 export function DataTable<T extends Record<string, any>>({
@@ -43,7 +44,9 @@ export function DataTable<T extends Record<string, any>>({
     className,
     loading = false,
     actions,
+    mobileCardRender,
 }: DataTableProps<T>) {
+    const isMobile = useIsMobile();
     const [search, setSearch] = React.useState("");
     const [sortKey, setSortKey] = React.useState<string | null>(null);
     const [sortDir, setSortDir] = React.useState<"asc" | "desc">("asc");
@@ -124,76 +127,139 @@ export function DataTable<T extends Record<string, any>>({
                 </div>
             )}
 
-            {/* Table */}
-            <div className="rounded-xl border border-[hsl(var(--border))] overflow-hidden">
-                <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                        <thead>
-                            <tr className="border-b border-[hsl(var(--border))] bg-[hsl(var(--muted))]">
-                                {columns.map((col) => (
-                                    <th
-                                        key={col.key}
-                                        className={cn(
-                                            "px-4 py-3 text-left font-medium text-[hsl(var(--muted-foreground))]",
-                                            col.sortable && "cursor-pointer select-none hover:text-[hsl(var(--foreground))] transition-colors",
-                                            col.className
-                                        )}
-                                        onClick={() => col.sortable && handleSort(col.key)}
-                                    >
-                                        <div className="flex items-center gap-1">
-                                            {col.label}
-                                            {col.sortable && sortKey === col.key && (
-                                                sortDir === "asc"
-                                                    ? <ChevronUp className="h-3.5 w-3.5" />
-                                                    : <ChevronDown className="h-3.5 w-3.5" />
+            {/* Table / Card View */}
+            <div className={cn(
+                "rounded-xl overflow-hidden",
+                !isMobile && "border border-[hsl(var(--border))]"
+            )}>
+                {isMobile ? (
+                    /* Mobile Card View */
+                    <div className="space-y-4">
+                        {loading ? (
+                            Array.from({ length: 3 }).map((_, i) => (
+                                <div key={i} className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-4 animate-pulse">
+                                    <div className="h-4 w-1/3 bg-[hsl(var(--muted))] rounded mb-3" />
+                                    <div className="space-y-2">
+                                        <div className="h-3 w-full bg-[hsl(var(--muted))] rounded" />
+                                        <div className="h-3 w-3/4 bg-[hsl(var(--muted))] rounded" />
+                                    </div>
+                                </div>
+                            ))
+                        ) : sorted.length === 0 ? (
+                            <div className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-12 text-center">
+                                <div className="flex flex-col items-center gap-2">
+                                    {emptyIcon && <div className="text-[hsl(var(--muted-foreground))]">{emptyIcon}</div>}
+                                    <p className="text-[hsl(var(--muted-foreground))]">{emptyMessage}</p>
+                                </div>
+                            </div>
+                        ) : (
+                            paginated.map((row, i) => (
+                                <div
+                                    key={i}
+                                    onClick={() => onRowClick?.(row)}
+                                    className={cn(
+                                        "rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-4 shadow-sm active:scale-[0.98] transition-all",
+                                        onRowClick && "cursor-pointer"
+                                    )}
+                                >
+                                    {mobileCardRender ? (
+                                        mobileCardRender(row)
+                                    ) : (
+                                        <div className="space-y-3">
+                                            {/* Default Card Layout using columns */}
+                                            {columns.map((col, idx) => {
+                                                const value = col.render ? col.render(row) : row[col.key];
+                                                if (idx === 0) {
+                                                    return (
+                                                        <div key={col.key} className="flex justify-between items-start border-b border-[hsl(var(--border))] pb-2 mb-2">
+                                                            <div className="font-bold text-base text-[hsl(var(--foreground))]">{value}</div>
+                                                        </div>
+                                                    );
+                                                }
+                                                return (
+                                                    <div key={col.key} className="flex justify-between text-sm py-0.5">
+                                                        <span className="text-[hsl(var(--muted-foreground))]">{col.label}</span>
+                                                        <span className="font-medium text-[hsl(var(--foreground))]">{value}</span>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                </div>
+                            ))
+                        ) }
+                    </div>
+                ) : (
+                    /* Desktop Table View */
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                            <thead>
+                                <tr className="border-b border-[hsl(var(--border))] bg-[hsl(var(--muted))]">
+                                    {columns.map((col) => (
+                                        <th
+                                            key={col.key}
+                                            className={cn(
+                                                "px-4 py-3 text-left font-medium text-[hsl(var(--muted-foreground))]",
+                                                col.sortable && "cursor-pointer select-none hover:text-[hsl(var(--foreground))] transition-colors",
+                                                col.className
                                             )}
-                                        </div>
-                                    </th>
-                                ))}
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {loading ? (
-                                // Skeleton rows
-                                Array.from({ length: 5 }).map((_, i) => (
-                                    <tr key={i} className="border-b border-[hsl(var(--border))]">
-                                        {columns.map((col) => (
-                                            <td key={col.key} className="px-4 py-3">
-                                                <div className="skeleton h-4 w-3/4 rounded" />
-                                            </td>
-                                        ))}
-                                    </tr>
-                                ))
-                            ) : sorted.length === 0 ? (
-                                <tr>
-                                    <td colSpan={columns.length} className="px-4 py-12 text-center">
-                                        <div className="flex flex-col items-center gap-2">
-                                            {emptyIcon && <div className="text-[hsl(var(--muted-foreground))]">{emptyIcon}</div>}
-                                            <p className="text-[hsl(var(--muted-foreground))]">{emptyMessage}</p>
-                                        </div>
-                                    </td>
+                                            onClick={() => col.sortable && handleSort(col.key)}
+                                        >
+                                            <div className="flex items-center gap-1">
+                                                {col.label}
+                                                {col.sortable && sortKey === col.key && (
+                                                    sortDir === "asc"
+                                                        ? <ChevronUp className="h-3.5 w-3.5" />
+                                                        : <ChevronDown className="h-3.5 w-3.5" />
+                                                )}
+                                            </div>
+                                        </th>
+                                    ))}
                                 </tr>
-                            ) : (
-                                paginated.map((row, i) => (
-                                    <tr
-                                        key={i}
-                                        className={cn(
-                                            "border-b border-[hsl(var(--border))] transition-colors",
-                                            onRowClick && "cursor-pointer hover:bg-[hsl(var(--muted))]"
-                                        )}
-                                        onClick={() => onRowClick?.(row)}
-                                    >
-                                        {columns.map((col) => (
-                                            <td key={col.key} className={cn("px-4 py-3", col.className)}>
-                                                {col.render ? col.render(row) : row[col.key]}
-                                            </td>
-                                        ))}
+                            </thead>
+                            <tbody>
+                                {loading ? (
+                                    // Skeleton rows
+                                    Array.from({ length: 5 }).map((_, i) => (
+                                        <tr key={i} className="border-b border-[hsl(var(--border))]">
+                                            {columns.map((col) => (
+                                                <td key={col.key} className="px-4 py-3">
+                                                    <div className="skeleton h-4 w-3/4 rounded" />
+                                                </td>
+                                            ))}
+                                        </tr>
+                                    ))
+                                ) : sorted.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={columns.length} className="px-4 py-12 text-center">
+                                            <div className="flex flex-col items-center gap-2">
+                                                {emptyIcon && <div className="text-[hsl(var(--muted-foreground))]">{emptyIcon}</div>}
+                                                <p className="text-[hsl(var(--muted-foreground))]">{emptyMessage}</p>
+                                            </div>
+                                        </td>
                                     </tr>
-                                ))
-                            )}
-                        </tbody>
-                    </table>
-                </div>
+                                ) : (
+                                    paginated.map((row, i) => (
+                                        <tr
+                                            key={i}
+                                            className={cn(
+                                                "border-b border-[hsl(var(--border))] transition-colors",
+                                                onRowClick && "cursor-pointer hover:bg-[hsl(var(--muted))]"
+                                            )}
+                                            onClick={() => onRowClick?.(row)}
+                                        >
+                                            {columns.map((col) => (
+                                                <td key={col.key} className={cn("px-4 py-3", col.className)}>
+                                                    {col.render ? col.render(row) : row[col.key]}
+                                                </td>
+                                            ))}
+                                        </tr>
+                                    ))
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
             </div>
 
             {/* Pagination Controls */}

@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { apiGet, apiPost, apiDelete } from "@/lib/api-client";
 import { toast } from "sonner";
-import { UserPlus, Users, Send, RefreshCw, Copy, Check, MoreHorizontal, Eye, ExternalLink, Trash2, AlertTriangle, Filter, X, Briefcase, User, ShieldCheck, UserPlus2 } from "lucide-react";
+import { UserPlus, Users, Send, RefreshCw, Copy, Check, MoreHorizontal, Eye, ExternalLink, Trash2, AlertTriangle, Filter, X, Briefcase, User, ShieldCheck, UserPlus2, ChevronRight } from "lucide-react";
 import type { Employee } from "@/types/database";
 import { useAuth } from "@/hooks/use-auth";
 import { generateBusinessPrefix, formatEmpSuffix, getNumericSuffix } from "@/lib/utils/employee-id";
@@ -409,6 +409,25 @@ export default function OwnerEmployeesPage() {
                 emptyIcon={<UserPlus size={40} />}
                 loading={isLoading}
                 onRowClick={(row) => router.push(`/owner/employees/${row.employee_id}`)}
+                mobileCardRender={(row) => (
+                    <div className="p-4 flex items-center justify-between border-b border-[hsl(var(--border))] last:border-0 active:bg-[hsl(var(--muted))]/30 transition-colors">
+                        <div className="flex items-center gap-3">
+                            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[hsl(var(--brand-light))] text-[hsl(var(--brand))] text-sm font-bold shadow-sm">
+                                {(row.first_name?.[0] ?? "")}{(row.last_name?.[0] ?? "")}
+                            </div>
+                            <div className="flex flex-col">
+                                <span className="font-bold text-[hsl(var(--foreground))]">{row.first_name} {row.last_name}</span>
+                                <div className="flex items-center gap-2">
+                                    <span className="text-[10px] uppercase font-bold text-[hsl(var(--muted-foreground))] tracking-wider">
+                                        {row.role_title || "No Role"}
+                                    </span>
+                                    <StatusBadge status={row.status} className="scale-75 origin-left h-4" />
+                                </div>
+                            </div>
+                        </div>
+                        <ChevronRight size={16} className="text-[hsl(var(--muted-foreground))]/40" />
+                    </div>
+                )}
                 actions={
                     <DropdownMenu>
                         <DropdownMenuTrigger asChild>
