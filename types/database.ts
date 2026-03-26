@@ -63,15 +63,14 @@ export interface Employee {
   last_name: string | null;
   phone: string | null;
   email: string;
-  dob: string;
-  bank_details: string;
+  dob: string | null;
   bank_account_name: string | null;
   bank_bsb: string | null;
   bank_account_number: string | null;
   abn: string | null;
   tfn: string | null;
-  emergency_contact_name: string;
-  emergency_contact_phone: string;
+  emergency_contact_name: string | null;
+  emergency_contact_phone: string | null;
   employment_type: EmployeeType | null;
   role_title: string | null;
   pay_cycle: PayCycle | null;
@@ -82,6 +81,7 @@ export interface Employee {
   business_id: string;
   user_id: string;
   status: EmployeeStatus;
+  role?: UserRole | 'employee';
 }
 
 export interface EmployeeRateHistory {

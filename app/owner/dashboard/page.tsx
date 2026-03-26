@@ -159,7 +159,7 @@ export default function OwnerDashboardPage() {
                             <TrendingUp size={14} /> +12.5%
                         </div>
                     </div>
-                    
+
                     <div className="h-[300px] w-full">
                         <ResponsiveContainer width="100%" height="100%">
                             <BarChart
@@ -175,22 +175,22 @@ export default function OwnerDashboardPage() {
                                 margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
                             >
                                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
-                                <XAxis 
-                                    dataKey="date" 
-                                    axisLine={false} 
-                                    tickLine={false} 
-                                    tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} 
+                                <XAxis
+                                    dataKey="date"
+                                    axisLine={false}
+                                    tickLine={false}
+                                    tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
                                 />
 
-                                <YAxis 
-                                    axisLine={false} 
-                                    tickLine={false} 
-                                    tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} 
+                                <YAxis
+                                    axisLine={false}
+                                    tickLine={false}
+                                    tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
                                 />
-                                <Tooltip 
+                                <Tooltip
                                     cursor={{ fill: 'hsl(var(--muted))', opacity: 0.4 }}
-                                    contentStyle={{ 
-                                        borderRadius: '12px', 
+                                    contentStyle={{
+                                        borderRadius: '12px',
                                         border: '1px solid hsl(var(--border))',
                                         boxShadow: '0 4px 12px rgba(0,0,0,0.05)'
                                     }}
@@ -204,8 +204,8 @@ export default function OwnerDashboardPage() {
 
                 <div className={cn(
                     "rounded-2xl border p-6 flex flex-col transition-all duration-300 shadow-sm",
-                    compliance?.score === 100 
-                        ? "border-[hsl(var(--success))]/20 bg-[hsl(var(--success-light))]/30 shadow-[0_0_20px_-12px_hsl(var(--success))]" 
+                    compliance?.score === 100
+                        ? "border-[hsl(var(--success))]/20 bg-[hsl(var(--success-light))]/30 shadow-[0_0_20px_-12px_hsl(var(--success))]"
                         : "border-[hsl(var(--border))] bg-[hsl(var(--card))]"
                 )}>
                     {compliance?.score === 100 ? (
@@ -234,7 +234,7 @@ export default function OwnerDashboardPage() {
                                 <div className={cn(
                                     "flex h-12 w-12 items-center justify-center rounded-full shrink-0",
                                     compliance?.status === 'warning' ? "bg-[hsl(var(--warning-light))] text-[hsl(var(--warning))]" :
-                                    "bg-[hsl(var(--danger-light))] text-[hsl(var(--danger))]"
+                                        "bg-[hsl(var(--danger-light))] text-[hsl(var(--danger))]"
                                 )}>
                                     <ShieldCheck size={28} />
                                 </div>
@@ -243,7 +243,7 @@ export default function OwnerDashboardPage() {
                                     <p className={cn(
                                         "text-sm font-medium",
                                         compliance?.status === 'warning' ? "text-[hsl(var(--warning))]" :
-                                        "text-[hsl(var(--danger))]"
+                                            "text-[hsl(var(--danger))]"
                                     )}>
                                         {isComplianceLoading ? "Checking..." : `${compliance?.score}% Ready`}
                                     </p>
@@ -264,7 +264,7 @@ export default function OwnerDashboardPage() {
                                     <p className="text-sm text-[hsl(var(--muted-foreground))]">Settings audit required.</p>
                                 )}
                             </div>
-                            
+
                             <Button variant="outline" className="w-full mt-4 border-[hsl(var(--border))] hover:bg-[hsl(var(--muted))] font-bold h-10 rounded-xl" asChild>
                                 <Link href="/owner/settings">
                                     Fix Issues

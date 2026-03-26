@@ -149,25 +149,41 @@ export default function ManagerEmployeeDetailPage() {
     });
 
     const handleSave = () => {
-        if (!formData) return;
-        updateMutation.mutate({
-            first_name: formData.first_name,
-            last_name: formData.last_name,
-            email: formData.email,
-            phone: formData.phone,
-            date_of_birth: formData.date_of_birth,
-            emergency_contact_name: formData.emergency_contact_name,
-            emergency_contact_phone: formData.emergency_contact_phone,
-            bank_account_name: formData.bank_account_name,
-            bank_bsb: formData.bank_bsb,
-            bank_account_number: formData.bank_account_number,
-            abn: formData.abn,
-            tfn: formData.tfn,
-            role_title: formData.role_title,
-            employment_type: formData.employment_type,
-            pay_cycle: formData.pay_cycle,
-            status: formData.status,
+        if (!formData || !employee) return;
+
+        // Only send fields that have changed
+        const dataToSend: any = {};
+        const fieldsToCompare = [
+            'first_name', 'last_name', 'email', 'phone', 'date_of_birth',
+            'emergency_contact_name', 'emergency_contact_phone',
+            'bank_account_name', 'bank_bsb', 'bank_account_number',
+            'abn', 'tfn', 'role_title', 'role', 'employment_type',
+            'pay_cycle', 'status'
+        ];
+
+        fieldsToCompare.forEach(field => {
+            const newValue = formData[field];
+            // Normalize original value for comparison (e.g., date_of_birth vs dob)
+            let originalValue = employee[field];
+            if (field === 'date_of_birth' && originalValue === undefined) {
+                originalValue = employee.dob;
+            }
+
+            // Treat null, undefined, and empty string as equivalent for comparison
+            const normalizedNew = (newValue === null || newValue === undefined || newValue === "") ? null : newValue;
+            const normalizedOld = (originalValue === null || originalValue === undefined || originalValue === "") ? null : originalValue;
+
+            if (normalizedNew !== normalizedOld) {
+                dataToSend[field] = newValue;
+            }
         });
+
+        if (Object.keys(dataToSend).length === 0) {
+            setEditing(false);
+            return;
+        }
+
+        updateMutation.mutate(dataToSend);
     };
 
     const updateField = (field: string, value: any) => {
@@ -330,7 +346,15 @@ export default function ManagerEmployeeDetailPage() {
                                                     <Input label="Last Name" showAsterisk value={data.last_name || ""} onChange={(e) => updateField("last_name", e.target.value)} />
                                                     <Input label="Email Address" showAsterisk type="email" value={data.email || ""} onChange={(e) => updateField("email", e.target.value)} />
                                                     <Input label="Phone Number" value={data.phone || ""} onChange={(e) => updateField("phone", e.target.value)} />
-                                                    <Input label="Date of Birth" showAsterisk type="date" value={data.date_of_birth || ""} onChange={(e) => updateField("date_of_birth", e.target.value)} />
+                                                    <Input 
+                                                        label="Date of Birth" 
+                                                        type={data.date_of_birth ? "date" : "text"} 
+                                                        placeholder="Not Set"
+                                                        value={data.date_of_birth || ""} 
+                                                        onFocus={(e) => e.target.type = 'date'}
+                                                        onBlur={(e) => { if (!e.target.value) e.target.type = 'text' }}
+                                                        onChange={(e) => updateField("date_of_birth", e.target.value)} 
+                                                    />
                                                 </div>
                                             </section>
 
@@ -410,7 +434,25 @@ export default function ManagerEmployeeDetailPage() {
                                         </div>
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                             <Input label="Position / Role (Job Title)" value={data.role_title || ""} onChange={(e) => updateField("role_title", e.target.value)} />
-                                            <Input label="System Access Level" value={data.role || "employee"} disabled className="capitalize" />
+                                            <div className="space-y-1.5 focus-within:text-[hsl(var(--brand))] transition-colors group">
+                                                <label className="text-xs font-semibold text-[hsl(var(--muted-foreground))] ml-0.5 group-focus-within:text-[hsl(var(--brand))]">
+                                                    System Access Level <span className="text-[#FF4A4A]">*</span>
+                                                </label>
+                                                <div className="relative">
+                                                    <select
+                                                        value={data.role || "employee"}
+                                                        onChange={(e) => updateField("role", e.target.value)}
+                                                        className="flex h-10 w-full rounded-md border border-[hsl(var(--input))] bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--brand))]/20 appearance-none capitalize cursor-pointer font-medium"
+                                                    >
+                                                        <option value="employee">Employee</option>
+                                                        <option value="manager">Manager</option>
+                                                        {/* Managers typically can't promote to Owner */}
+                                                    </select>
+                                                    <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-[hsl(var(--muted-foreground))]">
+                                                        <Shield size={14} />
+                                                    </div>
+                                                </div>
+                                            </div>
                                             <div className="space-y-1.5">
                                                 <label className="text-xs font-semibold text-[hsl(var(--muted-foreground))] ml-0.5">
                                                     Employment Basis <span className={cn(

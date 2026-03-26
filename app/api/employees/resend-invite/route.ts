@@ -3,6 +3,7 @@ import { requireRole } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { successResponse, errorResponse, validateRequiredFields } from '@/lib/api-helpers';
+import { getSiteUrl } from '@/lib/utils/url';
 
 /**
  * POST /api/employees/resend-invite
@@ -52,26 +53,61 @@ export async function POST(request: NextRequest) {
                 last_name: employee.last_name,
                 business_id: authUser.business_id,
             },
-            redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/onboarding`,
+            redirectTo: `${getSiteUrl(request)}/onboarding`,
         });
+        
+        const isAlreadyRegistered = inviteError && (
+            inviteError.status === 422 ||
+            inviteError.message.toLowerCase().includes('already') ||
+            inviteError.message.toLowerCase().includes('registered')
+        );
 
-        if (inviteError) {
-            // If email failed, try to at least get a manual link
-            const { data: linkData } = await adminClient.auth.admin.generateLink({
-                type: 'invite',
+        if (inviteError && !isAlreadyRegistered) {
+            return errorResponse(`Failed to resend invitation: ${inviteError.message}`, 500);
+        }
+
+        // If user already exists or invite failed, generate a manual link as fallback
+        if (isAlreadyRegistered || inviteError) {
+            // 1. AUTOMATION: Send the magic link email automatically to the user
+            await supabase.auth.signInWithOtp({
                 email: employee.email,
                 options: {
-                    redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/onboarding`,
+                    emailRedirectTo: `${getSiteUrl(request)}/onboarding`,
+                }
+            });
+
+            // 2. Also generate a link for the dashboard as backup
+            const { data: linkData, error: linkError } = await adminClient.auth.admin.generateLink({
+                type: 'magiclink',
+                email: employee.email,
+                options: {
+                    redirectTo: `${getSiteUrl(request)}/onboarding`,
                 }
             });
             
+            if (linkError) {
+                return errorResponse(`Failed to generate invitation link: ${linkError.message}`, 500);
+            }
+
             if (linkData?.properties?.action_link) {
                 actionLink = linkData.properties.action_link;
+                inviteSent = true; // Mark as sent because signInWithOtp above sends the email
             } else {
-                return errorResponse(`Failed to resend invitation: ${inviteError.message}`, 500);
+                return errorResponse(`Failed to generate action link.`, 500);
             }
         } else {
             inviteSent = true;
+            // Also get a manual link just in case the owner wants to copy it
+            const { data: linkData } = await adminClient.auth.admin.generateLink({
+                type: 'magiclink',
+                email: employee.email,
+                options: {
+                    redirectTo: `${getSiteUrl(request)}/onboarding`,
+                }
+            });
+            if (linkData?.properties?.action_link) {
+                actionLink = linkData.properties.action_link;
+            }
         }
 
         return successResponse({
