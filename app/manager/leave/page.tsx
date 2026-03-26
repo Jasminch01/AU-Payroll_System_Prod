@@ -49,6 +49,13 @@ export default function ManagerLeavePage() {
     const [uploading, setUploading] = useState(false);
     const [cancelId, setCancelId] = useState<string | null>(null);
 
+    // Reset form when dialog closes
+    React.useEffect(() => {
+        if (!requestOpen) {
+            resetRequestForm();
+        }
+    }, [requestOpen]);
+
     // Rejection dialog
     const [rejectTarget, setRejectTarget] = useState<string | null>(null);
     const [rejectionReason, setRejectionReason] = useState("");

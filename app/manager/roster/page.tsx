@@ -112,6 +112,18 @@ export default function ManagerRosterPage() {
     const [selectedDate, setSelectedDate] = useState("");
     const [editingShiftId, setEditingShiftId] = useState<string | null>(null);
 
+    // Reset form when dialog closes
+    useEffect(() => {
+        if (!addShiftOpen) {
+            setEditingShiftId(null);
+            setShiftEmployee("");
+            setShiftStart("09:00");
+            setShiftEnd("17:00");
+            setShiftType("morning");
+            setInitialFormState(null);
+        }
+    }, [addShiftOpen]);
+
     // Shift form
     const [shiftEmployee, setShiftEmployee] = useState("");
     const [shiftStart, setShiftStart] = useState("09:00");

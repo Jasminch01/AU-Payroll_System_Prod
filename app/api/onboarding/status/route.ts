@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
         // Look up the employee records
         const { data: employees, error: empError } = await supabase
             .from('Employee')
-            .select('employee_id, first_name, last_name, email, status, business_id, role_title, phone')
+            .select('employee_id, first_name, last_name, email, status, business_id, role_title, phone, employment_type')
             .eq('user_id', user.id);
 
         let employee = null;
@@ -63,6 +63,7 @@ export async function GET(request: NextRequest) {
                 role_title: employee.role_title,
                 status: employee.status,
                 phone: employee.phone,
+                employment_type: employee.employment_type,
             },
             business_name: business?.business_name || 'Your Business',
         });

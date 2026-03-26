@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Input, PasswordInput } from "@/components/ui";
 import { toast } from "sonner";
 import { ArrowRight, ArrowLeft, Building2, User, CheckCircle } from "lucide-react";
 
@@ -26,6 +26,7 @@ export default function RegisterPage() {
     const [lastName, setLastName] = useState("");
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
+    const [confirmPassword, setConfirmPassword] = useState("");
 
     const handleRegister = async () => {
         setLoading(true);
@@ -52,7 +53,7 @@ export default function RegisterPage() {
 
             setStep(2); // Show confirmation
             toast.success("Business registered successfully!");
-        } catch (err) {
+        } catch {
             toast.error("Something went wrong");
         } finally {
             setLoading(false);
@@ -114,9 +115,14 @@ export default function RegisterPage() {
                             animate={{ opacity: 1, x: 0 }}
                             className="space-y-5"
                         >
-                            <div className="flex items-center gap-3 mb-4">
-                                <Building2 size={24} className="text-[hsl(var(--brand))]" />
-                                <h2 className="text-lg font-semibold">Business Details</h2>
+                            <div className="flex items-center gap-3 mb-4 p-4 rounded-xl bg-[hsl(var(--brand))]/5 border border-[hsl(var(--brand))]/10">
+                                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[hsl(var(--brand))] text-white shadow-sm">
+                                    <Building2 size={20} />
+                                </div>
+                                <div>
+                                    <h2 className="text-lg font-semibold leading-none">Business Details</h2>
+                                    <p className="text-xs text-[hsl(var(--muted-foreground))] mt-1">Tell us about your company to get started</p>
+                                </div>
                             </div>
 
                             <Input
@@ -124,15 +130,17 @@ export default function RegisterPage() {
                                 placeholder="e.g. Café Luna Pty Ltd"
                                 value={businessName}
                                 onChange={(e) => setBusinessName(e.target.value)}
+                                showAsterisk
                             />
                             <Input
                                 label="ABN (Australian Business Number)"
                                 placeholder="e.g. 51 824 753 556"
                                 value={abn}
                                 onChange={(e) => setAbn(e.target.value)}
+                                showAsterisk
                             />
                             <div className="space-y-1.5">
-                                <label className="text-sm font-medium">State</label>
+                                <label className="text-sm font-medium">State <span className="text-[#FF4A4A]">*</span></label>
                                 <select
                                     value={state}
                                     onChange={(e) => setState(e.target.value)}
@@ -167,9 +175,14 @@ export default function RegisterPage() {
                             animate={{ opacity: 1, x: 0 }}
                             className="space-y-5"
                         >
-                            <div className="flex items-center gap-3 mb-4">
-                                <User size={24} className="text-[hsl(var(--brand))]" />
-                                <h2 className="text-lg font-semibold">Owner Account</h2>
+                            <div className="flex items-center gap-3 mb-4 p-4 rounded-xl bg-[hsl(var(--brand))]/5 border border-[hsl(var(--brand))]/10">
+                                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[hsl(var(--brand))] text-white shadow-sm">
+                                    <User size={20} />
+                                </div>
+                                <div>
+                                    <h2 className="text-lg font-semibold leading-none">Owner Account</h2>
+                                    <p className="text-xs text-[hsl(var(--muted-foreground))] mt-1">These details will be used for your primary administrator account</p>
+                                </div>
                             </div>
 
                             <div className="grid grid-cols-2 gap-4">
@@ -178,12 +191,14 @@ export default function RegisterPage() {
                                     placeholder="John"
                                     value={firstName}
                                     onChange={(e) => setFirstName(e.target.value)}
+                                    showAsterisk
                                 />
                                 <Input
                                     label="Last Name"
                                     placeholder="Smith"
                                     value={lastName}
                                     onChange={(e) => setLastName(e.target.value)}
+                                    showAsterisk
                                 />
                             </div>
                             <Input
@@ -192,17 +207,27 @@ export default function RegisterPage() {
                                 placeholder="john@cafeluna.com.au"
                                 value={email}
                                 onChange={(e) => setEmail(e.target.value)}
+                                showAsterisk
                             />
-                            <Input
-                                label="Password"
-                                type="password"
-                                placeholder="Min. 6 characters"
-                                value={password}
-                                onChange={(e) => setPassword(e.target.value)}
-                                hint="Must be at least 6 characters"
-                            />
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <PasswordInput
+                                    label="Password"
+                                    placeholder="Min. 6 characters"
+                                    value={password}
+                                    onChange={(e) => setPassword(e.target.value)}
+                                    hint="At least 6 characters"
+                                    showAsterisk
+                                />
+                                <PasswordInput
+                                    label="Confirm Password"
+                                    placeholder="Re-enter password"
+                                    value={confirmPassword}
+                                    onChange={(e) => setConfirmPassword(e.target.value)}
+                                    showAsterisk
+                                />
+                            </div>
 
-                            <div className="flex gap-3">
+                            <div className="flex gap-3 pt-2">
                                 <Button variant="outline" className="flex-1" size="lg" onClick={() => setStep(0)}>
                                     <ArrowLeft size={18} />
                                     Back
@@ -212,12 +237,16 @@ export default function RegisterPage() {
                                     size="lg"
                                     loading={loading}
                                     onClick={() => {
-                                        if (!firstName || !lastName || !email || !password) {
-                                            toast.error("Please fill in all fields");
+                                        if (!firstName || !lastName || !email || !password || !confirmPassword) {
+                                            toast.error("Please fill in all required fields");
                                             return;
                                         }
                                         if (password.length < 6) {
                                             toast.error("Password must be at least 6 characters");
+                                            return;
+                                        }
+                                        if (password !== confirmPassword) {
+                                            toast.error("Passwords do not match");
                                             return;
                                         }
                                         handleRegister();
@@ -234,22 +263,40 @@ export default function RegisterPage() {
                         <motion.div
                             initial={{ opacity: 0, scale: 0.95 }}
                             animate={{ opacity: 1, scale: 1 }}
-                            className="text-center space-y-5 py-4"
+                            className="text-center space-y-6 py-6"
                         >
                             <div className="flex justify-center">
-                                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[hsl(var(--success-light))]">
-                                    <CheckCircle size={32} className="text-[hsl(var(--success))]" />
+                                <div className="relative">
+                                    <div className="flex h-20 w-20 items-center justify-center rounded-full bg-[hsl(var(--brand))]/10">
+                                        <Building2 size={40} className="text-[hsl(var(--brand))]" />
+                                    </div>
+                                    <div className="absolute -right-2 -bottom-2 flex h-8 w-8 items-center justify-center rounded-full bg-[hsl(var(--success))] text-white border-4 border-[hsl(var(--card))]">
+                                        <CheckCircle size={16} />
+                                    </div>
                                 </div>
                             </div>
-                            <h2 className="text-2xl font-bold">You&apos;re all set!</h2>
-                            <p className="text-[hsl(var(--muted-foreground))]">
-                                <strong>{businessName}</strong> has been registered. You can now sign in
-                                and start managing your workforce.
-                            </p>
-                            <Button className="w-full" size="lg" onClick={() => router.push("/login")}>
-                                Go to Sign In
-                                <ArrowRight size={18} />
-                            </Button>
+                            
+                            <div className="space-y-2">
+                                <h2 className="text-2xl font-bold">Verify your email</h2>
+                                <p className="text-[hsl(var(--muted-foreground))]">
+                                    We&apos;ve sent a verification link to <span className="font-semibold text-[hsl(var(--foreground))]">{email}</span>.
+                                    Please check your inbox and click the link to activate your business account.
+                                </p>
+                            </div>
+
+                            <div className="bg-[hsl(var(--muted))]/30 rounded-xl p-4 text-sm text-[hsl(var(--muted-foreground))] border border-[hsl(var(--border))]">
+                                <p>Once verified, you&apos;ll be able to sign in and start managing your workforce at <strong>{businessName}</strong>.</p>
+                            </div>
+
+                            <div className="flex flex-col gap-3 pt-2">
+                                <Button className="w-full" size="lg" onClick={() => router.push("/login")}>
+                                    Go to Sign In
+                                    <ArrowRight size={18} />
+                                </Button>
+                                <p className="text-xs text-[hsl(var(--muted-foreground))]">
+                                    Didn&apos;t receive it? Check your spam folder or contact support.
+                                </p>
+                            </div>
                         </motion.div>
                     )}
                 </div>

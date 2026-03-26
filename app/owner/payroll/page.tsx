@@ -20,6 +20,14 @@ export default function OwnerPayrollPage() {
     const [periodStart, setPeriodStart] = useState("");
     const [periodEnd, setPeriodEnd] = useState("");
 
+    // Reset form when dialog closes
+    React.useEffect(() => {
+        if (!generateOpen) {
+            setPeriodStart("");
+            setPeriodEnd("");
+        }
+    }, [generateOpen]);
+
     const { data: payrolls = [], isLoading } = useQuery({
         queryKey: ["payrolls"],
         queryFn: () => apiGet<any[]>("/payroll"),

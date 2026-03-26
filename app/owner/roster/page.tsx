@@ -118,6 +118,18 @@ export default function OwnerRosterPage() {
     const [shiftType, setShiftType] = useState("morning");
     const [initialFormState, setInitialFormState] = useState<any>(null);
 
+    // Reset shift form when dialog closes
+    useEffect(() => {
+        if (!addShiftOpen) {
+            setShiftEmployee("");
+            setShiftStart("09:00");
+            setShiftEnd("17:00");
+            setShiftType("morning");
+            setEditingShiftId(null);
+            setInitialFormState(null);
+        }
+    }, [addShiftOpen]);
+
     // Expansion confirmation state
     const [expansionOpen, setExpansionOpen] = useState(false);
     const [pendingShiftData, setPendingShiftData] = useState<any>(null);

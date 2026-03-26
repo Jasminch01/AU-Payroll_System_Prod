@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { DashboardLayout } from "@/components/layout";
@@ -112,6 +112,13 @@ export default function ManagerTeamPage() {
         setBulkData([{ first_name: '', last_name: '', email: '', role_title: '', phone: '' }]);
     };
 
+    // Reset form when dialogs close
+    useEffect(() => {
+        if (!inviteOpen && !bulkInviteOpen) {
+            resetForm();
+        }
+    }, [inviteOpen, bulkInviteOpen]);
+
     const handleInvite = () => {
         if (!invEmail || !invFirstName || !invLastName || !invRole) {
             return toast.error("Please fill in first name, last name, email and role");
@@ -210,13 +217,6 @@ export default function ManagerTeamPage() {
                             >
                                 <User size={14} className="mr-2" />
                                 View Personal
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                                onClick={() => router.push(`/manager/team/${row.employee_id}?tab=employment`)}
-                                className="cursor-pointer"
-                            >
-                                <Briefcase size={14} className="mr-2" />
-                                Edit Employment
                             </DropdownMenuItem>
                             {row.status === "invited" && (
                                 <DropdownMenuItem

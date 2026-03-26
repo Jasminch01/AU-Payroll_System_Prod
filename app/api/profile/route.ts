@@ -112,7 +112,8 @@ export async function PUT(request: NextRequest) {
                     bank_account_name: body.bank_account_name,
                     bank_bsb: body.bank_bsb,
                     bank_account_number: body.bank_account_number,
-                    "ABN/TFN/ACN": body["ABN/TFN/ACN"],
+                    abn: body.abn,
+                    tfn: body.tfn,
                     emergency_contact_name: body.emergency_contact_name,
                     emergency_contact_phone: body.emergency_contact_phone,
                 };

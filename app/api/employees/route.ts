@@ -31,7 +31,8 @@ export async function GET(request: NextRequest) {
         // Explicitly list ALL columns we need to avoid PostgREST join ambiguity/conflicts
         const columns = [
             'employee_id', 'first_name', 'last_name', 'role_title', 'status', 'business_id', 'user_id',
-            'email', 'phone', 'dob', 'employment_type', 'pay_cycle', 'start_date', 'end_date', 'created_at'
+            'email', 'phone', 'dob', 'employment_type', 'pay_cycle', 'start_date', 'end_date', 'created_at',
+            'abn', 'tfn'
         ];
         
         // Build the select string
@@ -153,7 +154,6 @@ export async function POST(request: NextRequest) {
             'dob',
             'emergency_contact_name',
             'emergency_contact_phone',
-            'role_title',
             'start_date',
             'employee_id',
             'weekday_rate',
@@ -173,7 +173,8 @@ export async function POST(request: NextRequest) {
             bank_account_name,
             bank_bsb,
             bank_account_number,
-            "ABN/TFN/ACN": abn_tfn_acn,
+            abn,
+            tfn,
             emergency_contact_name,
             emergency_contact_phone,
             employment_type,
@@ -258,7 +259,8 @@ export async function POST(request: NextRequest) {
                 bank_account_name: bank_account_name || null,
                 bank_bsb: bank_bsb || null,
                 bank_account_number: bank_account_number || null,
-                "ABN/TFN/ACN": abn_tfn_acn || null,
+                abn: abn || null,
+                tfn: tfn || null,
                 emergency_contact_name,
                 emergency_contact_phone,
                 employment_type: employment_type || null,

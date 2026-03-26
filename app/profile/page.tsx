@@ -152,7 +152,8 @@ export default function ProfilePage() {
                                         bank_account_name: data.bank_account_name,
                                         bank_bsb: data.bank_bsb,
                                         bank_account_number: data.bank_account_number,
-                                        "ABN/TFN/ACN": data["ABN/TFN/ACN"],
+                                        abn: data.abn,
+                                        tfn: data.tfn,
                                     };
                                     if (role === 'owner' && data.Business) {
                                         payload.business = {
@@ -195,19 +196,8 @@ export default function ProfilePage() {
                                 {role !== 'owner' && (
                                     <>
                                         <div className="grid grid-cols-2 gap-4">
-                                            <Input label="Phone Number" value={data.phone || ""} onChange={(e) => updateField("phone", e.target.value)} />
-                                            <Input label="Date of Birth" type="date" value={data.dob || ""} onChange={(e) => updateField("dob", e.target.value)} />
-                                        </div>
-                                        <div className="pt-4 border-t border-[hsl(var(--border))]">
-                                            <h4 className="text-sm font-semibold mb-3">Bank Details</h4>
-                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                                <Input label="Account Name" value={data.bank_account_name || ""} onChange={(e) => updateField("bank_account_name", e.target.value)} />
-                                                <Input label="BSB Number" value={data.bank_bsb || ""} onChange={(e) => updateField("bank_bsb", e.target.value)} />
-                                                <Input label="Account Number" value={data.bank_account_number || ""} onChange={(e) => updateField("bank_account_number", e.target.value)} />
-                                            </div>
-                                            <div className="mt-4">
-                                                <Input label="ABN / TFN / ACN" value={data["ABN/TFN/ACN"] || ""} onChange={(e) => updateField("ABN/TFN/ACN", e.target.value)} />
-                                            </div>
+                                            <Input label="Phone Number" showAsterisk value={data.phone || ""} onChange={(e) => updateField("phone", e.target.value)} />
+                                            <Input label="Date of Birth" showAsterisk type="date" value={data.dob || ""} onChange={(e) => updateField("dob", e.target.value)} />
                                         </div>
                                     </>
                                 )}
@@ -274,7 +264,41 @@ export default function ProfilePage() {
                                         <Input label="Status" value={data.status || ""} className="capitalize" disabled />
                                         {data.start_date && <Input label="Start Date" value={new Date(data.start_date).toLocaleDateString()} disabled />}
                                     </div>
-                                    <p className="text-xs text-[hsl(var(--muted-foreground))] mt-4">Contact your manager to update employment details.</p>
+                                    
+                                    <div className="pt-6 mt-6 border-t border-[hsl(var(--border))]">
+                                        <h4 className="text-sm font-semibold mb-4 flex items-center gap-2">
+                                            <Building2 size={16} className="text-[hsl(var(--brand))]" />
+                                            Bank & Identity Details
+                                        </h4>
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                            <Input label="Account Name" showAsterisk value={data.bank_account_name || ""} onChange={(e) => updateField("bank_account_name", e.target.value)} />
+                                            <Input label="BSB Number" showAsterisk value={data.bank_bsb || ""} onChange={(e) => updateField("bank_bsb", e.target.value)} />
+                                            <Input label="Account Number" showAsterisk value={data.bank_account_number || ""} onChange={(e) => updateField("bank_account_number", e.target.value)} />
+                                        </div>
+                                        <div className="mt-4">
+                                            {data.employment_type === 'contract' ? (
+                                                <Input 
+                                                    label="ABN" 
+                                                    showAsterisk 
+                                                    value={data.abn || ""} 
+                                                    onChange={(e) => updateField("abn", e.target.value)} 
+                                                    placeholder="Format: 00 000 000 000"
+                                                />
+                                            ) : (
+                                                <Input 
+                                                    label="TFN" 
+                                                    showAsterisk 
+                                                    value={data.tfn || ""} 
+                                                    onChange={(e) => updateField("tfn", e.target.value)} 
+                                                    placeholder="Format: 000 000 000"
+                                                />
+                                            )}
+                                        </div>
+                                    </div>
+                                    
+                                    <p className="text-[10px] text-[hsl(var(--muted-foreground))] mt-6 bg-[hsl(var(--muted))]/30 p-3 rounded-lg border border-[hsl(var(--border))]/50">
+                                        Note: Job and roster details are managed by your employer. Bank and identity details can be updated directly.
+                                    </p>
                                 </CardContent>
                             </Card>
                         </TabsContent>
