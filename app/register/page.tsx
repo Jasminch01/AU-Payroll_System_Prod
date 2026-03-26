@@ -44,7 +44,8 @@ export default function RegisterPage() {
                     password,
                 }),
             });
-            const data = await res.json();
+            const data = await res.json()
+            console.log(data)
 
             if (!data.success) {
                 toast.error(data.error || "Registration failed");
@@ -275,7 +276,7 @@ export default function RegisterPage() {
                                     </div>
                                 </div>
                             </div>
-                            
+
                             <div className="space-y-2">
                                 <h2 className="text-2xl font-bold">Verify your email</h2>
                                 <p className="text-[hsl(var(--muted-foreground))]">

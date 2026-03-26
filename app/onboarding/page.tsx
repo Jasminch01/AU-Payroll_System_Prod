@@ -407,7 +407,7 @@ export default function OnboardingPage() {
                                 </div>
                             </div>
 
-                             <div className="grid grid-cols-2 gap-3">
+                            <div className="grid grid-cols-2 gap-3">
                                 <div className="space-y-[6px]">
                                     <Input label="Emergency Name" showAsterisk placeholder="Name" value={emergencyName} onChange={(e) => setEmergencyName(e.target.value)} required className="h-10 text-sm" />
                                 </div>
@@ -431,7 +431,7 @@ export default function OnboardingPage() {
                                 </div>
                             )}
 
-                             {!prefilledPhone && (
+                            {!prefilledPhone && (
                                 <div className="space-y-[6px]">
                                     <Input label="Mobile number" showAsterisk type="tel" placeholder="0412 345 678" value={phone} onChange={(e) => setPhone(e.target.value)} required className="h-10 text-sm" />
                                 </div>
@@ -462,7 +462,7 @@ export default function OnboardingPage() {
                                 </div>
                             </div>
 
-                             <div className="grid grid-cols-2 gap-3">
+                            <div className="grid grid-cols-2 gap-3">
                                 <div className="space-y-[6px]">
                                     <Input label="Emergency Name" showAsterisk placeholder="Name" value={emergencyName} onChange={(e) => setEmergencyName(e.target.value)} required className="h-10 text-sm" />
                                 </div>

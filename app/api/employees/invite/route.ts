@@ -5,6 +5,7 @@ import { requireRole } from '@/lib/auth';
 import { successResponse, errorResponse, validateRequiredFields } from '@/lib/api-helpers';
 import { logAudit } from '@/lib/audit';
 import { generateBusinessPrefix, formatEmpSuffix, getNumericSuffix } from '@/lib/utils/employee-id';
+import { getSiteUrl } from '@/lib/utils/url';
 
 interface InviteResult {
     email: string;
@@ -100,7 +101,7 @@ export async function POST(request: NextRequest) {
             let authUserId = '';
             let isExistingUser = false;
             let actionLink = null;
-            const redirectUrl = `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/onboarding`;
+            const redirectUrl = `${getSiteUrl()}/onboarding`;
 
             const { data: inviteData, error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(email, {
                 data: { first_name, last_name, business_id: authUser.business_id, invite_as, invited_by: authUser.user_id },

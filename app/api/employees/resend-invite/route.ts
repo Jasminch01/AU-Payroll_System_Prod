@@ -3,6 +3,7 @@ import { requireRole } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { successResponse, errorResponse, validateRequiredFields } from '@/lib/api-helpers';
+import { getSiteUrl } from '@/lib/utils/url';
 
 /**
  * POST /api/employees/resend-invite
@@ -52,7 +53,7 @@ export async function POST(request: NextRequest) {
                 last_name: employee.last_name,
                 business_id: authUser.business_id,
             },
-            redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/onboarding`,
+            redirectTo: `${getSiteUrl()}/onboarding`,
         });
 
         if (inviteError) {
@@ -61,7 +62,7 @@ export async function POST(request: NextRequest) {
                 type: 'invite',
                 email: employee.email,
                 options: {
-                    redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/onboarding`,
+                    redirectTo: `${getSiteUrl()}/onboarding`,
                 }
             });
             
