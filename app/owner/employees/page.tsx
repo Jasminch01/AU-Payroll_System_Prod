@@ -193,7 +193,7 @@ export default function OwnerEmployeesPage() {
     });
 
     const handleManualAdd = () => {
-        if (!manualData.email || !manualData.password || !manualData.first_name || !manualData.last_name || !manualData.dob || !manualData.start_date) {
+        if (!manualData.email || !manualData.password || !manualData.first_name || !manualData.last_name || !manualData.start_date) {
             return toast.error("Please fill in all required (*) fields.");
         }
         addManualMutation.mutate({
@@ -279,7 +279,19 @@ export default function OwnerEmployeesPage() {
                 </div>
             ),
         },
-        { key: "role_title", label: "Role", sortable: true },
+        {
+            key: "role_title",
+            label: "Role",
+            sortable: true,
+            render: (row) => (
+                <div className="flex flex-col">
+                    <span className="font-medium">{row.role_title || "—"}</span>
+                    <span className="text-[10px] text-[hsl(var(--muted-foreground))] uppercase font-bold tracking-tight">
+                        {row.role || "employee"}
+                    </span>
+                </div>
+            )
+        },
         {
             key: "employment_type",
             label: "Type",
@@ -391,7 +403,7 @@ export default function OwnerEmployeesPage() {
                 columns={columns}
                 data={filteredEmployees}
                 searchable
-                searchKeys={["first_name", "last_name", "email", "role_title"]}
+                searchKeys={["first_name", "last_name", "email", "role_title", "role"]}
                 searchPlaceholder="Search employees..."
                 emptyMessage="No employees found."
                 emptyIcon={<UserPlus size={40} />}
@@ -832,7 +844,15 @@ export default function OwnerEmployeesPage() {
                                 <Input label="Email" showAsterisk type="email" value={manualData.email} onChange={(e) => setManualData({ ...manualData, email: e.target.value })} />
                                 <Input label="Temporary Password" showAsterisk type="password" value={manualData.password} onChange={(e) => setManualData({ ...manualData, password: e.target.value })} />
                                 <Input label="Phone" type="tel" value={manualData.phone} onChange={(e) => setManualData({ ...manualData, phone: e.target.value })} />
-                                <Input label="Date of Birth" showAsterisk type="date" value={manualData.dob} onChange={(e) => setManualData({ ...manualData, dob: e.target.value })} />
+                                <Input 
+                                    label="Date of Birth" 
+                                    type={manualData.dob ? "date" : "text"} 
+                                    placeholder="Not Set"
+                                    value={manualData.dob} 
+                                    onFocus={(e) => e.target.type = 'date'}
+                                    onBlur={(e) => { if (!e.target.value) e.target.type = 'text' }}
+                                    onChange={(e) => setManualData({ ...manualData, dob: e.target.value })} 
+                                />
                             </div>
                         </section>
 

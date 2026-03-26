@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
         const columns = [
             'employee_id', 'first_name', 'last_name', 'role_title', 'status', 'business_id', 'user_id',
             'email', 'phone', 'dob', 'employment_type', 'pay_cycle', 'start_date', 'end_date', 'created_at',
-            'abn', 'tfn'
+            'abn', 'tfn', 'bank_account_name', 'bank_bsb', 'bank_account_number'
         ];
         
         // Build the select string
@@ -107,8 +107,8 @@ export async function GET(request: NextRequest) {
         const employeesRaw: any[] = employees || [];
         let filtered = [...employeesRaw];
 
-        // In-memory role filtering if needed (since join is failing)
-        if (roleFilter && filtered.length > 0) {
+        // Fetch user roles for all found employees
+        if (filtered.length > 0) {
             const { data: userRoles } = await supabase
                 .from('User')
                 .select('user_id, role')
@@ -116,10 +116,15 @@ export async function GET(request: NextRequest) {
             
             const roleMap = new Map((userRoles || []).map(u => [u.user_id, u.role]));
             
-            filtered = filtered.filter((emp: any) => {
-                const actualRole = roleMap.get(emp.user_id) || 'employee';
-                return actualRole === roleFilter;
-            });
+            filtered = filtered.map((emp: any) => ({
+                ...emp,
+                role: roleMap.get(emp.user_id) || 'employee'
+            }));
+
+            // If roleFilter was provided, apply it now
+            if (roleFilter) {
+                filtered = filtered.filter((emp: any) => emp.role === roleFilter);
+            }
         }
 
         if (excludeSelf) {
@@ -151,12 +156,8 @@ export async function POST(request: NextRequest) {
             'password',
             'first_name',
             'last_name',
-            'dob',
-            'emergency_contact_name',
-            'emergency_contact_phone',
             'start_date',
             'employee_id',
-            'weekday_rate',
         ]);
         if (validationError) {
             return errorResponse(validationError, 400);
@@ -169,7 +170,6 @@ export async function POST(request: NextRequest) {
             last_name,
             phone,
             dob,
-            bank_details,
             bank_account_name,
             bank_bsb,
             bank_account_number,
@@ -254,8 +254,7 @@ export async function POST(request: NextRequest) {
                 last_name,
                 phone: phone || null,
                 email,
-                dob,
-                bank_details: bank_details || "",
+                dob: dob || null,
                 bank_account_name: bank_account_name || null,
                 bank_bsb: bank_bsb || null,
                 bank_account_number: bank_account_number || null,
@@ -281,27 +280,32 @@ export async function POST(request: NextRequest) {
             return errorResponse(`Failed to create employee: ${employeeError.message}`, 400);
         }
 
-        // Step 3: Create initial EmployeeRateHistory
-        const { data: rateData, error: rateError } = await supabase
-            .from('EmployeeRateHistory')
-            .insert({
-                employee_id,
-                business_id: authUser.business_id,
-                weekday_rate,
-                saturday_multiplier,
-                sunday_multiplier,
-                public_holiday_multiplier,
-                evening_rate: evening_rate || null,
-                evening_start_time: evening_start_time || null,
-                evening_end_time: evening_end_time || null,
-                effective_from: start_date,
-                created_bv: authUser.user_id,
-            })
-            .select()
-            .single();
+        // Step 3: Create initial EmployeeRateHistory (if rate provided)
+        let rateData: any = null;
+        if (weekday_rate !== undefined && weekday_rate !== null && String(weekday_rate).trim() !== '') {
+            const { data, error: rateError } = await supabase
+                .from('EmployeeRateHistory')
+                .insert({
+                    employee_id: employeeData.employee_id,
+                    business_id: authUser.business_id,
+                    weekday_rate: parseFloat(String(weekday_rate)),
+                    saturday_multiplier,
+                    sunday_multiplier,
+                    public_holiday_multiplier,
+                    evening_rate: evening_rate || null,
+                    evening_start_time: evening_start_time || null,
+                    evening_end_time: evening_end_time || null,
+                    effective_from: start_date,
+                    created_bv: authUser.user_id,
+                })
+                .select()
+                .single();
 
-        if (rateError) {
-            console.error('Rate history creation failed:', rateError.message);
+            if (rateError) {
+                console.error('Rate history creation failed:', rateError.message);
+            } else {
+                rateData = data;
+            }
         }
 
         // Step 3.5: If manager, create User record

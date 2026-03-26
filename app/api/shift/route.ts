@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
 
         let query = supabase
             .from('Shift')
-            .select('*, Employee:employee_id(*), Roster:roster_id(*)')
+            .select('*, Employee:employee_id(employee_id, first_name, last_name, role_title), Roster:roster_id(*)')
             .eq('business_id', authUser.business_id)
             .order('shift_date', { ascending: false });
 

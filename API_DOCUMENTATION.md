@@ -117,7 +117,9 @@ List all employees for the businessAccess: Owner, Manager
 ## `POST` /api/employees
 
 ```text
-Create a new employee and auth accountAccess: Owner, ManagerBody:{  "email": "employee@example.com",  "password": "securepassword",  "first_name": "Mike",  "last_name": "Johnson",  "phone": "0412345678",  "dob": "1995-06-15",  "bank_details": "BSB: 062000, Acc: 12345678",  "emergency_contact_name": "Sarah Johnson",  "emergency_contact_phone": "0498765432",  "employment_type": "full_time",  "role_title": "Barista",  "pay_cycle": "fortnightly",  "start_date": "2026-03-01",  "employee_id": "EMP001",  "weekday_rate": 28.50,  "opening_balances": { "LT_ID": 10.5 } (optional)}
+Create a new employee and auth accountAccess: Owner, ManagerBody:{  "email": "employee@example.com",  "password": "securepassword",  "first_name": "Mike",  "last_name": "Johnson",  "phone": "0412345678",  "dob": "1995-06-15",  "bank_account_name": "Mike Johnson",
+  "bank_bsb": "062000",
+  "bank_account_number": "12345678",  "emergency_contact_name": "Sarah Johnson",  "emergency_contact_phone": "0498765432",  "employment_type": "full_time",  "role_title": "Barista",  "pay_cycle": "fortnightly",  "start_date": "2026-03-01",  "employee_id": "EMP001",  "weekday_rate": 28.50,  "opening_balances": { "LT_ID": 10.5 } (optional)}
 ```
 
 ---
@@ -133,7 +135,9 @@ Get a specific employee by employee_idAccess: Owner, Manager
 ## `PUT` /api/employees/[id]
 
 ```text
-Update an employee's detailsAccess: Owner, ManagerBody:{  "first_name": "Mike",  "last_name": "Johnson",  "phone": "0412345678",  "email": "newemail@example.com",  "bank_details": "BSB: 062000, Acc: 87654321",  "emergency_contact_name": "New Contact",  "emergency_contact_phone": "0411111111",  "employment_type": "part_time",  "role_title": "Senior Barista",  "pay_cycle": "weekly",  "end_date": "2026-12-31",  "status": "active"}
+Update an employee's detailsAccess: Owner, ManagerBody:{  "first_name": "Mike",  "last_name": "Johnson",  "phone": "0412345678",  "email": "newemail@example.com",  "bank_account_name": "Mike Johnson",
+  "bank_bsb": "062000",
+  "bank_account_number": "87654321",  "emergency_contact_name": "New Contact",  "emergency_contact_phone": "0411111111",  "employment_type": "part_time",  "role_title": "Senior Barista",  "pay_cycle": "weekly",  "end_date": "2026-12-31",  "status": "active"}
 ```
 
 ---
@@ -269,7 +273,9 @@ List all managers for the businessAccess: Owner
 ## `POST` /api/managers
 
 ```text
-Create/invite a new managerAccess: OwnerBody:{  "email": "manager@example.com",  "password": "tempPassword123",  "first_name": "Jane",  "last_name": "Smith",  "dob": "1990-01-15",  "bank_details": "BSB: 062..., Acc: 123...",  "emergency_contact_name": "John Smith",  "emergency_contact_phone": "0498765432",  "role_title": "Shift Manager",  "start_date": "2026-03-01",  "employee_id": "MGR001",  "weekday_rate": 35.00}
+Create/invite a new managerAccess: OwnerBody:{  "email": "manager@example.com",  "password": "tempPassword123",  "first_name": "Jane",  "last_name": "Smith",  "dob": "1990-01-15",  "bank_account_name": "Jane Smith",
+  "bank_bsb": "062000",
+  "bank_account_number": "12345678",  "emergency_contact_name": "John Smith",  "emergency_contact_phone": "0498765432",  "role_title": "Shift Manager",  "start_date": "2026-03-01",  "employee_id": "MGR001",  "weekday_rate": 35.00}
 ```
 
 ---
@@ -301,7 +307,9 @@ Delete a manager profile and accountAccess: Owner
 ## `POST` /api/onboarding/complete
 
 ```text
-Complete the self-onboarding process after accepting an invitation.The user must be authenticated (via the invite magic link which auto-signs them in).Access: Authenticated user with 'invited' employee statusBody:{  "password": "newsecurepassword",  "phone": "0412345678",  "dob": "1995-06-15",  "bank_details": "BSB: 062000, Acc: 12345678",  "emergency_contact_name": "Sarah Johnson",  "emergency_contact_phone": "0498765432"}
+Complete the self-onboarding process after accepting an invitation.The user must be authenticated (via the invite magic link which auto-signs them in).Access: Authenticated user with 'invited' employee statusBody:{  "password": "newsecurepassword",  "phone": "0412345678",  "dob": "1995-06-15",  "bank_account_name": "Mike Johnson",
+  "bank_bsb": "062000",
+  "bank_account_number": "12345678",  "emergency_contact_name": "Sarah Johnson",  "emergency_contact_phone": "0498765432"}
 ```
 
 ---

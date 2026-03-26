@@ -39,7 +39,6 @@ export async function POST(request: NextRequest) {
             password,
             phone,
             dob,
-            bank_details,
             bank_account_name,
             bank_bsb,
             bank_account_number,
@@ -90,7 +89,6 @@ export async function POST(request: NextRequest) {
         };
         if (phone) updatePayload.phone = phone;
         if (dob) updatePayload.dob = dob;
-        if (bank_details) updatePayload.bank_details = bank_details;
         if (bank_account_name) updatePayload.bank_account_name = bank_account_name;
         if (bank_bsb) updatePayload.bank_bsb = bank_bsb;
         if (bank_account_number) updatePayload.bank_account_number = bank_account_number;

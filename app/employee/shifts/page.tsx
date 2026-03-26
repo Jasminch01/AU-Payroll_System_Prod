@@ -395,10 +395,10 @@ export default function EmployeeShiftsPage() {
                 </div>
 
                 {viewMode === "grid" ? (
-                    <div className="w-full overflow-x-auto pb-4 scrollbar-thin scrollbar-thumb-[hsl(var(--brand))]/20">
+                    <div className="w-full pb-4">
                         <div className={cn(
-                            "flex flex-nowrap gap-2 bg-[hsl(var(--muted))]/10 p-2 rounded-2xl border border-[hsl(var(--border))] min-w-max",
-                            rosterPeriod === "weekly" ? "md:grid md:grid-cols-7 md:w-full md:min-w-0" : ""
+                            "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-2 bg-[hsl(var(--muted))]/10 p-2 rounded-2xl border border-[hsl(var(--border))] w-full",
+                            rosterPeriod === "monthly" ? "lg:h-[calc(100vh-220px)] lg:overflow-y-auto" : ""
                         )}>
                             {currentRosterDates.map((day: Date) => {
                                 const dateStr = formatToDateString(day);
@@ -409,9 +409,9 @@ export default function EmployeeShiftsPage() {
                                     <div 
                                         key={dateStr} 
                                         className={cn(
-                                            "min-h-[140px] w-[130px] shrink-0 rounded-xl p-2 border transition-all",
+                                            "rounded-xl p-2 border transition-all flex flex-col",
+                                            rosterPeriod === "monthly" ? "min-h-[100px] lg:min-h-0 lg:h-full" : "min-h-[140px] w-full",
                                             isToday ? "bg-white border-[hsl(var(--brand))]/30 shadow-sm" : "bg-white/40 border-[hsl(var(--border))]/50",
-                                            rosterPeriod === "weekly" ? "md:w-full" : ""
                                         )}
                                     >
                                         <div className="flex flex-col items-center mb-2">
