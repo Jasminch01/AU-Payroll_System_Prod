@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
                 last_name: employee.last_name,
                 business_id: authUser.business_id,
             },
-            redirectTo: `${getSiteUrl()}/onboarding`,
+            redirectTo: `${getSiteUrl(request)}/onboarding`,
         });
 
         if (inviteError) {
@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
                 type: 'invite',
                 email: employee.email,
                 options: {
-                    redirectTo: `${getSiteUrl()}/onboarding`,
+                    redirectTo: `${getSiteUrl(request)}/onboarding`,
                 }
             });
             
