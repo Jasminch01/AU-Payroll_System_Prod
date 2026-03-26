@@ -175,13 +175,15 @@ export async function POST(request: NextRequest) {
                     employee_id, first_name, last_name, email, role_title, phone: phone || null,
                     employment_type: employment_type || null, business_id: authUser.business_id,
                     user_id: authUserId, status: 'invited', start_date: new Date().toISOString().split('T')[0],
-                    dob: '1900-01-01', bank_details: '', emergency_contact_name: '', emergency_contact_phone: '',
+                    dob: null, emergency_contact_name: null, emergency_contact_phone: null,
                 })
                 .select().single();
 
             if (empError) {
                 console.error(`[invite] Employee DB insert failed for ${email}:`, empError.code, empError.message, empError.details);
-                results.push({ email, success: false, error: `DB record failed: ${empError.message}` });
+                // ROLLBACK: Delete the auth user so they don't have an orphaned invite
+                await adminClient.auth.admin.deleteUser(authUserId);
+                results.push({ email, success: false, error: `DB record failed: ${empError.message}. Invitation cancelled.` });
                 continue;
             }
 

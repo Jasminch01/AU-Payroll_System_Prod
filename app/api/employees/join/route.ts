@@ -16,7 +16,7 @@ export async function POST(request: NextRequest) {
         const body = await request.json();
         const { 
             email, password, first_name, last_name, join_code,
-            phone, dob, bank_details, bank_account_name, bank_bsb, bank_account_number, abn, tfn,
+            phone, dob, bank_account_name, bank_bsb, bank_account_number, abn, tfn,
             emergency_contact_name, emergency_contact_phone
         } = body;
 
@@ -81,16 +81,15 @@ export async function POST(request: NextRequest) {
                 first_name,
                 last_name,
                 email,
-                phone: phone || '',
-                dob: dob || '1900-01-01',
-                bank_details: bank_details || '',
+                phone: phone || null,
+                dob: dob || null,
                 bank_account_name: bank_account_name || '',
                 bank_bsb: bank_bsb || '',
                 bank_account_number: bank_account_number || '',
                 abn: abn || '',
                 tfn: tfn || '',
-                emergency_contact_name: emergency_contact_name || '',
-                emergency_contact_phone: emergency_contact_phone || '',
+                emergency_contact_name: emergency_contact_name || null,
+                emergency_contact_phone: emergency_contact_phone || null,
                 role_title: 'New Member',
                 business_id: business.business_id,
                 user_id: authUserId,

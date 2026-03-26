@@ -31,7 +31,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         // 2. Fetch payroll lines with employee details
         const { data: lines, error: linesError } = await supabase
             .from('PayrollLine')
-            .select('*, Employee:employee_id(employee_id, first_name, last_name, bank_details)')
+            .select('*, Employee:employee_id(employee_id, first_name, last_name)')
             .eq('payroll_id', id);
 
         if (linesError) {

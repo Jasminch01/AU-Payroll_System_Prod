@@ -180,7 +180,19 @@ export default function ManagerTeamPage() {
                 </div>
             ),
         },
-        { key: "role_title", label: "Role", sortable: true },
+        {
+            key: "role_title",
+            label: "Role",
+            sortable: true,
+            render: (row) => (
+                <div className="flex flex-col">
+                    <span className="font-medium">{row.role_title || "—"}</span>
+                    <span className="text-[10px] text-[hsl(var(--muted-foreground))] uppercase font-bold tracking-tight">
+                        {row.role || "employee"}
+                    </span>
+                </div>
+            )
+        },
         {
             key: "employment_type",
             label: "Type",
@@ -283,7 +295,7 @@ export default function ManagerTeamPage() {
                 columns={columns}
                 data={filteredEmployees}
                 searchable
-                searchKeys={["first_name", "last_name", "email", "role_title"]}
+                searchKeys={["first_name", "last_name", "email", "role_title", "role"]}
                 searchPlaceholder="Search employees..."
                 emptyMessage="No employees found."
                 emptyIcon={<UserPlus size={40} />}

@@ -108,7 +108,6 @@ export async function PUT(request: NextRequest) {
                     last_name: body.last_name,
                     phone: body.phone,
                     dob: body.dob,
-                    bank_details: body.bank_details,
                     bank_account_name: body.bank_account_name,
                     bank_bsb: body.bank_bsb,
                     bank_account_number: body.bank_account_number,
