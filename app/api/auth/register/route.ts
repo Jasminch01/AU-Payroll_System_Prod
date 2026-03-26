@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { successResponse, errorResponse, validateRequiredFields } from '@/lib/api-helpers';
 import { syncBusinessHolidays } from '@/lib/holiday-sync';
+import { getSiteUrl } from '@/lib/utils/url';
 
 /**
  * POST /api/auth/register
@@ -55,7 +56,7 @@ export async function POST(request: NextRequest) {
         const supabase = await createClient();
 
         // Step 1: Create auth user
-        const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
+        const siteUrl = getSiteUrl();
         const { data: authData, error: authError } = await supabase.auth.signUp({
             email,
             password,

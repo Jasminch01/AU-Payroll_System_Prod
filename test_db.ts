@@ -32,6 +32,18 @@ async function testConnection() {
       console.log('Sample users:', users?.map(u => ({ user_id: u.user_id, role: u.role, business_id: u.business_id })));
     }
 
+    // Check Business table
+    const { data: businesses, error: bizError } = await supabase
+      .from('Business')
+      .select('*');
+    
+    if (bizError) {
+      console.error('Error fetching businesses:', bizError);
+    } else {
+      console.log('Businesses found:', businesses?.length);
+      console.log('Sample businesses:', businesses?.map(b => ({ business_id: b.business_id, business_name: b.business_name })));
+    }
+
   } catch (err) {
     console.error('Unexpected error:', err);
   }
