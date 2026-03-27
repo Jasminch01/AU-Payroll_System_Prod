@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, useEffect } from "react";
 import { Bell } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -23,6 +24,7 @@ export function NotificationBell() {
     const [open, setOpen] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
     const queryClient = useQueryClient();
+    const router = useRouter();
 
     // Fetch Notifications
     const { data: notifications = [] } = useQuery<NotificationData[]>({
@@ -98,6 +100,15 @@ export function NotificationBell() {
             markAsReadMutation.mutate([n.id]);
         }
         setOpen(false);
+
+        // Targeted Navigation
+        if (n.type.startsWith('SHIFT_SWAP') || n.type.startsWith('SHIFT_TRANSFER')) {
+            router.push('/employee/shifts?tab=swaps');
+        } else if (n.type === 'SHIFT_PUBLISHED' || n.type === 'SHIFT_UPDATED') {
+            router.push('/employee/shifts');
+        } else if (n.type === 'TIMESHEET_SUBMITTED' || n.type === 'TIMESHEET_APPROVED') {
+            router.push('/employee/timesheets');
+        }
     };
 
     return (

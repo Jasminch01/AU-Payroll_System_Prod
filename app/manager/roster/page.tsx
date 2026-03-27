@@ -474,7 +474,7 @@ export default function ManagerRosterPage() {
         },
     });
 
-    const handleAddShift = () => {
+    const handleAddShift = (notify = false) => {
         if (!shiftEmployee || !selectedDate) {
             toast.error("Please select an employee and date");
             return;
@@ -495,6 +495,7 @@ export default function ManagerRosterPage() {
             shift_type: shiftType,
             roster_start: rangeStart,
             roster_end: rangeEnd,
+            notify,
         };
 
         // Check for expansion
@@ -1647,17 +1648,34 @@ export default function ManagerRosterPage() {
                         </div>
                         <div className="flex items-center gap-2">
                             <Button variant="outline" onClick={() => setAddShiftOpen(false)}>Cancel</Button>
-                            <Button
-                                onClick={handleAddShift}
-                                loading={createShiftMutation.isPending || updateShiftMutation.isPending}
-                                disabled={editingShiftId ? (!isDirty || (new Date() >= (new Date((shifts.find((s: any) => s.shift_id === editingShiftId) || {}).start_time)))) : false}
-                            >
-                                {editingShiftId ? 'Update Shift' : (
-                                    <>
-                                        <Plus size={16} className="mr-2" /> Create Shift
-                                    </>
-                                )}
-                            </Button>
+                            
+                            {!editingShiftId ? (
+                                <>
+                                    <Button
+                                        variant="outline"
+                                        className="border-[hsl(var(--brand))]/30 text-[hsl(var(--brand))] hover:bg-[hsl(var(--brand))]/10"
+                                        onClick={() => handleAddShift(false)}
+                                        loading={createShiftMutation.isPending}
+                                    >
+                                        Save Draft
+                                    </Button>
+                                    <Button
+                                        onClick={() => handleAddShift(true)}
+                                        loading={createShiftMutation.isPending}
+                                        className="bg-[hsl(var(--brand))] text-white hover:bg-[hsl(var(--brand-hover))]"
+                                    >
+                                        <Bell size={14} className="mr-2" /> Save & Notify
+                                    </Button>
+                                </>
+                            ) : (
+                                <Button
+                                    onClick={() => handleAddShift(false)}
+                                    loading={updateShiftMutation.isPending}
+                                    disabled={!isDirty || (new Date() >= (new Date((shifts.find((s: any) => s.shift_id === editingShiftId) || {}).start_time)))}
+                                >
+                                    Update Shift
+                                </Button>
+                            )}
                         </div>
                     </DialogFooter>
                 </DialogContent>
