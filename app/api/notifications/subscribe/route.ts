@@ -11,7 +11,11 @@ import { successResponse, errorResponse } from '@/lib/api-helpers';
 export async function POST(request: NextRequest) {
     try {
         const authUser = await getAuthUser();
-        if (!authUser) return errorResponse('Unauthorized', 401);
+        // If the user isn't logged in yet, gracefully accept but don't database it until they log in.
+        // The frontend will re-sync the subscription natively upon login.
+        if (!authUser) {
+             return successResponse({ message: 'Anonymous subscription request acknowledged.' });
+        }
 
         const body = await request.json();
         const { subscription } = body;
