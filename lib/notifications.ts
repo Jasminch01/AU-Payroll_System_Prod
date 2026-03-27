@@ -1,6 +1,7 @@
 import { createClient } from './supabase/server';
 import { logAudit } from './audit';
 import { sendEmail } from './email';
+import { sendPushNotification } from './push-notifications';
 
 // --- NEW APP NOTIFICATION TYPES ---
 export type NotificationType = 
@@ -57,6 +58,19 @@ export async function createNotification(params: CreateNotificationParams) {
             console.error('Failed to insert bulk notifications into DB:', error);
             return { success: false, error: error.message };
         }
+
+        // Trigger mobile push notifications asynchronously
+        Promise.allSettled(
+            user_ids.map(user_id => 
+                sendPushNotification(
+                    user_id,
+                    title,
+                    message,
+                    '/employee/shifts' // Default destination when notification is clicked
+                )
+            )
+        ).catch(err => console.error('Background push error:', err));
+
         return { success: true };
     } catch (err) {
         console.error('Unexpected error creating notifications:', err);
