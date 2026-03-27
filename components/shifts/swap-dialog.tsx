@@ -183,9 +183,14 @@ export function ShiftSwapDialog({ open, onOpenChange, shift, role }: ShiftSwapDi
                                         </p>
                                     )}
                                     {colleagues.length === 0 && !isLoadingColleagues && (
-                                        <p className="text-[10px] text-[hsl(var(--danger))] font-bold flex items-center gap-1">
-                                            <AlertCircle size={10} /> No available colleagues found for this shift's time.
-                                        </p>
+                                        <div className="space-y-1">
+                                            <p className="text-[10px] text-[hsl(var(--danger))] font-bold flex items-center gap-1">
+                                                <AlertCircle size={10} /> No available colleagues found.
+                                            </p>
+                                            <p className="text-[9px] text-[hsl(var(--muted-foreground))] leading-tight italic">
+                                                This could be because others are already working during this time or don't have an active employee profile.
+                                            </p>
+                                        </div>
                                     )}
                                 </div>
                             </div>
@@ -239,22 +244,28 @@ export function ShiftSwapDialog({ open, onOpenChange, shift, role }: ShiftSwapDi
                                 <Info size={14} className="text-[hsl(var(--brand))] shrink-0 mt-0.5" />
                                 <div className="space-y-1">
                                     <p className="text-[11px] text-[hsl(var(--brand-foreground))] leading-normal">
-                                        A **Swap** means you exchange shifts. You take their shift, and they take yours.
+                                        You can swap for **any** upcoming shift your colleague has, even on different dates. 
+                                        You take their shift, and they take yours in return.
                                     </p>
                                     {!targetEmployee && colleagues.length > 0 && (
                                         <p className="text-[10px] text-[hsl(var(--brand))] font-bold">
-                                            Please select a colleague above.
+                                            Please select a colleague above to see their tradeable shifts.
                                         </p>
                                     )}
                                     {targetEmployee && !targetShift && colleagueShifts.length > 0 && (
                                         <p className="text-[10px] text-[hsl(var(--brand))] font-bold">
-                                            Please select one of their shifts to take.
+                                            Please select one of their upcoming shifts to take.
                                         </p>
                                     )}
                                     {colleagues.length === 0 && !isLoadingColleagues && (
-                                        <p className="text-[10px] text-[hsl(var(--danger))] font-bold flex items-center gap-1">
-                                            <AlertCircle size={10} /> No available colleagues found for this shift's time.
-                                        </p>
+                                        <div className="space-y-1">
+                                            <p className="text-[10px] text-[hsl(var(--danger))] font-bold flex items-center gap-1">
+                                                <AlertCircle size={10} /> No colleagues found with tradeable shifts.
+                                            </p>
+                                            <p className="text-[9px] text-[hsl(var(--muted-foreground))] leading-tight italic">
+                                                Colleagues must have at least one future shift and no time conflict with your current shift to appear here.
+                                            </p>
+                                        </div>
                                     )}
                                 </div>
                             </div>

@@ -33,7 +33,8 @@ export async function GET(request: NextRequest) {
         // Employees see only their relevant requests AND open pool offers
         if (authUser.role === 'employee') {
             const employeeId = authUser.employee_id;
-            query = query.or(`requester_id.eq.${employeeId},target_employee_id.eq.${employeeId},target_employee_id.is.null`);
+            // PostgREST .or() needs quotes for string literals with letters
+            query = query.or(`requester_id.eq."${employeeId}",target_employee_id.eq."${employeeId}",target_employee_id.is.null`);
         }
 
         const { data: swaps, error } = await query;

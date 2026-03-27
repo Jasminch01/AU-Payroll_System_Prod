@@ -73,27 +73,37 @@ export async function GET(request: NextRequest) {
 
                 if (busyIds.length > 0) {
                     // Exclude busy employees
-                    query = query.not('employee_id', 'in', `(${busyIds.join(',')})`);
+                    query = query.not('employee_id', 'in', busyIds);
                 }
             }
         }
 
-        // Filter for employees who HAVE upcoming shifts (for Swap)
+        // Filter for employees who HAVE upcoming/available shifts (for Swap)
         if (onlyWithShifts) {
-            const now = new Date().toISOString();
+            // Include shifts starting today or in the future
+            const todayStart = new Date();
+            todayStart.setHours(0, 0, 0, 0);
+            const now = todayStart.toISOString();
+            
             const { data: employeesWithShifts } = await supabase
                 .from('Shift')
                 .select('employee_id')
                 .eq('business_id', authUser.business_id)
                 .gt('start_time', now);
             
-            const eligibleIds = Array.from(new Set((employeesWithShifts || []).map(s => s.employee_id).filter(Boolean)));
+            // Filter out the requester themselves
+            const requesterEmpId = authUser.employee_id;
+            const eligibleIds = Array.from(new Set(
+                (employeesWithShifts || [])
+                    .map(s => s.employee_id)
+                    .filter(id => id && id !== requesterEmpId)
+            ));
             
             if (eligibleIds.length > 0) {
                 query = query.in('employee_id', eligibleIds);
             } else {
-                // Return empty if no one has shifts
-                return successResponse([], 'No employees with upcoming shifts found');
+                // Return empty if no one else has shifts
+                return successResponse([], 'No colleagues with available shifts found');
             }
         }
 

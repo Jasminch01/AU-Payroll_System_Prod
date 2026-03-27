@@ -62,10 +62,11 @@ export default function ManagerDashboardPage() {
     const pendingTimesheets = timesheets.filter((t: any) => t.status === "pending");
     const pendingLeave = leaveRequests.filter((l: any) => l.status === "pending");
     
-    // Managers approve Employee swaps
+    // Managers approve Employee swaps that have been accepted/claimed
     const pendingEmployeeSwaps = shiftSwaps.filter((swap: any) => {
         const reqRole = swap.Requester?.User?.[0]?.role || 'employee';
-        return reqRole === 'employee' && swap.status === 'pending_approval';
+        // Only show if it's an employee request AND it has been accepted by someone (target_employee_id filled)
+        return reqRole === 'employee' && swap.status === 'pending_approval' && !!swap.target_employee_id;
     });
 
     // Find next upcoming shift for the manager
