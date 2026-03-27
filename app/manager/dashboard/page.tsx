@@ -62,11 +62,10 @@ export default function ManagerDashboardPage() {
     const pendingTimesheets = timesheets.filter((t: any) => t.status === "pending");
     const pendingLeave = leaveRequests.filter((l: any) => l.status === "pending");
     
-    // Managers approve Employee swaps that have been accepted/claimed
-    const pendingEmployeeSwaps = shiftSwaps.filter((swap: any) => {
-        const reqRole = swap.Requester?.User?.[0]?.role || 'employee';
-        // Only show if it's an employee request AND it has been accepted by someone (target_employee_id filled)
-        return reqRole === 'employee' && swap.status === 'pending_approval' && !!swap.target_employee_id;
+    // Show all accepted/claimed swaps awaiting approval (works for both Employee and Manager swaps)
+    const pendingTeamSwaps = shiftSwaps.filter((swap: any) => {
+        // Only show swaps that have been accepted by someone (target_employee_id filled in)
+        return swap.status === 'pending_approval' && !!swap.target_employee_id;
     });
 
     // Find next upcoming shift for the manager
@@ -120,7 +119,7 @@ export default function ManagerDashboardPage() {
                 />
                 <MetricCard
                     title="Team Swaps"
-                    value={pendingEmployeeSwaps.length}
+                    value={pendingTeamSwaps.length}
                     icon={<ArrowLeftRight size={24} />}
                 />
             </div>
@@ -213,14 +212,14 @@ export default function ManagerDashboardPage() {
                         </CardTitle>
                     </CardHeader>
                     <CardContent className="flex-1 overflow-y-auto custom-scrollbar">
-                        {pendingEmployeeSwaps.length === 0 ? (
+                        {pendingTeamSwaps.length === 0 ? (
                             <div className="flex flex-col items-center justify-center p-8 text-center h-full space-y-3 opacity-60">
                                 <CheckCircle size={32} className="text-[hsl(var(--success))]" />
                                 <p className="text-sm font-medium text-[hsl(var(--muted-foreground))]">All swaps clear</p>
                             </div>
                         ) : (
                             <div className="space-y-4">
-                                {pendingEmployeeSwaps.map((swap: any) => (
+                                {pendingTeamSwaps.map((swap: any) => (
                                     <div key={swap.request_id} className="p-4 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/5 space-y-3">
                                         <div className="flex items-center gap-3">
                                             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[hsl(var(--brand-light))] text-[hsl(var(--brand))] text-[10px] font-bold">

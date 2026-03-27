@@ -51,7 +51,11 @@ export async function GET(request: NextRequest) {
             // Role filtering happens later in memory due to join complexity
         }
 
-        // Available for Swap - Conflict Exclusion
+        // Pre-compute IDs for in-memory filtering (avoids PostgREST 'not.in' issues with custom string IDs)
+        let busyEmployeeIds = new Set<string>();
+        let eligibleEmployeeIds: string[] | null = null;
+
+        // Available for Swap - Conflict Exclusion (collect IDs, filter in-memory later)
         if (excludeConflictsForShift) {
             const { data: targetShift } = await supabase
                 .from('Shift')
@@ -67,14 +71,9 @@ export async function GET(request: NextRequest) {
                     .lt('start_time', targetShift.end_time)
                     .gt('end_time', targetShift.start_time);
 
-                const busyIds = (overlappingShifts || [])
-                    .map(s => s.employee_id)
-                    .filter(id => id !== null);
-
-                if (busyIds.length > 0) {
-                    // Exclude busy employees
-                    query = query.not('employee_id', 'in', busyIds);
-                }
+                (overlappingShifts || []).forEach(s => {
+                    if (s.employee_id) busyEmployeeIds.add(s.employee_id);
+                });
             }
         }
 
@@ -93,15 +92,13 @@ export async function GET(request: NextRequest) {
             
             // Filter out the requester themselves
             const requesterEmpId = authUser.employee_id;
-            const eligibleIds = Array.from(new Set(
+            eligibleEmployeeIds = Array.from(new Set(
                 (employeesWithShifts || [])
                     .map(s => s.employee_id)
-                    .filter(id => id && id !== requesterEmpId)
+                    .filter((id): id is string => !!id && id !== requesterEmpId)
             ));
             
-            if (eligibleIds.length > 0) {
-                query = query.in('employee_id', eligibleIds);
-            } else {
+            if (eligibleEmployeeIds.length === 0) {
                 // Return empty if no one else has shifts
                 return successResponse([], 'No colleagues with available shifts found');
             }
@@ -116,6 +113,18 @@ export async function GET(request: NextRequest) {
 
         const employeesRaw: any[] = employees || [];
         let filtered = [...employeesRaw];
+
+        // Apply in-memory filters (safe for custom string IDs like BEA0002)
+        if (busyEmployeeIds.size > 0) {
+            filtered = filtered.filter(e => !busyEmployeeIds.has(e.employee_id));
+        }
+        if (eligibleEmployeeIds !== null) {
+            const eligibleSet = new Set(eligibleEmployeeIds);
+            filtered = filtered.filter(e => eligibleSet.has(e.employee_id));
+            if (filtered.length === 0) {
+                return successResponse([], 'No colleagues with available shifts found');
+            }
+        }
 
         // Fetch user roles for all found employees
         if (filtered.length > 0) {
