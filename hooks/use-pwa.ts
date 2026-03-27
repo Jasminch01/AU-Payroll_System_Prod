@@ -11,13 +11,16 @@ export function usePWA() {
   useEffect(() => {
     // Detect iOS
     const userAgent = window.navigator.userAgent.toLowerCase();
-    const isIOSDevice = /iphone|ipad|ipod/.test(userAgent);
+    const isIOSDevice = /iphone|ipad|ipod/.test(userAgent) || 
+                       (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); // iPad Pro
     setIsIOS(isIOSDevice);
 
     // Check if already installed
-    const isStandaloneMode = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone;
+    const isStandaloneMode = window.matchMedia('(display-mode: standalone)').matches || 
+                            (window.navigator as any).standalone === true;
     setIsStandalone(isStandaloneMode);
 
+    // If it's iOS and not already installed, it's "installable" via our custom prompt
     if (isIOSDevice && !isStandaloneMode) {
       setIsInstallable(true);
     }
