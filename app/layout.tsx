@@ -13,6 +13,10 @@ export const metadata: Metadata = {
   title: "AU Payroll | Workforce Management",
   description: "Modern Australian payroll & workforce management platform. Manage rosters, timesheets, leave, and payroll — all in one place.",
   keywords: ["payroll", "workforce management", "rostering", "timesheets", "employee management", "australia"],
+  icons: {
+    icon: "/favicon.ico",
+    apple: "/icons/icon-192x192.png",
+  },
   manifest: "/manifest.json",
   themeColor: "#3724B3",
   appleWebApp: {
