@@ -79,17 +79,18 @@ export async function GET(request: NextRequest) {
 
         // Filter for employees who HAVE upcoming/available shifts (for Swap)
         if (onlyWithShifts) {
-            // Include shifts starting today or in the future
+            // Only count PUBLISHED upcoming shifts (ensures colleague actually has a visible swappable shift)
             const todayStart = new Date();
             todayStart.setHours(0, 0, 0, 0);
             const now = todayStart.toISOString();
-            
+
             const { data: employeesWithShifts } = await supabase
                 .from('Shift')
                 .select('employee_id')
                 .eq('business_id', authUser.business_id)
+                .eq('shift_status', 'published')
                 .gt('start_time', now);
-            
+
             // Filter out the requester themselves
             const requesterEmpId = authUser.employee_id;
             eligibleEmployeeIds = Array.from(new Set(
@@ -97,9 +98,9 @@ export async function GET(request: NextRequest) {
                     .map(s => s.employee_id)
                     .filter((id): id is string => !!id && id !== requesterEmpId)
             ));
-            
+
             if (eligibleEmployeeIds.length === 0) {
-                // Return empty if no one else has shifts
+                // Return empty if no one else has published shifts
                 return successResponse([], 'No colleagues with available shifts found');
             }
         }

@@ -50,7 +50,7 @@ export function ShiftSwapDialog({ open, onOpenChange, shift, role }: ShiftSwapDi
 
     const { data: colleagueShifts = [], isLoading: isLoadingShifts } = useQuery({
         queryKey: ["colleague-shifts", targetEmployee],
-        queryFn: () => apiGet<any[]>(`/shifts?employee_id=${targetEmployee}&from=${new Date().toISOString().split('T')[0]}`),
+        queryFn: () => apiGet<any[]>(`/shifts/colleague?employee_id=${targetEmployee}&from=${new Date().toISOString().split('T')[0]}`),
         enabled: !!targetEmployee && offerType === "swap",
     });
 
