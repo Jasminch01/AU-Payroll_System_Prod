@@ -7,6 +7,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "@/hooks/use-auth";
 import { cn } from "@/lib/utils";
 
+import { MobileNav } from "./mobile-nav";
+
 interface DashboardLayoutProps {
     children: React.ReactNode;
     role: "owner" | "manager" | "employee";
@@ -88,7 +90,7 @@ export function DashboardLayout({
                     initial={{ opacity: 0, y: 8 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
-                    className="flex-1 p-6"
+                    className="flex-1 p-6 pb-28 lg:pb-6"
                 >
                     {/* Page Content with fade-in animation */}
                     {(pageTitle || actions) && (
@@ -110,6 +112,9 @@ export function DashboardLayout({
                     {children}
                 </motion.main>
             </div>
+
+            {/* Mobile Navigation Bar */}
+            <MobileNav role={role} />
         </div>
     );
 }

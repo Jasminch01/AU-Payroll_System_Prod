@@ -70,24 +70,20 @@ export async function createNotification(params: CreateNotificationParams) {
  * Currently logs to audit log and console.
  * Can be extended to send real emails via Resend/SendGrid.
  */
-export async function notifyRosterPublished(rosterId: string, businessId: string, updatedBy: string) {
+export async function notifyRosterPublished(rosterId: string, businessId: string, updatedBy: string, since?: string) {
     const supabase = await createClient();
 
     // 1. Get roster details
     const { data: roster } = await supabase
         .from('Roster')
         .select('start_date, end_date, published_at')
-        .eq('roster_id', rosterId)
+        .select('*')
+        .eq('id', rosterId)
         .single();
 
     if (!roster) return;
 
-    // Use a baseline for what is "new" vs "updated"
-    // If it's the first publish, everything is new.
-    // If it was published before, we check what changed since the PREVIOUS published_at.
-    const lastPublish = roster.published_at;
-
-    // 2. Get all shifts in this roster with employee details
+    // Get all shifts in this roster
     const { data: shifts } = await supabase
         .from('Shift')
         .select('*, Employee:employee_id(email, first_name, user_id)')
@@ -95,24 +91,27 @@ export async function notifyRosterPublished(rosterId: string, businessId: string
 
     if (!shifts || shifts.length === 0) return;
 
-    // 3. Categorize changes per employee
-    const emailNotifications = [];
+    // Determine which shifts are new or updated since last publish
+    const lastPublish = since || roster.published_at;
+    const emailNotifications: any[] = [];
 
     for (const shift of shifts) {
-        if (!shift.employee_id || !shift.Employee) continue;
-
         let type: 'new' | 'updated' | 'unchanged' = 'unchanged';
+        const updatedAt = new Date(shift.updated_at);
 
         if (!lastPublish) {
             type = 'new';
         } else {
-            const updatedAt = new Date(shift.updated_at);
             const createdAt = new Date(shift.created_at);
             const pubAt = new Date(lastPublish);
 
-            if (createdAt > pubAt) {
+            // Use a small buffer (1 second) to avoid race conditions with same-second updates
+            const isNew = createdAt.getTime() > pubAt.getTime() + 1000;
+            const isUpdated = updatedAt.getTime() > pubAt.getTime() + 1000;
+
+            if (isNew) {
                 type = 'new';
-            } else if (updatedAt > pubAt) {
+            } else if (isUpdated) {
                 type = 'updated';
             }
         }

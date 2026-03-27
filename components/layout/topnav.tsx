@@ -2,11 +2,16 @@
 
 import React, { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { Bell, Menu, User, Settings, LogOut, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
 import { NotificationBell } from "@/components/ui/notification-bell";
 import { motion, AnimatePresence } from "framer-motion";
+import { usePushNotifications } from "@/hooks/use-push-notifications";
+import { usePWA } from "@/hooks/use-pwa";
+import { Smartphone, BellOff, BellRing, Download } from "lucide-react";
+import { IosInstallPrompt } from "@/components/pwa/ios-install-prompt";
 
 interface TopNavProps {
     onMenuClick?: () => void;
@@ -16,9 +21,13 @@ export function TopNav({
     onMenuClick,
 }: TopNavProps) {
     const router = useRouter();
+    const queryClient = useQueryClient();
     const { user, fullName, initials, isLoading } = useAuth();
     const [profileOpen, setProfileOpen] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
+    const { isSupported, isSubscribed, subscribe, unsubscribe } = usePushNotifications();
+    const { isInstallable, installPWA, isIOS } = usePWA();
+    const [showIosPrompt, setShowIosPrompt] = useState(false);
 
     // Close dropdown when clicking outside
     useEffect(() => {
@@ -35,9 +44,14 @@ export function TopNav({
         setProfileOpen(false);
         try {
             await fetch("/api/auth/logout", { method: "POST" });
+            // Clear ALL cached query data so the next user never sees stale profile/data
+            queryClient.clear();
             router.push("/login");
         } catch (err) {
             console.error("Logout failed:", err);
+            // Still clear the cache even if logout API fails
+            queryClient.clear();
+            router.push("/login");
         }
     };
 
@@ -50,6 +64,13 @@ export function TopNav({
         setProfileOpen(false);
         if (user?.role === "owner") {
             router.push("/owner/settings");
+        }
+    };
+
+    const handleInstallClick = async () => {
+        const result = await installPWA();
+        if (isIOS && result) {
+            setShowIosPrompt(true);
         }
     };
 
@@ -130,6 +151,37 @@ export function TopNav({
                                             <span>Settings</span>
                                         </button>
                                     )}
+
+                                    {/* PWA & Notifications */}
+                                    <div className="mt-1.5 border-t border-[hsl(var(--border))] pt-1.5">
+                                        {isInstallable && (
+                                            <button
+                                                onClick={handleInstallClick}
+                                                className="flex w-full items-center gap-3 px-4 py-2.5 text-sm text-[hsl(var(--brand))] hover:bg-[hsl(var(--brand-light))] transition-colors"
+                                            >
+                                                <Download size={16} />
+                                                <span>Install App</span>
+                                            </button>
+                                        )}
+                                        {isSupported && (
+                                            <button
+                                                onClick={isSubscribed ? unsubscribe : subscribe}
+                                                className="flex w-full items-center gap-3 px-4 py-2.5 text-sm text-[hsl(var(--foreground))] hover:bg-[hsl(var(--muted))] transition-colors"
+                                            >
+                                                {isSubscribed ? (
+                                                    <>
+                                                        <BellOff size={16} className="text-[hsl(var(--muted-foreground))]" />
+                                                        <span>Disable Notifications</span>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <BellRing size={16} className="text-[hsl(var(--brand))]" />
+                                                        <span>Enable Notifications</span>
+                                                    </>
+                                                )}
+                                            </button>
+                                        )}
+                                    </div>
                                 </div>
 
                                 {/* Sign Out */}
@@ -147,6 +199,7 @@ export function TopNav({
                     </AnimatePresence>
                 </div>
             </div>
+            <IosInstallPrompt isOpen={showIosPrompt} onClose={() => setShowIosPrompt(false)} />
         </header>
     );
 }

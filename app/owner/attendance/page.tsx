@@ -15,6 +15,7 @@ import {
     X,
     Layers,
     Timer,
+    ChevronRight,
 } from "lucide-react";
 import type { AttendanceLog } from "@/types/database";
 import { cn } from "@/lib/utils";
@@ -517,6 +518,44 @@ export default function OwnerAttendancePage() {
                 emptyIcon={<Clock size={40} />}
                 loading={isLoading}
                 onRowClick={handleRowClick}
+                mobileCardRender={(row) => (
+                    <div className="p-4 flex flex-col gap-3 border-b border-[hsl(var(--border))] last:border-0 active:bg-[hsl(var(--muted))]/30 transition-colors">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[hsl(var(--brand-light))] text-[hsl(var(--brand))] text-sm font-bold shadow-sm">
+                                    {row.Employee?.first_name?.[0] ?? ""}{row.Employee?.last_name?.[0] ?? ""}
+                                </div>
+                                <div className="flex flex-col">
+                                    <span className="font-bold text-[hsl(var(--foreground))]">
+                                        {row.Employee ? `${row.Employee.first_name} ${row.Employee.last_name}` : "Unknown"}
+                                    </span>
+                                    <span className="text-[10px] uppercase font-bold text-[hsl(var(--muted-foreground))] tracking-wider">
+                                        {new Date(row.date).toLocaleDateString("en-AU", { weekday: "short", day: "numeric", month: "short" })}
+                                    </span>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-3">
+                                <div className="flex flex-col items-end">
+                                    <span className="text-sm font-black text-[hsl(var(--brand))]">{formatDuration(row.total_hours)}</span>
+                                    <span className="text-[10px] text-[hsl(var(--muted-foreground))] uppercase font-bold">{row.sessions.length} {row.sessions.length === 1 ? 'session' : 'sessions'}</span>
+                                </div>
+                                <ChevronRight size={16} className="text-[hsl(var(--muted-foreground))]/40" />
+                            </div>
+                        </div>
+                        
+                        <div className="flex items-center gap-4">
+                            <div className="flex items-center gap-1.5 text-xs text-[hsl(var(--success))] font-bold bg-[hsl(var(--success-light))]/20 px-2 py-1 rounded-lg">
+                                <ArrowDownCircle size={12} />
+                                {formatTime(row.first_in)}
+                            </div>
+                            <div className="flex items-center gap-1.5 text-xs text-[hsl(var(--warning))] font-bold bg-[hsl(var(--warning-light))]/20 px-2 py-1 rounded-lg">
+                                <ArrowUpCircle size={12} />
+                                {formatTime(row.last_out)}
+                            </div>
+                            {row.is_manual && <StatusBadge status="manual" className="scale-75 origin-left" />}
+                        </div>
+                    </div>
+                )}
             />
 
             {/* ── Session Detail Modal ── */}

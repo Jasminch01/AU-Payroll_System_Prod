@@ -19,6 +19,8 @@ import {
   Download,
 } from "lucide-react";
 import { usePWA } from "@/hooks/use-pwa";
+import { IosInstallPrompt } from "@/components/pwa/ios-install-prompt";
+import { useState } from "react";
 
 const features = [
   {
@@ -67,7 +69,15 @@ const item = {
 };
 
 export default function LandingPage() {
-  const { isInstallable, installPWA } = usePWA();
+  const { isInstallable, installPWA, isIOS } = usePWA();
+  const [showIosPrompt, setShowIosPrompt] = useState(false);
+
+  const handleInstallClick = async () => {
+    const result = await installPWA();
+    if (isIOS && result) {
+      setShowIosPrompt(true);
+    }
+  };
   return (
     <div className="min-h-screen bg-[hsl(var(--background))]">
       {/* Nav */}
@@ -89,7 +99,7 @@ export default function LandingPage() {
               </Button>
             </Link>
             {isInstallable && (
-              <Button variant="outline" size="icon" onClick={installPWA} title="Download App" className="flex md:hidden">
+              <Button variant="outline" size="icon" onClick={handleInstallClick} title="Download App" className="flex md:hidden">
                 <Download size={18} />
               </Button>
             )}
@@ -235,6 +245,7 @@ export default function LandingPage() {
           </p>
         </div>
       </footer>
+      <IosInstallPrompt isOpen={showIosPrompt} onClose={() => setShowIosPrompt(false)} />
     </div>
   );
 }

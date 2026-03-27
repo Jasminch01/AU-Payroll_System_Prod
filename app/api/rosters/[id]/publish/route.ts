@@ -55,7 +55,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         if (shiftUpdateError) return errorResponse(shiftUpdateError.message, 400);
 
         // 4. Send Notifications
-        await notifyRosterPublished(id, authUser.business_id, authUser.user_id);
+        const previousPublishTime = roster.published_at;
+        await notifyRosterPublished(id, authUser.business_id, authUser.user_id, previousPublishTime);
 
         return successResponse({ message: 'Roster and all shifts published successfully' });
     } catch (error: any) {

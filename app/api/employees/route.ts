@@ -51,7 +51,11 @@ export async function GET(request: NextRequest) {
             // Role filtering happens later in memory due to join complexity
         }
 
-        // Available for Swap - Conflict Exclusion
+        // Pre-compute IDs for in-memory filtering (avoids PostgREST 'not.in' issues with custom string IDs)
+        let busyEmployeeIds = new Set<string>();
+        let eligibleEmployeeIds: string[] | null = null;
+
+        // Available for Swap - Conflict Exclusion (collect IDs, filter in-memory later)
         if (excludeConflictsForShift) {
             const { data: targetShift } = await supabase
                 .from('Shift')
@@ -67,33 +71,37 @@ export async function GET(request: NextRequest) {
                     .lt('start_time', targetShift.end_time)
                     .gt('end_time', targetShift.start_time);
 
-                const busyIds = (overlappingShifts || [])
-                    .map(s => s.employee_id)
-                    .filter(id => id !== null);
-
-                if (busyIds.length > 0) {
-                    // Exclude busy employees
-                    query = query.not('employee_id', 'in', `(${busyIds.join(',')})`);
-                }
+                (overlappingShifts || []).forEach(s => {
+                    if (s.employee_id) busyEmployeeIds.add(s.employee_id);
+                });
             }
         }
 
-        // Filter for employees who HAVE upcoming shifts (for Swap)
+        // Filter for employees who HAVE upcoming/available shifts (for Swap)
         if (onlyWithShifts) {
-            const now = new Date().toISOString();
+            // Only count PUBLISHED upcoming shifts (ensures colleague actually has a visible swappable shift)
+            const todayStart = new Date();
+            todayStart.setHours(0, 0, 0, 0);
+            const now = todayStart.toISOString();
+
             const { data: employeesWithShifts } = await supabase
                 .from('Shift')
                 .select('employee_id')
                 .eq('business_id', authUser.business_id)
+                .eq('shift_status', 'published')
                 .gt('start_time', now);
-            
-            const eligibleIds = Array.from(new Set((employeesWithShifts || []).map(s => s.employee_id).filter(Boolean)));
-            
-            if (eligibleIds.length > 0) {
-                query = query.in('employee_id', eligibleIds);
-            } else {
-                // Return empty if no one has shifts
-                return successResponse([], 'No employees with upcoming shifts found');
+
+            // Filter out the requester themselves
+            const requesterEmpId = authUser.employee_id;
+            eligibleEmployeeIds = Array.from(new Set(
+                (employeesWithShifts || [])
+                    .map(s => s.employee_id)
+                    .filter((id): id is string => !!id && id !== requesterEmpId)
+            ));
+
+            if (eligibleEmployeeIds.length === 0) {
+                // Return empty if no one else has published shifts
+                return successResponse([], 'No colleagues with available shifts found');
             }
         }
 
@@ -106,6 +114,18 @@ export async function GET(request: NextRequest) {
 
         const employeesRaw: any[] = employees || [];
         let filtered = [...employeesRaw];
+
+        // Apply in-memory filters (safe for custom string IDs like BEA0002)
+        if (busyEmployeeIds.size > 0) {
+            filtered = filtered.filter(e => !busyEmployeeIds.has(e.employee_id));
+        }
+        if (eligibleEmployeeIds !== null) {
+            const eligibleSet = new Set(eligibleEmployeeIds);
+            filtered = filtered.filter(e => eligibleSet.has(e.employee_id));
+            if (filtered.length === 0) {
+                return successResponse([], 'No colleagues with available shifts found');
+            }
+        }
 
         // Fetch user roles for all found employees
         if (filtered.length > 0) {

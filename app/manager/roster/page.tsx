@@ -15,8 +15,9 @@ import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/api-client";
 import { useEffect } from "react";
 import { toast } from "sonner";
 import { Plus, ChevronLeft, ChevronRight, Clock, Trash2, CheckCircle2, FileText, RefreshCcw, Copy, Bell, CalendarDays, Search, Filter, ChevronsLeft, ChevronsRight, GripVertical, MoreHorizontal, Users } from "lucide-react";
-import { Reorder, AnimatePresence } from "framer-motion";
+import { Reorder, AnimatePresence, motion } from "framer-motion";
 import { cn } from "@/lib/utils";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import {
@@ -112,6 +113,38 @@ export default function ManagerRosterPage() {
     const [selectedDate, setSelectedDate] = useState("");
     const [editingShiftId, setEditingShiftId] = useState<string | null>(null);
 
+    // Mobile specific state
+    const isMobile = useIsMobile();
+    const [selectedDayIndex, setSelectedDayIndex] = useState(0);
+    const [isCalendarExpanded, setIsCalendarExpanded] = useState(false);
+    const [viewDate, setViewDate] = useState(new Date());
+
+    const rosterDates = useMemo(() => getRosterDates(offset, rosterPeriod), [offset, rosterPeriod]);
+    const rangeStart = formatDate(rosterDates[0]);
+    const rangeEnd = formatDate(rosterDates[rosterDates.length - 1]);
+
+    // Scroll mobile day picker to today on mount
+    useEffect(() => {
+        if (isMobile) {
+            const today = new Date();
+            const index = rosterDates.findIndex(d => formatDate(d) === formatDate(today));
+            if (index !== -1) {
+                setSelectedDayIndex(index);
+                // Wait for the button to render then scroll it into view
+                setTimeout(() => {
+                    document.getElementById("today-button")?.scrollIntoView({ behavior: 'smooth', inline: 'center' });
+                }, 300);
+            }
+        }
+    }, [isMobile, rosterDates]);
+
+    // Shift form
+    const [shiftEmployee, setShiftEmployee] = useState("");
+    const [shiftStart, setShiftStart] = useState("09:00");
+    const [shiftEnd, setShiftEnd] = useState("17:00");
+    const [shiftType, setShiftType] = useState("morning");
+    const [initialFormState, setInitialFormState] = useState<any>(null);
+
     // Reset form when dialog closes
     useEffect(() => {
         if (!addShiftOpen) {
@@ -124,20 +157,9 @@ export default function ManagerRosterPage() {
         }
     }, [addShiftOpen]);
 
-    // Shift form
-    const [shiftEmployee, setShiftEmployee] = useState("");
-    const [shiftStart, setShiftStart] = useState("09:00");
-    const [shiftEnd, setShiftEnd] = useState("17:00");
-    const [shiftType, setShiftType] = useState("morning");
-    const [initialFormState, setInitialFormState] = useState<any>(null);
-
     // Expansion confirmation state
     const [expansionOpen, setExpansionOpen] = useState(false);
     const [pendingShiftData, setPendingShiftData] = useState<any>(null);
-
-    const rosterDates = useMemo(() => getRosterDates(offset, rosterPeriod), [offset, rosterPeriod]);
-    const rangeStart = formatDate(rosterDates[0]);
-    const rangeEnd = formatDate(rosterDates[rosterDates.length - 1]);
 
     // Copy Shifts state
     const [copyOption, setCopyOption] = useState<'next_week' | 'prev_week'>('next_week');
@@ -452,7 +474,7 @@ export default function ManagerRosterPage() {
         },
     });
 
-    const handleAddShift = () => {
+    const handleAddShift = (notify = false) => {
         if (!shiftEmployee || !selectedDate) {
             toast.error("Please select an employee and date");
             return;
@@ -473,6 +495,7 @@ export default function ManagerRosterPage() {
             shift_type: shiftType,
             roster_start: rangeStart,
             roster_end: rangeEnd,
+            notify,
         };
 
         // Check for expansion
@@ -651,7 +674,7 @@ export default function ManagerRosterPage() {
             pageDescription={`${rosterPeriod.charAt(0).toUpperCase() + rosterPeriod.slice(1)} Roster: ${rosterDates[0].toLocaleDateString("en-AU", { month: "short", day: "numeric" })} – ${rosterDates[rosterDates.length - 1].toLocaleDateString("en-AU", { month: "short", day: "numeric", year: "numeric" })}`}
             actions={
                 <div className="flex items-center gap-3">
-                    <div className="flex bg-[hsl(var(--muted))] p-1 rounded-lg border border-[hsl(var(--border))]">
+                    <div className="hidden lg:flex bg-[hsl(var(--muted))] p-1 rounded-lg border border-[hsl(var(--border))]">
                         {(["weekly", "fortnightly", "monthly"] as const).map((p) => (
                             <button
                                 key={p}
@@ -674,7 +697,7 @@ export default function ManagerRosterPage() {
                     <Button
                         onClick={() => openAddShift(formatDate(new Date()))}
                         disabled={isFetching || isFetchingRosters}
-                        className="shadow-lg shadow-[hsl(var(--brand))]/10"
+                        className="hidden lg:flex shadow-lg shadow-[hsl(var(--brand))]/10"
                     >
                         <Plus size={16} className="mr-2" /> Add Shift
                     </Button>
@@ -916,10 +939,312 @@ export default function ManagerRosterPage() {
             </div>
 
             <div className="w-full max-w-full rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] overflow-hidden shadow-md relative">
-                <div className={cn(
-                    "overflow-y-auto w-full max-h-[calc(100vh-320px)] scrollbar-thin",
-                    (rosterPeriod === "monthly" || rosterPeriod === "fortnightly") ? "overflow-x-hidden" : "overflow-x-auto"
-                )}>
+                {isMobile ? (
+                    /* MOBILE DAY VIEW */
+                    <div className="flex flex-col h-[75vh] sm:h-[700px] relative">
+                        {/* Integrated Mobile Calendar Header */}
+                        <div className="bg-white px-3 pt-3 flex items-center justify-between border-b border-[hsl(var(--border))]">
+                            <button 
+                                onClick={() => setIsCalendarExpanded(!isCalendarExpanded)}
+                                className="flex items-center gap-2 py-2 px-1 active:opacity-60 transition-opacity"
+                            >
+                                <span className="text-xl font-black text-[hsl(var(--foreground))] tracking-tight">
+                                    {format(rosterDates[selectedDayIndex], "EEE, d MMM")}
+                                </span>
+                                <ChevronRight 
+                                    size={18} 
+                                    className={cn(
+                                        "text-[hsl(var(--muted-foreground))] transition-transform duration-300",
+                                        isCalendarExpanded ? "rotate-90" : "rotate-0"
+                                    )} 
+                                />
+                            </button>
+                            <div className="flex items-center gap-1">
+                                <Button 
+                                    variant="ghost" 
+                                    size="icon" 
+                                    className={cn("h-10 w-10 text-[hsl(var(--muted-foreground))]", isCalendarExpanded && "text-[hsl(var(--brand))] bg-[hsl(var(--brand-light))]/30")}
+                                    onClick={() => setIsCalendarExpanded(!isCalendarExpanded)}
+                                >
+                                    <CalendarDays size={20} />
+                                </Button>
+                                <Button variant="ghost" size="icon" className="h-10 w-10 text-[hsl(var(--muted-foreground))]">
+                                    <MoreHorizontal size={20} />
+                                </Button>
+                            </div>
+                        </div>
+
+                        {/* Expandable Month Calendar */}
+                        <AnimatePresence>
+                            {isCalendarExpanded && (
+                                <motion.div 
+                                    initial={{ height: 0, opacity: 0 }}
+                                    animate={{ height: "auto", opacity: 1 }}
+                                    exit={{ height: 0, opacity: 0 }}
+                                    transition={{ type: "spring", damping: 25, stiffness: 200 }}
+                                    className="overflow-hidden bg-white border-b border-[hsl(var(--border))]"
+                                    drag="y"
+                                    dragConstraints={{ top: 0, bottom: 0 }}
+                                    onDragEnd={(_e, info) => {
+                                        if (info.offset.y < -50) setIsCalendarExpanded(false);
+                                    }}
+                                >
+                                    <div className="p-4 pt-2">
+                                        <div className="flex items-center justify-between mb-4">
+                                            <span className="text-sm font-black uppercase tracking-widest text-[hsl(var(--muted-foreground))]">
+                                                {format(viewDate, "MMMM yyyy")}
+                                            </span>
+                                            <div className="flex items-center gap-2">
+                                                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setViewDate(subMonths(viewDate, 1))}>
+                                                    <ChevronLeft size={16} />
+                                                </Button>
+                                                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setViewDate(addMonths(viewDate, 1))}>
+                                                    <ChevronRight size={16} />
+                                                </Button>
+                                            </div>
+                                        </div>
+
+                                        {/* Day Names Grid */}
+                                        <div className="grid grid-cols-7 mb-2">
+                                            {["S", "M", "T", "W", "T", "F", "S"].map((d, i) => (
+                                                <div key={i} className="text-center text-[10px] font-black text-[hsl(var(--muted-foreground))]/60">
+                                                    {d}
+                                                </div>
+                                            ))}
+                                        </div>
+
+                                        {/* Days Grid */}
+                                        <div className="grid grid-cols-7 gap-1">
+                                            {(() => {
+                                                const monthStart = startOfMonth(viewDate);
+                                                const monthEnd = endOfMonth(monthStart);
+                                                const startDate = startOfWeek(monthStart);
+                                                const endDate = endOfWeek(monthEnd);
+                                                const days = eachDayOfInterval({ start: startDate, end: endDate });
+
+                                                return days.map((day, i) => {
+                                                    const isSelected = isSameDay(day, rosterDates[selectedDayIndex]);
+                                                    const isCurrentMonth = isSameMonth(day, monthStart);
+                                                    const isToday = isSameDay(day, new Date());
+                                                    
+                                                    // Find if this day exists in current roster range
+                                                    const rosterIndex = rosterDates.findIndex(rd => isSameDay(rd, day));
+
+                                                    return (
+                                                        <button
+                                                            key={i}
+                                                            onClick={() => {
+                                                                if (rosterIndex !== -1) {
+                                                                    setSelectedDayIndex(rosterIndex);
+                                                                    setIsCalendarExpanded(false);
+                                                                    // Scroll day picker
+                                                                    setTimeout(() => {
+                                                                        document.getElementById(`day-btn-${rosterIndex}`)?.scrollIntoView({ behavior: 'smooth', inline: 'center' });
+                                                                    }, 100);
+                                                                } else {
+                                                                    toast.info(`Selection jumps to ${format(day, "MMM d")}. Update roster period to view.`);
+                                                                }
+                                                            }}
+                                                            className={cn(
+                                                                "h-10 w-full flex items-center justify-center rounded-lg text-sm transition-all",
+                                                                isSelected 
+                                                                    ? "bg-[hsl(var(--brand))] text-white font-bold shadow-sm" 
+                                                                    : isToday 
+                                                                        ? "text-[hsl(var(--brand))] font-bold bg-[hsl(var(--brand-light))]/20" 
+                                                                        : isCurrentMonth ? "text-[hsl(var(--foreground))]" : "text-[hsl(var(--muted-foreground))]/40",
+                                                                rosterIndex === -1 && isCurrentMonth && "opacity-40"
+                                                            )}
+                                                        >
+                                                            {day.getDate()}
+                                                        </button>
+                                                    );
+                                                });
+                                            })()}
+                                        </div>
+
+                                        {/* Drag Handle */}
+                                        <div className="flex justify-center mt-4">
+                                            <div className="w-12 h-1 rounded-full bg-[hsl(var(--muted))]" />
+                                        </div>
+                                    </div>
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
+
+                        {/* Day Selector (Horizontal) */}
+                        {!isCalendarExpanded && (
+                            <div className="flex overflow-x-auto p-3 bg-[hsl(var(--muted))]/10 border-b border-[hsl(var(--border))] scrollbar-none gap-2 sticky top-0 z-10 backdrop-blur-sm">
+                                {rosterDates.map((d, i) => {
+                                    const isSelected = selectedDayIndex === i;
+                                    const isToday = formatDate(d) === formatDate(new Date());
+                                    const dayName = d.toLocaleDateString("en-AU", { weekday: "short" });
+                                    const dayNum = d.getDate();
+
+                                    return (
+                                        <button
+                                            key={i}
+                                            id={`day-btn-${i}`}
+                                            onClick={() => setSelectedDayIndex(i)}
+                                            className={cn(
+                                                "flex flex-col items-center justify-center min-w-[56px] h-14 rounded-xl transition-all border shrink-0",
+                                                isSelected 
+                                                    ? "bg-[hsl(var(--brand))] text-white border-[hsl(var(--brand))] shadow-md shadow-[hsl(var(--brand))]/20 scale-105" 
+                                                    : "bg-white text-[hsl(var(--muted-foreground))] border-[hsl(var(--border))] hover:border-[hsl(var(--brand))]/30",
+                                                isToday && !isSelected && "ring-2 ring-[hsl(var(--brand))]/30"
+                                            )}
+                                        >
+                                            <span className="text-[9px] uppercase font-black tracking-tighter opacity-70">{dayName}</span>
+                                            <span className="text-base font-black leading-tight">{dayNum}</span>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        )}
+
+                        {/* Shifts List for selected day */}
+                        <div className="flex-1 overflow-y-auto p-4 space-y-6 pb-24 scrollbar-thin">
+                            {(() => {
+                                const selectedDateStr = formatDate(rosterDates[selectedDayIndex]);
+                                const today = new Date();
+                                today.setHours(0,0,0,0);
+                                const selectedDateObj = new Date(rosterDates[selectedDayIndex]);
+                                selectedDateObj.setHours(0,0,0,0);
+                                const isPastDay = selectedDateObj < today;
+
+                                // Filter employees based on search/role (already handled by paginatedEmployees)
+                                const activeEmployees = paginatedEmployees;
+
+                                const dayDrafts = employees.reduce((acc: any, emp: any) => {
+                                    const shifts = shiftGrid[emp.employee_id]?.[selectedDateStr] || [];
+                                    return acc + shifts.filter((s: any) => !isShiftPublished(s)).length;
+                                }, 0);
+
+                                return (
+                                    <>
+                                        {/* Day Header/Actions */}
+                                        <div className="flex items-center justify-between mb-2">
+                                            <h3 className="text-sm font-black uppercase tracking-widest text-[hsl(var(--muted-foreground))]">
+                                                {activeEmployees.length} {activeEmployees.length === 1 ? 'Employee' : 'Employees'} in List
+                                            </h3>
+                                            {dayDrafts > 0 && !isPastDay && (
+                                                <Button 
+                                                    size="sm" 
+                                                    className="h-7 text-[10px] font-black uppercase tracking-wider px-2 bg-green-600 hover:bg-green-700 text-white"
+                                                    onClick={() => publishRosterMutation.mutate(currentRoster.roster_id)}
+                                                >
+                                                    Publish {dayDrafts} Shift{dayDrafts > 1 ? 's' : ''}
+                                                </Button>
+                                            )}
+                                        </div>
+
+                                        {activeEmployees.length === 0 ? (
+                                            <div className="flex flex-col items-center justify-center py-12 text-center">
+                                                <CalendarDays size={48} className="text-[hsl(var(--muted-foreground))]/20 mb-4" />
+                                                <p className="text-[hsl(var(--muted-foreground))] font-medium">No employees found</p>
+                                            </div>
+                                        ) : (
+                                            activeEmployees.map((emp: any) => {
+                                                const dayShifts = shiftGrid[emp.employee_id]?.[selectedDateStr] || [];
+
+                                                return (
+                                                    <div key={emp.employee_id} className="space-y-3 p-4 rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/10">
+                                                        <div className="flex items-center justify-between">
+                                                            <div className="flex items-center gap-3">
+                                                                <div className="h-9 w-9 rounded-full bg-[hsl(var(--brand-light))] text-[hsl(var(--brand))] font-black flex items-center justify-center text-xs shadow-sm shadow-[hsl(var(--brand))]/10 border border-[hsl(var(--brand))]/10">
+                                                                    {emp.first_name?.[0]}{emp.last_name?.[0]}
+                                                                </div>
+                                                                <div className="flex flex-col">
+                                                                    <span className="text-sm font-black text-[hsl(var(--foreground))]">{emp.first_name} {emp.last_name}</span>
+                                                                    <span className="text-[10px] uppercase font-bold tracking-widest text-[hsl(var(--muted-foreground))]">{emp.role_title}</span>
+                                                                </div>
+                                                            </div>
+                                                            <Button 
+                                                                variant="ghost" 
+                                                                size="icon" 
+                                                                className="h-8 w-8 rounded-full text-[hsl(var(--brand))] hover:bg-[hsl(var(--brand))]/10"
+                                                                onClick={() => openAddShift(selectedDateStr, emp.employee_id)}
+                                                            >
+                                                                <Plus size={18} />
+                                                            </Button>
+                                                        </div>
+
+                                                        <div className="grid grid-cols-1 gap-3">
+                                                            {dayShifts.length > 0 ? (
+                                                                dayShifts.map((s: any) => {
+                                                                    const isPublished = isShiftPublished(s);
+                                                                    return (
+                                                                        <div
+                                                                            key={s.shift_id}
+                                                                            onClick={() => openAddShift(selectedDateStr, emp.employee_id, s)}
+                                                                            className={cn(
+                                                                                "p-3 rounded-xl border transition-all active:scale-[0.98] relative overflow-hidden flex items-center justify-between shadow-sm",
+                                                                                isPublished 
+                                                                                    ? "bg-[#F1F8E9] border-[#C5E1A5] text-green-900" 
+                                                                                    : "bg-white border-[hsl(var(--border))] text-[hsl(var(--foreground))]",
+                                                                                isPastDay && "opacity-60 grayscale-[0.2]"
+                                                                            )}
+                                                                        >
+                                                                            <div className="flex flex-col gap-0.5">
+                                                                                <div className="flex items-center gap-2">
+                                                                                    <Clock size={12} className={cn("opacity-60", isPublished ? "text-green-700" : "text-[hsl(var(--brand))]")} />
+                                                                                    <span className="text-sm font-black tracking-tight tabular-nums">
+                                                                                        {new Date(s.start_time).toLocaleTimeString("en-AU", { hour: "numeric", minute: "2-digit", hour12: true })}
+                                                                                        {" – "}
+                                                                                        {new Date(s.end_time).toLocaleTimeString("en-AU", { hour: "numeric", minute: "2-digit", hour12: true })}
+                                                                                    </span>
+                                                                                </div>
+                                                                                <Badge variant="secondary" className={cn(
+                                                                                    "text-[8px] uppercase font-black tracking-widest h-4 w-min whitespace-nowrap",
+                                                                                    isPublished ? "bg-green-200 text-green-900" : "bg-orange-100 text-orange-900"
+                                                                                )}>
+                                                                                    {s.shift_type}
+                                                                                </Badge>
+                                                                            </div>
+                                                                            <div className={cn(
+                                                                                "flex h-7 w-7 items-center justify-center rounded-lg transition-colors shadow-sm",
+                                                                                isPublished ? "bg-green-500 text-white" : "bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))]"
+                                                                            )}>
+                                                                                {isPublished ? <CheckCircle2 size={14} /> : <FileText size={14} />}
+                                                                            </div>
+                                                                        </div>
+                                                                    );
+                                                                })
+                                                            ) : (
+                                                                <div 
+                                                                    onClick={() => openAddShift(selectedDateStr, emp.employee_id)}
+                                                                    className="p-3 rounded-xl border border-dashed border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))] text-[10px] font-bold italic flex items-center justify-center gap-2 hover:bg-[hsl(var(--brand))]/5 transition-colors cursor-pointer bg-white/50"
+                                                                >
+                                                                    <Plus size={12} />
+                                                                    Assign shift
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })
+                                        )}
+                                    </>
+                                );
+                            })()}
+                        </div>
+
+                        {/* Floating Action Button (FAB) for adding shifts */}
+                        <div className="absolute bottom-6 right-6">
+                            <Button 
+                                size="icon"
+                                onClick={() => openAddShift(formatDate(rosterDates[selectedDayIndex]), "")}
+                                className="h-14 w-14 rounded-2xl bg-[hsl(var(--brand))] text-white shadow-xl shadow-[hsl(var(--brand))]/30 hover:scale-105 transition-transform"
+                            >
+                                <Plus size={28} strokeWidth={3} />
+                            </Button>
+                        </div>
+                    </div>
+                ) : (
+                    /* DESKTOP GRID VIEW */
+                    <div className={cn(
+                        "overflow-y-auto w-full max-h-[calc(100vh-320px)] scrollbar-thin",
+                        (rosterPeriod === "monthly" || rosterPeriod === "fortnightly") ? "overflow-x-hidden" : "overflow-x-auto"
+                    )}>
                     <table className={cn(
                         "w-full text-sm border-separate border-spacing-0",
                         (rosterPeriod === "monthly" || rosterPeriod === "fortnightly") ? "table-fixed" : ""
@@ -1179,7 +1504,8 @@ export default function ManagerRosterPage() {
                         </Reorder.Group>
                     </table>
                 </div>
-
+                )}
+                
                 {/* Pagination Controls */}
                 <div className="flex items-center justify-between px-6 py-4 bg-[hsl(var(--muted))]/20 border-t border-[hsl(var(--border))]">
                     <div className="text-xs text-[hsl(var(--muted-foreground))] font-medium">
@@ -1322,17 +1648,34 @@ export default function ManagerRosterPage() {
                         </div>
                         <div className="flex items-center gap-2">
                             <Button variant="outline" onClick={() => setAddShiftOpen(false)}>Cancel</Button>
-                            <Button
-                                onClick={handleAddShift}
-                                loading={createShiftMutation.isPending || updateShiftMutation.isPending}
-                                disabled={editingShiftId ? (!isDirty || (new Date() >= (new Date((shifts.find((s: any) => s.shift_id === editingShiftId) || {}).start_time)))) : false}
-                            >
-                                {editingShiftId ? 'Update Shift' : (
-                                    <>
-                                        <Plus size={16} className="mr-2" /> Create Shift
-                                    </>
-                                )}
-                            </Button>
+                            
+                            {!editingShiftId ? (
+                                <>
+                                    <Button
+                                        variant="outline"
+                                        className="border-[hsl(var(--brand))]/30 text-[hsl(var(--brand))] hover:bg-[hsl(var(--brand))]/10"
+                                        onClick={() => handleAddShift(false)}
+                                        loading={createShiftMutation.isPending}
+                                    >
+                                        Save Draft
+                                    </Button>
+                                    <Button
+                                        onClick={() => handleAddShift(true)}
+                                        loading={createShiftMutation.isPending}
+                                        className="bg-[hsl(var(--brand))] text-white hover:bg-[hsl(var(--brand-hover))]"
+                                    >
+                                        <Bell size={14} className="mr-2" /> Save & Notify
+                                    </Button>
+                                </>
+                            ) : (
+                                <Button
+                                    onClick={() => handleAddShift(false)}
+                                    loading={updateShiftMutation.isPending}
+                                    disabled={!isDirty || (new Date() >= (new Date((shifts.find((s: any) => s.shift_id === editingShiftId) || {}).start_time)))}
+                                >
+                                    Update Shift
+                                </Button>
+                            )}
                         </div>
                     </DialogFooter>
                 </DialogContent>
