@@ -20,7 +20,8 @@ import {
 } from "lucide-react";
 import { usePWA } from "@/hooks/use-pwa";
 import { IosInstallPrompt } from "@/components/pwa/ios-install-prompt";
-import { useState } from "react";
+import { PwaInstallBanner } from "@/components/pwa/pwa-install-banner";
+import { useState, useEffect } from "react";
 
 const features = [
   {
@@ -71,12 +72,22 @@ const item = {
 export default function LandingPage() {
   const { isInstallable, installPWA, isIOS } = usePWA();
   const [showIosPrompt, setShowIosPrompt] = useState(false);
+  const [showBanner, setShowBanner] = useState(false);
+
+  useEffect(() => {
+    // Show banner after a short delay if installable
+    if (isInstallable) {
+      const timer = setTimeout(() => setShowBanner(true), 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [isInstallable]);
 
   const handleInstallClick = async () => {
     const result = await installPWA();
     if (isIOS && result) {
       setShowIosPrompt(true);
     }
+    setShowBanner(false);
   };
   return (
     <div className="min-h-screen bg-[hsl(var(--background))]">
@@ -246,6 +257,7 @@ export default function LandingPage() {
         </div>
       </footer>
       <IosInstallPrompt isOpen={showIosPrompt} onClose={() => setShowIosPrompt(false)} />
+      <PwaInstallBanner isVisible={showBanner} onInstall={handleInstallClick} onClose={() => setShowBanner(false)} />
     </div>
   );
 }
