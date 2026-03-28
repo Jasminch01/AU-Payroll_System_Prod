@@ -5,6 +5,7 @@ import { requireRole } from '@/lib/auth';
 import { successResponse, errorResponse, validateRequiredFields } from '@/lib/api-helpers';
 import { logAudit } from '@/lib/audit';
 import bcrypt from 'bcryptjs';
+import { generateBusinessPrefix, formatEmpSuffix, getNumericSuffix } from '@/lib/utils/employee-id';
 
 /**
  * GET /api/employees
@@ -30,7 +31,8 @@ export async function GET(request: NextRequest) {
         // Explicitly list ALL columns we need to avoid PostgREST join ambiguity/conflicts
         const columns = [
             'employee_id', 'first_name', 'last_name', 'role_title', 'status', 'business_id', 'user_id',
-            'email', 'phone', 'dob', 'employment_type', 'pay_cycle', 'start_date', 'end_date', 'created_at'
+            'email', 'phone', 'dob', 'employment_type', 'pay_cycle', 'start_date', 'end_date', 'created_at',
+            'abn', 'tfn', 'bank_account_name', 'bank_bsb', 'bank_account_number'
         ];
         
         // Build the select string
@@ -49,7 +51,11 @@ export async function GET(request: NextRequest) {
             // Role filtering happens later in memory due to join complexity
         }
 
-        // Available for Swap - Conflict Exclusion
+        // Pre-compute IDs for in-memory filtering (avoids PostgREST 'not.in' issues with custom string IDs)
+        let busyEmployeeIds = new Set<string>();
+        let eligibleEmployeeIds: string[] | null = null;
+
+        // Available for Swap - Conflict Exclusion (collect IDs, filter in-memory later)
         if (excludeConflictsForShift) {
             const { data: targetShift } = await supabase
                 .from('Shift')
@@ -65,33 +71,37 @@ export async function GET(request: NextRequest) {
                     .lt('start_time', targetShift.end_time)
                     .gt('end_time', targetShift.start_time);
 
-                const busyIds = (overlappingShifts || [])
-                    .map(s => s.employee_id)
-                    .filter(id => id !== null);
-
-                if (busyIds.length > 0) {
-                    // Exclude busy employees
-                    query = query.not('employee_id', 'in', `(${busyIds.join(',')})`);
-                }
+                (overlappingShifts || []).forEach(s => {
+                    if (s.employee_id) busyEmployeeIds.add(s.employee_id);
+                });
             }
         }
 
-        // Filter for employees who HAVE upcoming shifts (for Swap)
+        // Filter for employees who HAVE upcoming/available shifts (for Swap)
         if (onlyWithShifts) {
-            const now = new Date().toISOString();
+            // Only count PUBLISHED upcoming shifts (ensures colleague actually has a visible swappable shift)
+            const todayStart = new Date();
+            todayStart.setHours(0, 0, 0, 0);
+            const now = todayStart.toISOString();
+
             const { data: employeesWithShifts } = await supabase
                 .from('Shift')
                 .select('employee_id')
                 .eq('business_id', authUser.business_id)
+                .eq('shift_status', 'published')
                 .gt('start_time', now);
-            
-            const eligibleIds = Array.from(new Set((employeesWithShifts || []).map(s => s.employee_id).filter(Boolean)));
-            
-            if (eligibleIds.length > 0) {
-                query = query.in('employee_id', eligibleIds);
-            } else {
-                // Return empty if no one has shifts
-                return successResponse([], 'No employees with upcoming shifts found');
+
+            // Filter out the requester themselves
+            const requesterEmpId = authUser.employee_id;
+            eligibleEmployeeIds = Array.from(new Set(
+                (employeesWithShifts || [])
+                    .map(s => s.employee_id)
+                    .filter((id): id is string => !!id && id !== requesterEmpId)
+            ));
+
+            if (eligibleEmployeeIds.length === 0) {
+                // Return empty if no one else has published shifts
+                return successResponse([], 'No colleagues with available shifts found');
             }
         }
 
@@ -105,8 +115,20 @@ export async function GET(request: NextRequest) {
         const employeesRaw: any[] = employees || [];
         let filtered = [...employeesRaw];
 
-        // In-memory role filtering if needed (since join is failing)
-        if (roleFilter && filtered.length > 0) {
+        // Apply in-memory filters (safe for custom string IDs like BEA0002)
+        if (busyEmployeeIds.size > 0) {
+            filtered = filtered.filter(e => !busyEmployeeIds.has(e.employee_id));
+        }
+        if (eligibleEmployeeIds !== null) {
+            const eligibleSet = new Set(eligibleEmployeeIds);
+            filtered = filtered.filter(e => eligibleSet.has(e.employee_id));
+            if (filtered.length === 0) {
+                return successResponse([], 'No colleagues with available shifts found');
+            }
+        }
+
+        // Fetch user roles for all found employees
+        if (filtered.length > 0) {
             const { data: userRoles } = await supabase
                 .from('User')
                 .select('user_id, role')
@@ -114,10 +136,15 @@ export async function GET(request: NextRequest) {
             
             const roleMap = new Map((userRoles || []).map(u => [u.user_id, u.role]));
             
-            filtered = filtered.filter((emp: any) => {
-                const actualRole = roleMap.get(emp.user_id) || 'employee';
-                return actualRole === roleFilter;
-            });
+            filtered = filtered.map((emp: any) => ({
+                ...emp,
+                role: roleMap.get(emp.user_id) || 'employee'
+            }));
+
+            // If roleFilter was provided, apply it now
+            if (roleFilter) {
+                filtered = filtered.filter((emp: any) => emp.role === roleFilter);
+            }
         }
 
         if (excludeSelf) {
@@ -149,14 +176,8 @@ export async function POST(request: NextRequest) {
             'password',
             'first_name',
             'last_name',
-            'dob',
-            'emergency_contact_name',
-            'emergency_contact_phone',
-            'role_title',
-            'kiosk_pin',
             'start_date',
             'employee_id',
-            'weekday_rate',
         ]);
         if (validationError) {
             return errorResponse(validationError, 400);
@@ -169,20 +190,20 @@ export async function POST(request: NextRequest) {
             last_name,
             phone,
             dob,
-            bank_details,
             bank_account_name,
             bank_bsb,
             bank_account_number,
-            "ABN/TFN/ACN": abn_tfn_acn,
+            abn,
+            tfn,
             emergency_contact_name,
             emergency_contact_phone,
             employment_type,
             role_title,
             pay_cycle,
-            kiosk_pin,
             start_date,
             end_date,
             employee_id,
+            invite_as = 'employee',
             // Rate fields
             weekday_rate,
             saturday_multiplier = 1.25,
@@ -193,6 +214,35 @@ export async function POST(request: NextRequest) {
             evening_end_time,
             opening_balances, // Optional: { [leave_type_id]: hours }
         } = body;
+
+        const supabase = await createClient();
+        let finalEmployeeId = employee_id;
+
+        // Ensure employee_id follows the business-prefixed format (e.g. BVL0001)
+        // If it starts with "EMP-" or doesn't match the new format, we regenerate it.
+        const isOldFormat = employee_id.startsWith('EMP-') || !/^[A-Z]{3}\d{4}$/.test(employee_id);
+        
+        if (isOldFormat) {
+            const { data: business } = await supabase
+                .from('Business')
+                .select('business_name')
+                .eq('business_id', authUser.business_id)
+                .single();
+
+            const businessPrefix = business?.business_name ? generateBusinessPrefix(business.business_name) : 'EMP';
+            
+            const { data: allEmps } = await supabase
+                .from('Employee')
+                .select('employee_id')
+                .eq('business_id', authUser.business_id);
+
+            let maxSerial = 0;
+            for (const e of allEmps || []) {
+                const serial = getNumericSuffix(e.employee_id);
+                if (serial > maxSerial) maxSerial = serial;
+            }
+            finalEmployeeId = `${businessPrefix}${formatEmpSuffix(maxSerial + 1)}`;
+        }
 
         if (password.length < 6) {
             return errorResponse('Password must be at least 6 characters', 400);
@@ -216,31 +266,25 @@ export async function POST(request: NextRequest) {
             return errorResponse('Failed to create user account', 500);
         }
 
-        const supabase = await createClient();
-
-        // Step 2: Create Employee record
-        const hashedPin = await bcrypt.hash(kiosk_pin, 10);
-
         const { data: employeeData, error: employeeError } = await supabase
             .from('Employee')
             .insert({
-                employee_id,
+                employee_id: finalEmployeeId,
                 first_name,
                 last_name,
                 phone: phone || null,
                 email,
-                dob,
-                bank_details: bank_details || "",
+                dob: dob || null,
                 bank_account_name: bank_account_name || null,
                 bank_bsb: bank_bsb || null,
                 bank_account_number: bank_account_number || null,
-                "ABN/TFN/ACN": abn_tfn_acn || null,
+                abn: abn || null,
+                tfn: tfn || null,
                 emergency_contact_name,
                 emergency_contact_phone,
                 employment_type: employment_type || null,
                 role_title,
                 pay_cycle: pay_cycle || null,
-                kiosk_pin: hashedPin,
                 start_date,
                 end_date: end_date || null,
                 business_id: authUser.business_id,
@@ -256,27 +300,44 @@ export async function POST(request: NextRequest) {
             return errorResponse(`Failed to create employee: ${employeeError.message}`, 400);
         }
 
-        // Step 3: Create initial EmployeeRateHistory
-        const { data: rateData, error: rateError } = await supabase
-            .from('EmployeeRateHistory')
-            .insert({
-                employee_id,
-                business_id: authUser.business_id,
-                weekday_rate,
-                saturday_multiplier,
-                sunday_multiplier,
-                public_holiday_multiplier,
-                evening_rate: evening_rate || null,
-                evening_start_time: evening_start_time || null,
-                evening_end_time: evening_end_time || null,
-                effective_from: start_date,
-                created_bv: authUser.user_id,
-            })
-            .select()
-            .single();
+        // Step 3: Create initial EmployeeRateHistory (if rate provided)
+        let rateData: any = null;
+        if (weekday_rate !== undefined && weekday_rate !== null && String(weekday_rate).trim() !== '') {
+            const { data, error: rateError } = await supabase
+                .from('EmployeeRateHistory')
+                .insert({
+                    employee_id: employeeData.employee_id,
+                    business_id: authUser.business_id,
+                    weekday_rate: parseFloat(String(weekday_rate)),
+                    saturday_multiplier,
+                    sunday_multiplier,
+                    public_holiday_multiplier,
+                    evening_rate: evening_rate || null,
+                    evening_start_time: evening_start_time || null,
+                    evening_end_time: evening_end_time || null,
+                    effective_from: start_date,
+                    created_bv: authUser.user_id,
+                })
+                .select()
+                .single();
 
-        if (rateError) {
-            console.error('Rate history creation failed:', rateError.message);
+            if (rateError) {
+                console.error('Rate history creation failed:', rateError.message);
+            } else {
+                rateData = data;
+            }
+        }
+
+        // Step 3.5: If manager, create User record
+        if (invite_as === 'manager') {
+            const { error: userError } = await supabase.from('User').insert({
+                user_id: authData.user.id,
+                business_id: authUser.business_id,
+                role: 'manager',
+                first_name,
+                last_name,
+            });
+            if (userError) console.error('Manager User record creation failed:', userError.message);
         }
 
         // Step 4: Initialize Leave Balances
@@ -288,7 +349,7 @@ export async function POST(request: NextRequest) {
         if (leaveTypes && leaveTypes.length > 0) {
             const currentYear = new Date().getFullYear();
             const balanceData = leaveTypes.map(lt => ({
-                employee_id: employee_id,
+                employee_id: finalEmployeeId,
                 leave_type_id: lt.leave_type_id,
                 business_id: authUser.business_id,
                 accrued_hours: opening_balances?.[lt.leave_type_id] || 0,

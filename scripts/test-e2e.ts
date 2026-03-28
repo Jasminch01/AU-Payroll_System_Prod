@@ -81,7 +81,6 @@ async function runTests() {
         emergency_contact_phone: '0400000000',
         phone: '0400111222',
         role_title: 'Server',
-        kiosk_pin: '1234',
         start_date: new Date().toISOString().split('T')[0],
         employee_id: `EMP${testSuffix}`,
         weekday_rate: 25.0

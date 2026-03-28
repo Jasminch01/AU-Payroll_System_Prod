@@ -133,28 +133,41 @@ function processDay(
     // Sort logs by timestamp just in case
     const sortedLogs = [...logs].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
-    const pairs: { in: Date; out: Date }[] = [];
+    const segments: { in: Date; out: Date }[] = [];
+    const breaks: { start: Date; end: Date }[] = [];
+    
     let currentIn: Date | null = null;
+    let currentBreakStart: Date | null = null;
 
     for (const log of sortedLogs) {
         if (log.event_type === 'CLOCK_IN') {
             currentIn = new Date(log.timestamp);
         } else if (log.event_type === 'CLOCK_OUT' && currentIn) {
-            pairs.push({ in: currentIn, out: new Date(log.timestamp) });
-            currentIn = null; // Reset for next pair
+            segments.push({ in: currentIn, out: new Date(log.timestamp) });
+            currentIn = null; // Reset
+        } else if (log.event_type === 'BREAK_START') {
+            currentBreakStart = new Date(log.timestamp);
+        } else if (log.event_type === 'BREAK_END' && currentBreakStart) {
+            breaks.push({ start: currentBreakStart, end: new Date(log.timestamp) });
+            currentBreakStart = null;
         }
     }
 
-    // Edge Case: If still "In" at end of data, skip or could flag
-    // For generation, we only count completed pairs.
-
-    let actualHours = 0;
-    for (const pair of pairs) {
-        actualHours += calculateHours(pair.in, pair.out);
+    // Calculate total hours
+    let workTimeHours = 0;
+    for (const seg of segments) {
+        workTimeHours += calculateHours(seg.in, seg.out);
     }
 
-    const firstIn = pairs.length > 0 ? pairs[0].in : null;
-    const lastOut = pairs.length > 0 ? pairs[pairs.length - 1].out : null;
+    let breakTimeHours = 0;
+    for (const brk of breaks) {
+        breakTimeHours += calculateHours(brk.start, brk.end);
+    }
+
+    let actualHours = Math.max(0, workTimeHours - breakTimeHours);
+
+    const firstIn = segments.length > 0 ? segments[0].in : null;
+    const lastOut = segments.length > 0 ? segments[segments.length - 1].out : null;
 
     let rosterStart: Date | null = shift ? new Date(shift.start_time) : null;
     let rosterEnd: Date | null = shift ? new Date(shift.end_time) : null;
@@ -162,8 +175,8 @@ function processDay(
     let flags: string[] = [];
     let status: TimesheetStatus = 'pending';
 
-    if (pairs.length > 1) {
-        flags.push(`${pairs.length} Segments Detected`);
+    if (segments.length > 1) {
+        flags.push(`${segments.length} Segments Detected`);
     }
 
     // --- 2. Conflict Resolution & Grace Periods (Mapped to first/last logs) ---
@@ -241,13 +254,17 @@ function processDay(
 
     if (!finalStart || !finalEnd) return null;
 
-    // Automatic Break Deduction
-    if (actualHours > 10) {
-        actualHours -= 1.0; // 60 mins
-        flags.push('Auto-deduct 60m break');
-    } else if (actualHours > 5) {
-        actualHours -= 0.5; // 30 mins
-        flags.push('Auto-deduct 30m break');
+    if (breaks.length > 0) {
+        flags.push(`${breaks.length} Breaks recorded (${breakTimeHours.toFixed(2)}h)`);
+    } else {
+        // Automatic Break Deduction (only if no manual breaks)
+        if (actualHours > 10) {
+            actualHours -= 1.0; // 60 mins
+            flags.push('Auto-deduct 60m break');
+        } else if (actualHours > 5) {
+            actualHours -= 0.5; // 30 mins
+            flags.push('Auto-deduct 30m break');
+        }
     }
 
     // --- 4. Rate Type Determination ---
@@ -282,9 +299,9 @@ function processDay(
 
         let totalEveningHours = 0;
 
-        for (const pair of pairs) {
-            const startHour = pair.in.getHours() + pair.in.getMinutes() / 60;
-            const endHour = pair.out.getHours() + pair.out.getMinutes() / 60;
+        for (const seg of segments) {
+            const startHour = seg.in.getHours() + seg.in.getMinutes() / 60;
+            const endHour = seg.out.getHours() + seg.out.getMinutes() / 60;
 
             // Calculate overlap with evening window for THIS segment
             const overlapStart = Math.max(startHour, eveningStartHour);

@@ -32,6 +32,13 @@ export async function GET(request: NextRequest) {
             .single();
 
         if (employeeRecord) {
+            // Fetch role from User table
+            const { data: userData } = await supabase
+                .from('User')
+                .select('role')
+                .eq('user_id', user.id)
+                .maybeSingle();
+
             // Sort to get current rate
             let current_rate = null;
             if (employeeRecord.EmployeeRateHistory && employeeRecord.EmployeeRateHistory.length > 0) {
@@ -40,9 +47,12 @@ export async function GET(request: NextRequest) {
                 );
                 current_rate = sorted[0];
             }
-            // Remove sensitive kiosk_pin from frontend data
-            const { kiosk_pin, ...safeEmployeeRecord } = employeeRecord;
-            return successResponse({ ...safeEmployeeRecord, current_rate });
+            const { ...safeEmployeeRecord } = employeeRecord;
+            return successResponse({ 
+                ...safeEmployeeRecord, 
+                current_rate,
+                role: userData?.role || 'employee'
+            });
         }
 
         return errorResponse('Profile not found', 404);
@@ -98,14 +108,13 @@ export async function PUT(request: NextRequest) {
                     last_name: body.last_name,
                     phone: body.phone,
                     dob: body.dob,
-                    bank_details: body.bank_details,
                     bank_account_name: body.bank_account_name,
                     bank_bsb: body.bank_bsb,
                     bank_account_number: body.bank_account_number,
-                    "ABN/TFN/ACN": body["ABN/TFN/ACN"],
+                    abn: body.abn,
+                    tfn: body.tfn,
                     emergency_contact_name: body.emergency_contact_name,
                     emergency_contact_phone: body.emergency_contact_phone,
-                    kiosk_pin: body.kiosk_pin,
                 };
             } else {
                 return errorResponse('Profile not found', 404);
@@ -165,10 +174,6 @@ export async function PUT(request: NextRequest) {
             return successResponse(null, 'Profile updated successfully');
         }
 
-        // Must be employee if we reached here without returning 404 early
-        if (allowedUpdates.kiosk_pin) {
-            allowedUpdates.kiosk_pin = await bcrypt.hash(allowedUpdates.kiosk_pin, 10);
-        }
 
         const { error: updateError } = await supabase
             .from('Employee')

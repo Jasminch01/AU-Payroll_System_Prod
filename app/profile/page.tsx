@@ -116,7 +116,7 @@ export default function ProfilePage() {
             actions={null}
         >
             <div className="space-y-6 max-w-5xl mx-auto">
-                <Card className="overflow-hidden border-none shadow-md bg-gradient-to-br from-[hsl(var(--brand))]/10 via-transparent to-transparent">
+                <Card className="overflow-hidden border-none shadow-md bg-linear-to-br from-[hsl(var(--brand))]/10 via-transparent to-transparent">
                     <CardContent className="p-10 flex flex-col md:flex-row items-center gap-10">
                         <div className="relative">
                             <div className="flex h-32 w-32 items-center justify-center rounded-full bg-[hsl(var(--brand-light))] text-[hsl(var(--brand))] text-4xl font-bold border-8 border-[hsl(var(--background))] shadow-2xl transition-transform hover:scale-105 duration-300">
@@ -128,7 +128,7 @@ export default function ProfilePage() {
                             <div>
                                 <h1 className="text-3xl font-bold tracking-tight">{data.first_name} {data.last_name}</h1>
                                 <p className="text-[hsl(var(--muted-foreground))] font-medium mt-1 flex items-center justify-center md:justify-start gap-2">
-                                    <Shield size={16} /> {data.role_title || role}
+                                    <Shield size={16} /> {data.role_title} ({data.role || role})
                                 </p>
                             </div>
                             <div className="flex flex-wrap justify-center md:justify-start gap-4 pt-2">
@@ -152,8 +152,8 @@ export default function ProfilePage() {
                                         bank_account_name: data.bank_account_name,
                                         bank_bsb: data.bank_bsb,
                                         bank_account_number: data.bank_account_number,
-                                        "ABN/TFN/ACN": data["ABN/TFN/ACN"],
-                                        kiosk_pin: data.kiosk_pin,
+                                        abn: data.abn,
+                                        tfn: data.tfn,
                                     };
                                     if (role === 'owner' && data.Business) {
                                         payload.business = {
@@ -196,19 +196,8 @@ export default function ProfilePage() {
                                 {role !== 'owner' && (
                                     <>
                                         <div className="grid grid-cols-2 gap-4">
-                                            <Input label="Phone Number" value={data.phone || ""} onChange={(e) => updateField("phone", e.target.value)} />
-                                            <Input label="Date of Birth" type="date" value={data.dob || ""} onChange={(e) => updateField("dob", e.target.value)} />
-                                        </div>
-                                        <div className="pt-4 border-t border-[hsl(var(--border))]">
-                                            <h4 className="text-sm font-semibold mb-3">Bank Details</h4>
-                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                                <Input label="Account Name" value={data.bank_account_name || ""} onChange={(e) => updateField("bank_account_name", e.target.value)} />
-                                                <Input label="BSB Number" value={data.bank_bsb || ""} onChange={(e) => updateField("bank_bsb", e.target.value)} />
-                                                <Input label="Account Number" value={data.bank_account_number || ""} onChange={(e) => updateField("bank_account_number", e.target.value)} />
-                                            </div>
-                                            <div className="mt-4">
-                                                <Input label="ABN / TFN / ACN" value={data["ABN/TFN/ACN"] || ""} onChange={(e) => updateField("ABN/TFN/ACN", e.target.value)} />
-                                            </div>
+                                            <Input label="Phone Number" showAsterisk value={data.phone || ""} onChange={(e) => updateField("phone", e.target.value)} />
+                                            <Input label="Date of Birth" showAsterisk type="date" value={data.dob || ""} onChange={(e) => updateField("dob", e.target.value)} />
                                         </div>
                                     </>
                                 )}
@@ -227,26 +216,6 @@ export default function ProfilePage() {
                     </TabsContent>
 
                     <TabsContent value="security" className="space-y-6 outline-none">
-                        {role !== 'owner' && (
-                            <Card>
-                                <CardHeader>
-                                    <CardTitle className="text-base flex items-center gap-2"><Lock size={18} /> Kiosk Access</CardTitle>
-                                </CardHeader>
-                                <CardContent className="space-y-4">
-                                    <p className="text-sm text-[hsl(var(--muted-foreground))]">
-                                        To protect privacy, existing PINs are hidden. Entering a new value will overwrite the current PIN.
-                                    </p>
-                                    <Input
-                                        label="New Kiosk PIN"
-                                        type="password"
-                                        maxLength={4}
-                                        value={data.kiosk_pin || ""}
-                                        onChange={(e) => updateField("kiosk_pin", e.target.value.replace(/[^0-9]/g, ''))}
-                                        placeholder="Enter 4 digits to update"
-                                    />
-                                </CardContent>
-                            </Card>
-                        )}
 
                         <Card>
                             <CardHeader>
@@ -288,13 +257,48 @@ export default function ProfilePage() {
                                 <CardContent>
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                         <Input label="Employee ID" value={data.employee_id || ""} disabled />
-                                        <Input label="Role" value={data.role_title || ""} disabled />
+                                        <Input label="Job Title" value={data.role_title || ""} disabled />
+                                        <Input label="Access Level" value={data.role || role || ""} className="capitalize" disabled />
                                         <Input label="Employment Type" value={data.employment_type?.replace("_", " ") || ""} className="capitalize" disabled />
                                         <Input label="Current Base Rate" value={data.current_rate?.weekday_rate ? `$${data.current_rate.weekday_rate.toFixed(2)}/hr` : "Not set"} disabled />
                                         <Input label="Status" value={data.status || ""} className="capitalize" disabled />
                                         {data.start_date && <Input label="Start Date" value={new Date(data.start_date).toLocaleDateString()} disabled />}
                                     </div>
-                                    <p className="text-xs text-[hsl(var(--muted-foreground))] mt-4">Contact your manager to update employment details.</p>
+                                    
+                                    <div className="pt-6 mt-6 border-t border-[hsl(var(--border))]">
+                                        <h4 className="text-sm font-semibold mb-4 flex items-center gap-2">
+                                            <Building2 size={16} className="text-[hsl(var(--brand))]" />
+                                            Bank & Identity Details
+                                        </h4>
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                            <Input label="Account Name" showAsterisk value={data.bank_account_name || ""} onChange={(e) => updateField("bank_account_name", e.target.value)} />
+                                            <Input label="BSB Number" showAsterisk value={data.bank_bsb || ""} onChange={(e) => updateField("bank_bsb", e.target.value)} />
+                                            <Input label="Account Number" showAsterisk value={data.bank_account_number || ""} onChange={(e) => updateField("bank_account_number", e.target.value)} />
+                                        </div>
+                                        <div className="mt-4">
+                                            {data.employment_type === 'contract' ? (
+                                                <Input 
+                                                    label="ABN" 
+                                                    showAsterisk 
+                                                    value={data.abn || ""} 
+                                                    onChange={(e) => updateField("abn", e.target.value)} 
+                                                    placeholder="Format: 00 000 000 000"
+                                                />
+                                            ) : (
+                                                <Input 
+                                                    label="TFN" 
+                                                    showAsterisk 
+                                                    value={data.tfn || ""} 
+                                                    onChange={(e) => updateField("tfn", e.target.value)} 
+                                                    placeholder="Format: 000 000 000"
+                                                />
+                                            )}
+                                        </div>
+                                    </div>
+                                    
+                                    <p className="text-[10px] text-[hsl(var(--muted-foreground))] mt-6 bg-[hsl(var(--muted))]/30 p-3 rounded-lg border border-[hsl(var(--border))]/50">
+                                        Note: Job and roster details are managed by your employer. Bank and identity details can be updated directly.
+                                    </p>
                                 </CardContent>
                             </Card>
                         </TabsContent>

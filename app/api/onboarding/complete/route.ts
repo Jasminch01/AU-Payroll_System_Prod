@@ -39,14 +39,13 @@ export async function POST(request: NextRequest) {
             password,
             phone,
             dob,
-            bank_details,
             bank_account_name,
             bank_bsb,
             bank_account_number,
-            "ABN/TFN/ACN": abnTfnAcn,
+            abn,
+            tfn,
             emergency_contact_name,
             emergency_contact_phone,
-            kiosk_pin
         } = body;
 
         // If password is provided, validate it
@@ -90,18 +89,14 @@ export async function POST(request: NextRequest) {
         };
         if (phone) updatePayload.phone = phone;
         if (dob) updatePayload.dob = dob;
-        if (bank_details) updatePayload.bank_details = bank_details;
         if (bank_account_name) updatePayload.bank_account_name = bank_account_name;
         if (bank_bsb) updatePayload.bank_bsb = bank_bsb;
         if (bank_account_number) updatePayload.bank_account_number = bank_account_number;
-        if (abnTfnAcn) updatePayload["ABN/TFN/ACN"] = abnTfnAcn;
+        if (abn) updatePayload.abn = abn;
+        if (tfn) updatePayload.tfn = tfn;
         if (emergency_contact_name) updatePayload.emergency_contact_name = emergency_contact_name;
         if (emergency_contact_phone) updatePayload.emergency_contact_phone = emergency_contact_phone;
 
-        // Hash Kiosk PIN if provided
-        if (kiosk_pin) {
-            updatePayload.kiosk_pin = await bcrypt.hash(kiosk_pin, 10);
-        }
 
         const { data: updatedEmployee, error: updateError } = await supabase
             .from('Employee')

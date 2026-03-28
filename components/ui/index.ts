@@ -3,6 +3,7 @@
 
 export { Button, buttonVariants } from './button';
 export { Input } from './input';
+export { PasswordInput } from './password-input';
 export { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter, MetricCard } from './card';
 export { Badge, StatusBadge, badgeVariants } from './badge';
 export {

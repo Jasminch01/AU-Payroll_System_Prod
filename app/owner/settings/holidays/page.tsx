@@ -21,6 +21,15 @@ export default function PublicHolidaysPage() {
     const [newDate, setNewDate] = useState("");
     const [newState, setNewState] = useState("");
 
+    // Reset form when dialog closes
+    React.useEffect(() => {
+        if (!addOpen) {
+            setNewName("");
+            setNewDate("");
+            setNewState("");
+        }
+    }, [addOpen]);
+
     const { data: holidays = [], isLoading } = useQuery({
         queryKey: ["public-holidays"],
         queryFn: () => apiGet<any[]>("/holidays"),

@@ -30,6 +30,13 @@ export default function EmployeeLeavePage() {
     const [reason, setReason] = useState("");
     const [cancelId, setCancelId] = useState<string | null>(null);
 
+    // Reset form when dialog closes
+    React.useEffect(() => {
+        if (!requestOpen) {
+            resetForm();
+        }
+    }, [requestOpen]);
+
     const { data: leaveRequests = [], isLoading } = useQuery({
         queryKey: ["my-leave"],
         queryFn: () => apiGet<any[]>("/leave"),

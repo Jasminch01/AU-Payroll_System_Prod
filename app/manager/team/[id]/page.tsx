@@ -7,6 +7,7 @@ import { DashboardLayout } from "@/components/layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 import { StatusBadge } from "@/components/ui/badge";
 import { apiGet, apiPut, apiPost, apiDelete, apiPatch } from "@/lib/api-client";
 import { toast } from "sonner";
@@ -35,6 +36,7 @@ export default function ManagerEmployeeDetailPage() {
 
     const [editing, setEditing] = useState(false);
     const [formData, setFormData] = useState<any>(null);
+    const [deleteModalOpen, setDeleteModalOpen] = useState(false);
 
     // Rate update state
     const [rateOpen, setRateOpen] = useState(false);
@@ -47,6 +49,21 @@ export default function ManagerEmployeeDetailPage() {
     const [eveningStartTime, setEveningStartTime] = useState("");
     const [eveningEndTime, setEveningEndTime] = useState("");
     const [editingRateId, setEditingRateId] = useState<string | null>(null);
+    
+    // Reset rate form when dialog closes
+    useEffect(() => {
+        if (!rateOpen) {
+            setEditingRateId(null);
+            setNewRate("");
+            setEffectiveFrom("");
+            setSaturdayMultiplier("1.25");
+            setSundayMultiplier("1.50");
+            setPublicHolidayMultiplier("2.50");
+            setEveningRate("");
+            setEveningStartTime("");
+            setEveningEndTime("");
+        }
+    }, [rateOpen]);
 
     const { data: employee, isLoading: isLoadingEmployee } = useQuery({
         queryKey: ["employee", employeeId],
@@ -63,7 +80,19 @@ export default function ManagerEmployeeDetailPage() {
     // Initialize form data when employee loads
     useEffect(() => {
         if (employee && !formData) {
-            setFormData({ ...employee });
+            // Normalize the employee data to handle both old and new field names
+            const normalizedData = {
+                ...employee,
+                // Handle date_of_birth vs dob
+                date_of_birth: employee.date_of_birth || employee.dob || "",
+                // Handle bank details
+                bank_account_name: employee.bank_account_name || "",
+                bank_bsb: employee.bank_bsb || "",
+                bank_account_number: employee.bank_account_number || "",
+                abn: employee.abn || "",
+                tfn: employee.tfn || "",
+            };
+            setFormData(normalizedData);
         }
     }, [employee, formData]);
 
@@ -120,26 +149,48 @@ export default function ManagerEmployeeDetailPage() {
     });
 
     const handleSave = () => {
-        if (!formData) return;
-        updateMutation.mutate({
-            first_name: formData.first_name,
-            last_name: formData.last_name,
-            email: formData.email,
-            phone: formData.phone,
-            dob: formData.dob,
-            bank_details: formData.bank_details,
-            emergency_contact_name: formData.emergency_contact_name,
-            emergency_contact_phone: formData.emergency_contact_phone,
-            role_title: formData.role_title,
-            employment_type: formData.employment_type,
-            pay_cycle: formData.pay_cycle,
-            status: formData.status,
-            kiosk_pin: formData.kiosk_pin,
+        if (!formData || !employee) return;
+
+        // Only send fields that have changed
+        const dataToSend: any = {};
+        const fieldsToCompare = [
+            'first_name', 'last_name', 'email', 'phone', 'date_of_birth',
+            'emergency_contact_name', 'emergency_contact_phone',
+            'bank_account_name', 'bank_bsb', 'bank_account_number',
+            'abn', 'tfn', 'role_title', 'role', 'employment_type',
+            'pay_cycle', 'status'
+        ];
+
+        fieldsToCompare.forEach(field => {
+            const newValue = formData[field];
+            // Normalize original value for comparison (e.g., date_of_birth vs dob)
+            let originalValue = employee[field];
+            if (field === 'date_of_birth' && originalValue === undefined) {
+                originalValue = employee.dob;
+            }
+
+            // Treat null, undefined, and empty string as equivalent for comparison
+            const normalizedNew = (newValue === null || newValue === undefined || newValue === "") ? null : newValue;
+            const normalizedOld = (originalValue === null || originalValue === undefined || originalValue === "") ? null : originalValue;
+
+            if (normalizedNew !== normalizedOld) {
+                dataToSend[field] = newValue;
+            }
         });
+
+        if (Object.keys(dataToSend).length === 0) {
+            setEditing(false);
+            return;
+        }
+
+        updateMutation.mutate(dataToSend);
     };
 
     const updateField = (field: string, value: any) => {
         setFormData((prev: any) => ({ ...prev, [field]: value }));
+        if (!editing) {
+            setEditing(true);
+        }
     };
 
     if (isLoadingEmployee) {
@@ -200,7 +251,10 @@ export default function ManagerEmployeeDetailPage() {
                                     <h1 className="text-lg font-bold text-[hsl(var(--foreground))] leading-tight">
                                         {employee.first_name} {employee.last_name}
                                     </h1>
-                                    <p className="text-xs text-[hsl(var(--muted-foreground))] mt-1">{employee.role_title || 'Employee'}</p>
+                                    <p className="text-xs text-[hsl(var(--muted-foreground))] mt-1">
+                                        {employee.role_title || 'Employee'}
+                                        {employee.role && <span className="opacity-70 ml-1">({employee.role})</span>}
+                                    </p>
                                 </div>
                             </div>
                         </div>
@@ -235,44 +289,36 @@ export default function ManagerEmployeeDetailPage() {
                     <div className="flex-1 flex flex-col overflow-hidden bg-[hsl(var(--background))] relative">
                         {/* Simple Actions Bar */}
                         <div className="absolute top-6 right-8 z-50 flex items-center gap-3">
-                            {(activeTab === 'overview' || activeTab === 'employment') && (
-                                <>
-                                    {!editing ? (
-                                        <Button 
-                                            onClick={() => setEditing(true)} 
-                                            className="rounded-lg bg-[hsl(var(--brand))] text-white h-10 px-6 font-semibold text-sm flex items-center gap-2"
-                                        >
-                                            <Edit3 size={16} /> 
-                                            <span>Edit Details</span>
-                                        </Button>
-                                    ) : (
-                                        <div className="flex gap-2">
-                                            <Button 
-                                                variant="outline" 
-                                                className="rounded-lg px-4 h-9 text-xs" 
-                                                onClick={() => { setEditing(false); setFormData({ ...employee }); }}
-                                            >
-                                                Cancel
-                                            </Button>
-                                            <Button 
-                                                className="rounded-lg px-4 h-9 font-bold bg-[hsl(var(--brand))] text-white text-xs" 
-                                                onClick={handleSave} 
-                                                loading={updateMutation.isPending}
-                                            >
-                                                Save
-                                            </Button>
-                                        </div>
-                                    )}
-                                </>
+                            {(activeTab === 'overview' || activeTab === 'employment') && editing && (
+                                <div className="flex gap-2">
+                                    <Button 
+                                        variant="outline" 
+                                        className="rounded-lg px-4 h-9 text-xs" 
+                                        onClick={() => { 
+                                            setEditing(false); 
+                                            const normalizedData = {
+                                                ...employee,
+                                                date_of_birth: employee.date_of_birth || employee.dob || "",
+                                                bank_account_name: employee.bank_account_name || "",
+                                                bank_bsb: employee.bank_bsb || "",
+                                                bank_account_number: employee.bank_account_number || "",
+                                                abn: employee.abn || "",
+                                                tfn: employee.tfn || "",
+                                            };
+                                            setFormData(normalizedData); 
+                                        }}
+                                    >
+                                        Cancel
+                                    </Button>
+                                    <Button 
+                                        className="rounded-lg px-4 h-9 font-bold bg-[hsl(var(--brand))] text-white text-xs" 
+                                        onClick={handleSave} 
+                                        loading={updateMutation.isPending}
+                                    >
+                                        Save
+                                    </Button>
+                                </div>
                             )}
-                            <Button 
-                                variant="ghost" 
-                                size="icon" 
-                                onClick={() => router.push("/manager/team")} 
-                                className="rounded-lg h-10 w-10 hover:bg-[hsl(var(--muted))]/50 text-[hsl(var(--muted-foreground))] border border-[hsl(var(--border))]"
-                            >
-                                <X size={20} />
-                            </Button>
                         </div>
 
                         {/* Scrollable Tab Content */}
@@ -296,23 +342,19 @@ export default function ManagerEmployeeDetailPage() {
                                                 </div>
                                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                                                     <Input label="Employee ID" value={data.employee_id || ""} disabled={true} />
-                                                    <Input label="First Name" value={data.first_name || ""} onChange={(e) => updateField("first_name", e.target.value)} disabled={!editing} />
-                                                    <Input label="Last Name" value={data.last_name || ""} onChange={(e) => updateField("last_name", e.target.value)} disabled={!editing} />
-                                                    <Input label="Email Address" type="email" value={data.email || ""} onChange={(e) => updateField("email", e.target.value)} disabled={!editing} />
-                                                    <Input label="Phone Number" value={data.phone || ""} onChange={(e) => updateField("phone", e.target.value)} disabled={!editing} />
-                                                    <Input label="Date of Birth" type="date" value={data.date_of_birth || ""} onChange={(e) => updateField("date_of_birth", e.target.value)} disabled={!editing} />
-                                                </div>
-                                            </section>
-
-                                            <section className="space-y-6 pt-4">
-                                                <div>
-                                                    <h3 className="text-lg font-bold text-[hsl(var(--foreground))]">Bank Details</h3>
-                                                    <p className="text-sm text-[hsl(var(--muted-foreground))]">Required for payroll processing.</p>
-                                                </div>
-                                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                                                    <Input label="Account Name" value={data.bank_account_name || ""} onChange={(e) => updateField("bank_account_name", e.target.value)} disabled={!editing} />
-                                                    <Input label="BSB Number" value={data.bank_bsb || ""} onChange={(e) => updateField("bank_bsb", e.target.value)} disabled={!editing} />
-                                                    <Input label="Account Number" value={data.bank_account_number || ""} onChange={(e) => updateField("bank_account_number", e.target.value)} disabled={!editing} />
+                                                    <Input label="First Name" showAsterisk value={data.first_name || ""} onChange={(e) => updateField("first_name", e.target.value)} />
+                                                    <Input label="Last Name" showAsterisk value={data.last_name || ""} onChange={(e) => updateField("last_name", e.target.value)} />
+                                                    <Input label="Email Address" showAsterisk type="email" value={data.email || ""} onChange={(e) => updateField("email", e.target.value)} />
+                                                    <Input label="Phone Number" value={data.phone || ""} onChange={(e) => updateField("phone", e.target.value)} />
+                                                    <Input 
+                                                        label="Date of Birth" 
+                                                        type={data.date_of_birth ? "date" : "text"} 
+                                                        placeholder="Not Set"
+                                                        value={data.date_of_birth || ""} 
+                                                        onFocus={(e) => e.target.type = 'date'}
+                                                        onBlur={(e) => { if (!e.target.value) e.target.type = 'text' }}
+                                                        onChange={(e) => updateField("date_of_birth", e.target.value)} 
+                                                    />
                                                 </div>
                                             </section>
 
@@ -322,37 +364,10 @@ export default function ManagerEmployeeDetailPage() {
                                                     <p className="text-sm text-[hsl(var(--muted-foreground))]">Contacts to reach in case of emergency.</p>
                                                 </div>
                                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                                    <Input label="Primary Contact Name" value={data.emergency_contact_name || ""} onChange={(e) => updateField("emergency_contact_name", e.target.value)} disabled={!editing} />
-                                                    <Input label="Primary Contact Phone" value={data.emergency_contact_phone || ""} onChange={(e) => updateField("emergency_contact_phone", e.target.value)} disabled={!editing} />
+                                                    <Input label="Primary Contact Name" value={data.emergency_contact_name || ""} onChange={(e) => updateField("emergency_contact_name", e.target.value)} />
+                                                    <Input label="Primary Contact Phone" value={data.emergency_contact_phone || ""} onChange={(e) => updateField("emergency_contact_phone", e.target.value)} />
                                                 </div>
                                             </section>
-                                        </TabsContent>
-
-                                        <TabsContent value="auth" className="mt-0">
-                                            <div className="max-w-2xl space-y-6">
-                                                <div>
-                                                    <h3 className="text-lg font-bold text-[hsl(var(--foreground))]">Kiosk Security</h3>
-                                                    <p className="text-sm text-[hsl(var(--muted-foreground))]">Access credentials for onsite hardware.</p>
-                                                </div>
-                                                <div className="bg-[hsl(var(--muted))]/10 p-6 rounded-xl border border-[hsl(var(--border))] space-y-4">
-                                                    <div className="space-y-1">
-                                                        <h4 className="text-sm font-semibold flex items-center gap-2"><Lock size={14} /> Personal Access Code</h4>
-                                                        <p className="text-xs text-[hsl(var(--muted-foreground))]">Used to clock in/out on the centralized terminal.</p>
-                                                    </div>
-                                                    <div className="max-w-xs">
-                                                        <Input
-                                                            label="4-Digit PIN"
-                                                            type={editing ? "text" : "password"}
-                                                            maxLength={4}
-                                                            value={data.kiosk_pin || ""}
-                                                            onChange={(e) => updateField("kiosk_pin", e.target.value.replace(/[^0-9]/g, ''))}
-                                                            disabled={!editing}
-                                                            placeholder="----"
-                                                            className="text-center font-mono tracking-widest"
-                                                        />
-                                                    </div>
-                                                </div>
-                                            </div>
                                         </TabsContent>
 
                                         <TabsContent value="compliance" className="mt-0">
@@ -402,11 +417,7 @@ export default function ManagerEmployeeDetailPage() {
                                             <Button
                                                 variant="danger"
                                                 className="shrink-0 rounded-lg px-6 h-10 font-bold text-xs"
-                                                onClick={() => {
-                                                    if (confirm(`CRITICAL WARNING: You are about to permanently delete ${employee.first_name} ${employee.last_name}. Type 'DELETE' to confirm.`)) {
-                                                        deleteMutation.mutate();
-                                                    }
-                                                }}
+                                                onClick={() => setDeleteModalOpen(true)}
                                                 loading={deleteMutation.isPending}
                                             >
                                                 Delete Record
@@ -422,30 +433,59 @@ export default function ManagerEmployeeDetailPage() {
                                             <p className="text-sm text-[hsl(var(--muted-foreground))]">Role and contractual details.</p>
                                         </div>
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                            <Input label="Position / Role" value={data.role_title || ""} onChange={(e) => updateField("role_title", e.target.value)} disabled={!editing} />
+                                            <Input label="Position / Role (Job Title)" value={data.role_title || ""} onChange={(e) => updateField("role_title", e.target.value)} />
+                                            <div className="space-y-1.5 focus-within:text-[hsl(var(--brand))] transition-colors group">
+                                                <label className="text-xs font-semibold text-[hsl(var(--muted-foreground))] ml-0.5 group-focus-within:text-[hsl(var(--brand))]">
+                                                    System Access Level <span className="text-[#FF4A4A]">*</span>
+                                                </label>
+                                                <div className="relative">
+                                                    <select
+                                                        value={data.role || "employee"}
+                                                        onChange={(e) => updateField("role", e.target.value)}
+                                                        className="flex h-10 w-full rounded-md border border-[hsl(var(--input))] bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--brand))]/20 appearance-none capitalize cursor-pointer font-medium"
+                                                    >
+                                                        <option value="employee">Employee</option>
+                                                        <option value="manager">Manager</option>
+                                                        {/* Managers typically can't promote to Owner */}
+                                                    </select>
+                                                    <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-[hsl(var(--muted-foreground))]">
+                                                        <Shield size={14} />
+                                                    </div>
+                                                </div>
+                                            </div>
                                             <div className="space-y-1.5">
-                                                <label className="text-xs font-semibold text-[hsl(var(--muted-foreground))] ml-0.5">Employment Basis</label>
+                                                <label className="text-xs font-semibold text-[hsl(var(--muted-foreground))] ml-0.5">
+                                                    Employment Basis <span className={cn(
+                                                        "ml-0.5 transition-colors duration-200",
+                                                        data.employment_type ? "text-[hsl(var(--foreground))]" : "text-[#FF4A4A]"
+                                                    )}>*</span>
+                                                </label>
                                                 <select
                                                     value={data.employment_type || "full_time"}
                                                     onChange={(e) => updateField("employment_type", e.target.value)}
-                                                    disabled={!editing}
                                                     className="flex h-10 w-full rounded-md border border-[hsl(var(--input))] bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--brand))]/20 appearance-none"
                                                 >
                                                     <option value="full_time">Full Time</option>
                                                     <option value="part_time">Part Time</option>
                                                     <option value="casual">Casual</option>
+                                                    <option value="contract">Contract</option>
                                                 </select>
                                             </div>
                                             <div className="space-y-1.5">
-                                                <label className="text-xs font-semibold text-[hsl(var(--muted-foreground))] ml-0.5">Pay Cycle</label>
+                                                <label className="text-xs font-semibold text-[hsl(var(--muted-foreground))] ml-0.5">
+                                                    Pay Cycle <span className={cn(
+                                                        "ml-0.5 transition-colors duration-200",
+                                                        data.pay_cycle ? "text-[hsl(var(--foreground))]" : "text-[#FF4A4A]"
+                                                    )}>*</span>
+                                                </label>
                                                 <select
-                                                    value={data.pay_cycle || "weekly"}
+                                                    value={data.pay_cycle || ""}
                                                     onChange={(e) => updateField("pay_cycle", e.target.value)}
-                                                    disabled={!editing}
                                                     className="flex h-10 w-full rounded-md border border-[hsl(var(--input))] bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--brand))]/20 appearance-none"
                                                 >
-                                                    <option value="weekly">Every Week</option>
-                                                    <option value="fortnightly">Every 2 Weeks</option>
+                                                    <option value="" disabled>Not Set</option>
+                                                    <option value="weekly">Weekly</option>
+                                                    <option value="fortnightly">Fortnightly</option>
                                                     <option value="monthly">Monthly</option>
                                                 </select>
                                             </div>
@@ -454,7 +494,7 @@ export default function ManagerEmployeeDetailPage() {
                                                 <select
                                                     value={data.status || "active"}
                                                     onChange={(e) => updateField("status", e.target.value)}
-                                                    disabled={!editing || data.status === 'invited'}
+                                                    disabled={data.status === 'invited'}
                                                     className="flex h-10 w-full rounded-md border border-[hsl(var(--input))] bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--brand))]/20 appearance-none"
                                                 >
                                                     <option value="active">Active Service</option>
@@ -463,6 +503,35 @@ export default function ManagerEmployeeDetailPage() {
                                                 </select>
                                                 {data.status === 'invited' && <p className="text-[10px] text-[hsl(var(--muted-foreground))] pt-1 ml-0.5">Locked until onboarding complete.</p>}
                                             </div>
+                                        </div>
+                                    </section>
+
+                                    <section className="space-y-6 pt-6 border-t border-[hsl(var(--border))]">
+                                        <div>
+                                            <h3 className="text-lg font-bold text-[hsl(var(--foreground))]">Bank & Identity</h3>
+                                            <p className="text-sm text-[hsl(var(--muted-foreground))]">Financial details for payroll processing.</p>
+                                        </div>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                            <Input label="Account Name" value={data.bank_account_name || ""} onChange={(e) => updateField("bank_account_name", e.target.value)} />
+                                            <Input label="BSB Number" value={data.bank_bsb || ""} onChange={(e) => updateField("bank_bsb", e.target.value)} />
+                                            <Input label="Account Number" value={data.bank_account_number || ""} onChange={(e) => updateField("bank_account_number", e.target.value)} />
+                                            {data.employment_type === 'contract' ? (
+                                                <Input 
+                                                    label="ABN" 
+                                                    showAsterisk 
+                                                    value={data.abn || ""} 
+                                                    onChange={(e) => updateField("abn", e.target.value)} 
+                                                    placeholder="Format: 00 000 000 000"
+                                                />
+                                            ) : (
+                                                <Input 
+                                                    label="TFN" 
+                                                    showAsterisk 
+                                                    value={data.tfn || ""} 
+                                                    onChange={(e) => updateField("tfn", e.target.value)} 
+                                                    placeholder="Format: 000 000 000"
+                                                />
+                                            )}
                                         </div>
                                     </section>
 
@@ -488,7 +557,6 @@ export default function ManagerEmployeeDetailPage() {
                                                     setEveningEndTime("");
                                                     setRateOpen(true);
                                                 }} 
-                                                disabled={editing}
                                             >
                                                 <Plus size={14} className="mr-2" /> Add Rate
                                             </Button>
@@ -550,7 +618,7 @@ export default function ManagerEmployeeDetailPage() {
                                                                                 setEveningStartTime(rate.evening_start_time?.toString() || "");
                                                                                 setEveningEndTime(rate.evening_end_time?.toString() || "");
                                                                                 setRateOpen(true);
-                                                                            }}
+                                                                            }} 
                                                                         >
                                                                             <Edit3 size={14} className="text-[hsl(var(--muted-foreground))]" />
                                                                         </Button>
@@ -652,6 +720,30 @@ export default function ManagerEmployeeDetailPage() {
                             loading={updateRateMutation.isPending}
                         >
                             <Save size={16} className="mr-2" /> Save Rate
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={deleteModalOpen} onOpenChange={setDeleteModalOpen}>
+                <DialogContent className="max-w-sm">
+                    <DialogHeader>
+                        <DialogTitle className="text-xl font-bold">Confirm Deletion</DialogTitle>
+                        <DialogDescription className="text-sm text-[hsl(var(--muted-foreground))] pt-1">
+                            Are you sure you want to delete <span className="font-semibold text-[hsl(var(--foreground))]">{employee.first_name} {employee.last_name}</span>? This action cannot be undone.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter className="gap-2 pt-2">
+                        <Button variant="outline" className="flex-1" onClick={() => setDeleteModalOpen(false)}>
+                            Cancel
+                        </Button>
+                        <Button 
+                            variant="danger" 
+                            className="flex-1 font-bold"
+                            loading={deleteMutation.isPending}
+                            onClick={() => deleteMutation.mutate()}
+                        >
+                            Delete
                         </Button>
                     </DialogFooter>
                 </DialogContent>

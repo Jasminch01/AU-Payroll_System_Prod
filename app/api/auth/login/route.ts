@@ -38,11 +38,13 @@ export async function POST(request: NextRequest) {
             return errorResponse('Invalid email or password', 401);
         }
 
-        if (!authData.user) {
-            return errorResponse('Authentication failed', 401);
-        }
-
         const userId = authData.user.id;
+
+        // Check if email is confirmed
+        if (!authData.user.email_confirmed_at && !authData.user.confirmed_at) {
+            console.warn(`User ${userId} attempted login before email confirmation.`);
+            return errorResponse('Please verify your email address before signing in.', 403);
+        }
 
         // Step 2: Check if user is Owner/Manager (User table)
         const { data: userRecord, error: userError } = await supabase

@@ -16,7 +16,12 @@ import {
   BarChart3,
   Zap,
   Check,
+  Download,
 } from "lucide-react";
+import { usePWA } from "@/hooks/use-pwa";
+import { IosInstallPrompt } from "@/components/pwa/ios-install-prompt";
+import { PwaInstallBanner } from "@/components/pwa/pwa-install-banner";
+import { useState, useEffect } from "react";
 
 const features = [
   {
@@ -65,6 +70,25 @@ const item = {
 };
 
 export default function LandingPage() {
+  const { isInstallable, installPWA, isIOS } = usePWA();
+  const [showIosPrompt, setShowIosPrompt] = useState(false);
+  const [showBanner, setShowBanner] = useState(false);
+
+  useEffect(() => {
+    // Show banner after a short delay if installable
+    if (isInstallable) {
+      const timer = setTimeout(() => setShowBanner(true), 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [isInstallable]);
+
+  const handleInstallClick = async () => {
+    const result = await installPWA();
+    if (isIOS && result) {
+      setShowIosPrompt(true);
+    }
+    setShowBanner(false);
+  };
   return (
     <div className="min-h-screen bg-[hsl(var(--background))]">
       {/* Nav */}
@@ -85,6 +109,11 @@ export default function LandingPage() {
                 Get Started <ArrowRight size={16} />
               </Button>
             </Link>
+            {isInstallable && (
+              <Button variant="outline" size="icon" onClick={handleInstallClick} title="Download App" className="flex md:hidden">
+                <Download size={18} />
+              </Button>
+            )}
           </div>
         </div>
       </nav>
@@ -227,6 +256,8 @@ export default function LandingPage() {
           </p>
         </div>
       </footer>
+      <IosInstallPrompt isOpen={showIosPrompt} onClose={() => setShowIosPrompt(false)} />
+      <PwaInstallBanner isVisible={showBanner} onInstall={handleInstallClick} onClose={() => setShowBanner(false)} />
     </div>
   );
 }

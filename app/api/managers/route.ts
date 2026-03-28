@@ -40,7 +40,7 @@ export async function GET() {
         const userIds = users.map(u => u.user_id);
         const { data: employees, error: empError } = await supabase
             .from('Employee')
-            .select('employee_id, first_name, last_name, phone, email, dob, bank_details, emergency_contact_name, emergency_contact_phone, employment_type, role_title, pay_cycle, start_date, end_date, created_at, updated_at, business_id, user_id, status')
+            .select('employee_id, first_name, last_name, phone, email, dob, bank_account_name, bank_bsb, bank_account_number, abn, tfn, emergency_contact_name, emergency_contact_phone, employment_type, role_title, pay_cycle, start_date, end_date, created_at, updated_at, business_id, user_id, status')
             .in('user_id', userIds);
 
         // Merge the data manually
@@ -94,12 +94,7 @@ export async function POST(request: NextRequest) {
             'password',
             'first_name',
             'last_name',
-            'dob',
-            'bank_details',
-            'emergency_contact_name',
-            'emergency_contact_phone',
             'role_title',
-            'kiosk_pin',
             'start_date',
             'employee_id',
             'weekday_rate',
@@ -115,13 +110,11 @@ export async function POST(request: NextRequest) {
             last_name,
             phone,
             dob,
-            bank_details,
             emergency_contact_name,
             emergency_contact_phone,
             employment_type,
             role_title,
             pay_cycle,
-            kiosk_pin,
             start_date,
             end_date,
             employee_id,
@@ -171,8 +164,6 @@ export async function POST(request: NextRequest) {
             return errorResponse(`Failed to create manager profile: ${userError.message}`, 400);
         }
 
-        // Step 3: Create Employee record
-        const hashedPin = await bcrypt.hash(kiosk_pin, 10);
 
         const { error: employeeError } = await supabase
             .from('Employee')
@@ -183,13 +174,11 @@ export async function POST(request: NextRequest) {
                 phone: phone || null,
                 email,
                 dob,
-                bank_details,
                 emergency_contact_name,
                 emergency_contact_phone,
                 employment_type: employment_type || null,
                 role_title,
                 pay_cycle: pay_cycle || null,
-                kiosk_pin: hashedPin,
                 start_date,
                 end_date: end_date || null,
                 business_id: authUser.business_id,

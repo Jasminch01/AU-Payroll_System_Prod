@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
             .from('PayrollLine')
             .select(`
                 *,
-                Employee:employee_id(employee_id, first_name, last_name, role_title, bank_details),
+                Employee:employee_id(employee_id, first_name, last_name, role_title),
                 Payroll:payroll_id(payroll_id, period_start, period_end, status)
             `)
             .order('created_at', { ascending: false });

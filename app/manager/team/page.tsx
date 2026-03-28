@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { DashboardLayout } from "@/components/layout";
@@ -20,7 +20,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { apiGet, apiPost } from "@/lib/api-client";
 import { toast } from "sonner";
-import { UserPlus, Users, Send, RefreshCw, Copy, Check, MoreHorizontal, Eye, ExternalLink, Trash2, Filter, X, Briefcase, User, ShieldCheck } from "lucide-react";
+import { UserPlus, Users, Send, RefreshCw, Copy, Check, MoreHorizontal, Eye, ExternalLink, Trash2, Filter, X, Briefcase, User, ShieldCheck, ChevronRight } from "lucide-react";
 import type { Employee } from "@/types/database";
 
 type StatusFilter = "all" | "active" | "invited" | "inactive";
@@ -112,6 +112,13 @@ export default function ManagerTeamPage() {
         setBulkData([{ first_name: '', last_name: '', email: '', role_title: '', phone: '' }]);
     };
 
+    // Reset form when dialogs close
+    useEffect(() => {
+        if (!inviteOpen && !bulkInviteOpen) {
+            resetForm();
+        }
+    }, [inviteOpen, bulkInviteOpen]);
+
     const handleInvite = () => {
         if (!invEmail || !invFirstName || !invLastName || !invRole) {
             return toast.error("Please fill in first name, last name, email and role");
@@ -173,7 +180,19 @@ export default function ManagerTeamPage() {
                 </div>
             ),
         },
-        { key: "role_title", label: "Role", sortable: true },
+        {
+            key: "role_title",
+            label: "Role",
+            sortable: true,
+            render: (row) => (
+                <div className="flex flex-col">
+                    <span className="font-medium">{row.role_title || "—"}</span>
+                    <span className="text-[10px] text-[hsl(var(--muted-foreground))] uppercase font-bold tracking-tight">
+                        {row.role || "employee"}
+                    </span>
+                </div>
+            )
+        },
         {
             key: "employment_type",
             label: "Type",
@@ -210,13 +229,6 @@ export default function ManagerTeamPage() {
                             >
                                 <User size={14} className="mr-2" />
                                 View Personal
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                                onClick={() => router.push(`/manager/team/${row.employee_id}?tab=employment`)}
-                                className="cursor-pointer"
-                            >
-                                <Briefcase size={14} className="mr-2" />
-                                Edit Employment
                             </DropdownMenuItem>
                             {row.status === "invited" && (
                                 <DropdownMenuItem
@@ -283,12 +295,31 @@ export default function ManagerTeamPage() {
                 columns={columns}
                 data={filteredEmployees}
                 searchable
-                searchKeys={["first_name", "last_name", "email", "role_title"]}
+                searchKeys={["first_name", "last_name", "email", "role_title", "role"]}
                 searchPlaceholder="Search employees..."
                 emptyMessage="No employees found."
                 emptyIcon={<UserPlus size={40} />}
                 loading={isLoading}
                 onRowClick={(row) => router.push(`/manager/team/${row.employee_id}`)}
+                mobileCardRender={(row) => (
+                    <div className="p-4 flex items-center justify-between border-b border-[hsl(var(--border))] last:border-0 active:bg-[hsl(var(--muted))]/30 transition-colors">
+                        <div className="flex items-center gap-3">
+                            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[hsl(var(--brand-light))] text-[hsl(var(--brand))] text-sm font-bold shadow-sm">
+                                {(row.first_name?.[0] ?? "")}{(row.last_name?.[0] ?? "")}
+                            </div>
+                            <div className="flex flex-col">
+                                <span className="font-bold text-[hsl(var(--foreground))]">{row.first_name} {row.last_name}</span>
+                                <div className="flex items-center gap-2">
+                                    <span className="text-[10px] uppercase font-bold text-[hsl(var(--muted-foreground))] tracking-wider">
+                                        {row.role_title || "No Role"}
+                                    </span>
+                                    <StatusBadge status={row.status} className="scale-75 origin-left h-4" />
+                                </div>
+                            </div>
+                        </div>
+                        <ChevronRight size={16} className="text-[hsl(var(--muted-foreground))]/40" />
+                    </div>
+                )}
                 actions={
                     <DropdownMenu>
                         <DropdownMenuTrigger asChild>

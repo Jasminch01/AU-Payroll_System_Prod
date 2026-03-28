@@ -1,0 +1,25 @@
+{
+  "name": "AU Payroll Workforce",
+  "short_name": "AU Payroll",
+  "description": "Modern Australian payroll & workforce management portal.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F9FAFB",
+  "theme_color": "#3724B3",
+  "icons": [
+    {
+      "src": "/icons/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "orientation": "any",
+  "categories": ["business", "finance", "productivity"]
+}

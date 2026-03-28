@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-import { Loader2, Store, Fan } from "lucide-react";
+import { Loader2, Store, Fan, Eye, EyeOff } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
 export default function OnboardingPage() {
@@ -13,28 +13,30 @@ export default function OnboardingPage() {
     const [loading, setLoading] = useState(false);
     const [checkingStatus, setCheckingStatus] = useState(true);
     const [isExistingUser, setIsExistingUser] = useState(false);
+    const [accessDenied, setAccessDenied] = useState(false);
 
     // Context Data
     const [employeeName, setEmployeeName] = useState("");
     const [businessName, setBusinessName] = useState("");
     const [joinMode, setJoinMode] = useState(false);
     const [businessCode, setBusinessCode] = useState<string | null>(null);
-    const [prefilledPhone, setPrefilledPhone] = useState(false);
 
     // Minimal Form fields
     const [firstName, setFirstName] = useState("");
     const [lastName, setLastName] = useState("");
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
-    const [phone, setPhone] = useState("");
-    const [dob, setDob] = useState("");
+    const [confirmPassword, setConfirmPassword] = useState("");
+    const [showPassword, setShowPassword] = useState(false);
+    const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+    
     const [bankAccountName, setBankAccountName] = useState("");
     const [bankBsb, setBankBsb] = useState("");
     const [bankAccountNumber, setBankAccountNumber] = useState("");
-    const [abnTfnAcn, setAbnTfnAcn] = useState("");
-    const [emergencyName, setEmergencyName] = useState("");
-    const [emergencyPhone, setEmergencyPhone] = useState("");
-    const [kioskPin, setKioskPin] = useState("");
+    const [abn, setAbn] = useState("");
+    const [tfn, setTfn] = useState("");
+    const [employmentType, setEmploymentType] = useState("full_time");
+    const [dob, setDob] = useState("");
 
     const initialized = React.useRef(false);
 
@@ -52,8 +54,8 @@ export default function OnboardingPage() {
             try {
                 const res = await fetch("/api/onboarding/status");
                 if (res.status === 401) {
-                    // Not authenticated yet
-                    hasChecked = false;
+                    setAccessDenied(true);
+                    setCheckingStatus(false);
                     return;
                 }
 
@@ -76,9 +78,8 @@ export default function OnboardingPage() {
                 setEmployeeName(`${data.data.employee.first_name || ""} ${data.data.employee.last_name || ""}`.trim());
                 setBusinessName(data.data.business_name);
 
-                if (data.data.employee.phone) {
-                    setPhone(data.data.employee.phone);
-                    setPrefilledPhone(true);
+                if (data.data.employee.employment_type) {
+                    setEmploymentType(data.data.employee.employment_type);
                 }
 
                 if (data.data?.is_existing_user) {
@@ -97,14 +98,24 @@ export default function OnboardingPage() {
                 const params = new URLSearchParams(window.location.search);
                 const token_hash = params.get('token_hash');
                 const type = params.get('type') as any;
+                const bCode = params.get('business');
+                const hasHash = window.location.hash.includes('access_token') || window.location.hash.includes('error=');
+
+                // Access Control Check: If no entry point is found, redirect immediately
+                if (!token_hash && !hasHash && !bCode) {
+                    // One last check for an existing session before denying
+                    const { data: { session } } = await supabase.auth.getSession();
+                    if (!session) {
+                        setAccessDenied(true);
+                        setCheckingStatus(false);
+                        return;
+                    }
+                }
 
                 // 0. Check for error in hash (e.g. otp_expired)
-                // BUT: Only show error if we aren't already logged in. 
-                // Sometimes Supabase redirects with an error even if the session was technically created.
                 if (window.location.hash.includes('error=')) {
                     const { data: { session } } = await supabase.auth.getSession();
                     if (session) {
-                        // We have a session, ignore the hash error (likely a double-trigger)
                         window.history.replaceState({}, document.title, window.location.pathname);
                         await checkStatus();
                         return;
@@ -122,7 +133,6 @@ export default function OnboardingPage() {
                 if (token_hash && type) {
                     const { error } = await supabase.auth.verifyOtp({ token_hash, type });
                     if (error) {
-                        // Check if we are actually logged in despite the error (double-request issue)
                         const { data: { session } } = await supabase.auth.getSession();
                         if (session) {
                             window.history.replaceState({}, document.title, window.location.pathname);
@@ -157,35 +167,28 @@ export default function OnboardingPage() {
                     }
                 }
 
-                // 3. Check for existing session
+                // 3. Check for existing session or business join code
                 const { data: { session } } = await supabase.auth.getSession();
 
                 if (session) {
                     await checkStatus();
-                } else {
-                    const bCode = params.get('business');
-                    if (bCode) {
-                        setBusinessCode(bCode);
-                        setJoinMode(true);
-                        setCheckingStatus(false);
+                } else if (bCode) {
+                    setBusinessCode(bCode);
+                    setJoinMode(true);
+                    setCheckingStatus(false);
 
-                        try {
-                            const bRes = await fetch(`/api/business/preview?code=${bCode}`);
-                            const bData = await bRes.json();
-                            if (bData.success) {
-                                setBusinessName(bData.data.business_name);
-                            }
-                        } catch (e) {
-                            console.error("Failed to fetch business preview", e);
+                    try {
+                        const bRes = await fetch(`/api/business/preview?code=${bCode}`);
+                        const bData = await bRes.json();
+                        if (bData.success) {
+                            setBusinessName(bData.data.business_name);
                         }
-                    } else {
-                        setTimeout(async () => {
-                            const { data: { session: delayedSession } } = await supabase.auth.getSession();
-                            if (!delayedSession && !window.location.hash && !window.location.search) {
-                                router.push('/login');
-                            }
-                        }, 1500);
+                    } catch (e) {
+                        console.error("Failed to fetch business preview", e);
                     }
+                } else {
+                    setAccessDenied(true);
+                    setCheckingStatus(false);
                 }
             } catch (err) {
                 console.error("Initialization error:", err);
@@ -208,6 +211,9 @@ export default function OnboardingPage() {
 
     const handleJoin = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (password !== confirmPassword) return toast.error("Passwords do not match");
+        if (password.length < 6) return toast.error("Password must be at least 6 characters");
+
         setLoading(true);
         try {
             const res = await fetch("/api/employees/join", {
@@ -219,15 +225,12 @@ export default function OnboardingPage() {
                     first_name: firstName,
                     last_name: lastName,
                     join_code: businessCode,
-                    phone,
-                    dob,
                     bank_account_name: bankAccountName,
                     bank_bsb: bankBsb,
                     bank_account_number: bankAccountNumber,
-                    "ABN/TFN/ACN": abnTfnAcn,
-                    emergency_contact_name: emergencyName,
-                    emergency_contact_phone: emergencyPhone,
-                    kiosk_pin: kioskPin
+                    abn: abn,
+                    tfn: tfn,
+                    dob: dob,
                 }),
             });
             const data = await res.json();
@@ -253,7 +256,10 @@ export default function OnboardingPage() {
     const handleComplete = async (e: React.FormEvent) => {
         e.preventDefault();
 
-        if (!isExistingUser && password.length < 6) return toast.error("Password must be at least 6 characters");
+        if (!isExistingUser) {
+            if (password !== confirmPassword) return toast.error("Passwords do not match");
+            if (password.length < 6) return toast.error("Password must be at least 6 characters");
+        }
 
         setLoading(true);
         try {
@@ -262,15 +268,12 @@ export default function OnboardingPage() {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     password,
-                    phone,
-                    dob,
                     bank_account_name: bankAccountName,
                     bank_bsb: bankBsb,
                     bank_account_number: bankAccountNumber,
-                    "ABN/TFN/ACN": abnTfnAcn,
-                    emergency_contact_name: emergencyName,
-                    emergency_contact_phone: emergencyPhone,
-                    kiosk_pin: kioskPin,
+                    abn: abn,
+                    tfn: tfn,
+                    dob: dob,
                 }),
             });
 
@@ -297,27 +300,36 @@ export default function OnboardingPage() {
         );
     }
 
+    if (accessDenied) {
+        return (
+            <div className="flex min-h-screen flex-col items-center justify-center bg-gray-50 px-6 text-center">
+                <Fan className="h-12 w-12 text-[#FF4A4A] mb-4" />
+                <h1 className="text-xl font-bold text-[#261C7F] mb-2">No Invitation Found</h1>
+                <p className="text-sm text-slate-600 max-w-sm mb-6">
+                    This onboarding link appears to be invalid or has expired. Please check your email or contact your manager for a new invitation.
+                </p>
+                <Button onClick={() => router.push('/login')} className="bg-[#3724B3] hover:bg-[#261C7F]">
+                    Go to Login
+                </Button>
+            </div>
+        );
+    }
+
     return (
         <div className="flex min-h-screen w-full lg:flex-row flex-col">
-            {/* Left Panel - Visual Branding matching screenshot exactly */}
+            {/* Left Panel */}
             <div className="lg:w-1/2 w-full bg-[#261C7F] text-white flex flex-col justify-center items-center p-8 lg:p-12 min-h-[40vh]">
                 <div className="w-full flex flex-col items-center max-w-sm mx-auto text-center space-y-7">
-
-                    {/* Simplified Illustration Area matching cloud/store theme */}
                     <div className="h-40 w-fit flex flex-col items-center justify-end relative pb-4">
-                        {/* Clouds */}
                         <div className="flex gap-4 opacity-80 translate-y-2 translate-x-3">
                             <div className="w-10 h-3 bg-white rounded-full"></div>
                             <div className="w-6 h-3 bg-white rounded-full"></div>
                         </div>
-                        {/* Store front icon representation */}
                         <Store size={100} className="text-[#FBA8BA] z-10" strokeWidth={1.5} />
                     </div>
-
                     <h2 className="text-[17px] font-medium tracking-wide">
                         Use AU Payroll System to:
                     </h2>
-
                     <ul className="text-left text-[14px] leading-relaxed mx-auto space-y-2 opacity-90 pl-3">
                         <li className="flex gap-3">
                             <span className="mt-[7px] block h-1 w-1 shrink-0 rounded-full bg-white"></span>
@@ -357,71 +369,70 @@ export default function OnboardingPage() {
                         <form onSubmit={handleJoin} className="space-y-[18px] text-left">
                             <div className="grid grid-cols-2 gap-3">
                                 <div className="space-y-[6px]">
-                                    <label className="text-[12px] font-bold text-slate-800 ml-1">First name</label>
-                                    <Input placeholder="Jane" value={firstName} onChange={e => setFirstName(e.target.value)} required className="h-10 text-sm" />
+                                    <Input label="First name" showAsterisk placeholder="Jane" value={firstName} onChange={e => setFirstName(e.target.value)} required className="h-10 text-sm" />
                                 </div>
                                 <div className="space-y-[6px]">
-                                    <label className="text-[12px] font-bold text-slate-800 ml-1">Last name</label>
-                                    <Input placeholder="Doe" value={lastName} onChange={e => setLastName(e.target.value)} required className="h-10 text-sm" />
+                                    <Input label="Last name" showAsterisk placeholder="Doe" value={lastName} onChange={e => setLastName(e.target.value)} required className="h-10 text-sm" />
                                 </div>
                             </div>
                             <div className="space-y-[6px]">
-                                <label className="text-[12px] font-bold text-slate-800 ml-1">Email address</label>
-                                <Input type="email" placeholder="jane@email.com" value={email} onChange={e => setEmail(e.target.value)} required className="h-10 text-sm" />
+                                <Input label="Email address" showAsterisk type="email" placeholder="jane@email.com" value={email} onChange={e => setEmail(e.target.value)} required className="h-10 text-sm" />
                             </div>
                             <div className="space-y-[6px]">
-                                <label className="text-[12px] font-bold text-slate-800 ml-1">Set Password</label>
-                                <Input type="password" placeholder="6+ characters" value={password} onChange={e => setPassword(e.target.value)} required className="h-10 text-sm" />
+                                <Input 
+                                    label="Set Password" showAsterisk 
+                                    type={showPassword ? "text" : "password"} 
+                                    placeholder="6+ characters" 
+                                    value={password} onChange={e => setPassword(e.target.value)} 
+                                    required className="h-10 text-sm"
+                                    suffix={showPassword ? <EyeOff size={18} onClick={() => setShowPassword(false)} /> : <Eye size={18} onClick={() => setShowPassword(true)} />}
+                                />
+                            </div>
+                            <div className="space-y-[6px]">
+                                <Input 
+                                    label="Confirm Password" showAsterisk 
+                                    type={showConfirmPassword ? "text" : "password"} 
+                                    placeholder="Repeat password" 
+                                    value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} 
+                                    required className="h-10 text-sm"
+                                    suffix={showConfirmPassword ? <EyeOff size={18} onClick={() => setShowConfirmPassword(false)} /> : <Eye size={18} onClick={() => setShowConfirmPassword(true)} />}
+                                />
                             </div>
 
                             <hr className="my-4 border-slate-100" />
                             <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Payroll Details</p>
 
-                            <div className="space-y-[6px]">
-                                <label className="text-[12px] font-bold text-slate-800 ml-1">Mobile number</label>
-                                <Input type="tel" placeholder="0412 345 678" value={phone} onChange={(e) => setPhone(e.target.value)} required className="h-10 text-sm" />
-                            </div>
-
-                            <div className="space-y-[6px]">
-                                <label className="text-[12px] font-bold text-slate-800 ml-1">Date of Birth</label>
-                                <Input type="date" value={dob} onChange={(e) => setDob(e.target.value)} required className="h-10 text-sm" />
-                            </div>
-
                             <div className="space-y-[14px]">
                                 <div className="space-y-[6px]">
-                                    <label className="text-[12px] font-bold text-slate-800 ml-1">Bank Account Name <span className="text-red-500">*</span></label>
-                                    <Input placeholder="John Doe" value={bankAccountName} onChange={(e) => setBankAccountName(e.target.value)} required className="h-10 text-sm" />
+                                    <Input label="Bank Account Name" showAsterisk placeholder="John Doe" value={bankAccountName} onChange={(e) => setBankAccountName(e.target.value)} required className="h-10 text-sm" />
                                 </div>
                                 <div className="grid grid-cols-2 gap-3">
                                     <div className="space-y-[6px]">
-                                        <label className="text-[12px] font-bold text-slate-800 ml-1">Bank BSB <span className="text-red-500">*</span></label>
-                                        <Input placeholder="000-000" value={bankBsb} onChange={(e) => setBankBsb(e.target.value)} required className="h-10 text-sm" />
+                                        <Input label="Bank BSB" showAsterisk placeholder="000-000" value={bankBsb} onChange={(e) => setBankBsb(e.target.value)} required className="h-10 text-sm" />
                                     </div>
                                     <div className="space-y-[6px]">
-                                        <label className="text-[12px] font-bold text-slate-800 ml-1">Account Number <span className="text-red-500">*</span></label>
-                                        <Input placeholder="00000000" value={bankAccountNumber} onChange={(e) => setBankAccountNumber(e.target.value)} required className="h-10 text-sm" />
+                                        <Input label="Account Number" showAsterisk placeholder="00000000" value={bankAccountNumber} onChange={(e) => setBankAccountNumber(e.target.value)} required className="h-10 text-sm" />
                                     </div>
                                 </div>
                                 <div className="space-y-[6px]">
-                                    <label className="text-[12px] font-bold text-slate-800 ml-1">ABN / TFN / ACN</label>
-                                    <Input placeholder="Optional" value={abnTfnAcn} onChange={(e) => setAbnTfnAcn(e.target.value)} className="h-10 text-sm" />
-                                </div>
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-3">
-                                <div className="space-y-[6px]">
-                                    <label className="text-[12px] font-bold text-slate-800 ml-1">Emergency Name</label>
-                                    <Input placeholder="Name" value={emergencyName} onChange={(e) => setEmergencyName(e.target.value)} required className="h-10 text-sm" />
+                                    {employmentType === 'contract' ? (
+                                        <Input label="ABN" showAsterisk placeholder="Format: 00 000 000 000" value={abn} onChange={(e) => setAbn(e.target.value)} required className="h-10 text-sm" />
+                                    ) : (
+                                        <Input label="TFN" showAsterisk placeholder="Format: 000 000 000" value={tfn} onChange={(e) => setTfn(e.target.value)} required className="h-10 text-sm" />
+                                    )}
                                 </div>
                                 <div className="space-y-[6px]">
-                                    <label className="text-[12px] font-bold text-slate-800 ml-1">Emergency Phone</label>
-                                    <Input type="tel" placeholder="Phone" value={emergencyPhone} onChange={(e) => setEmergencyPhone(e.target.value)} required className="h-10 text-sm" />
+                                    <Input 
+                                        label="Date of Birth" 
+                                        type={dob ? "date" : "text"} 
+                                        placeholder="Not Set"
+                                        value={dob} 
+                                        onFocus={(e) => e.target.type = 'date'}
+                                        onBlur={(e) => { if (!e.target.value) e.target.type = 'text' }}
+                                        onChange={(e) => setDob(e.target.value)} 
+                                        className="h-10 text-sm" 
+                                    />
                                 </div>
-                            </div>
-
-                            <div className="space-y-[6px]">
-                                <label className="text-[12px] font-bold text-slate-800 ml-1">Kiosk PIN (4 digits)</label>
-                                <Input maxLength={4} placeholder="e.g. 1234" value={kioskPin} onChange={(e) => setKioskPin(e.target.value.replace(/\D/g, ''))} required className="h-10 text-sm" />
                             </div>
 
                             <Button type="submit" className="w-full h-11 text-[14px] font-medium bg-[#3724B3] hover:bg-[#261C7F] rounded-[8px] mt-4" loading={loading}>
@@ -430,68 +441,62 @@ export default function OnboardingPage() {
                         </form>
                     ) : (
                         <form onSubmit={handleComplete} className="space-y-[18px] text-left">
-                            {/* We skip Name and Mobile if pre-filled, as per user requirement */}
-                            {!employeeName && (
-                                <div className="space-y-[6px]">
-                                    <label className="text-[12px] font-bold text-slate-800 ml-1">Full name</label>
-                                    <Input value={employeeName || ""} disabled className="bg-[#F9FAFB] text-slate-600 h-10 shadow-none text-sm" />
-                                </div>
-                            )}
-
-                            {!prefilledPhone && (
-                                <div className="space-y-[6px]">
-                                    <label className="text-[12px] font-bold text-slate-800 ml-1">Mobile number</label>
-                                    <Input type="tel" placeholder="0412 345 678" value={phone} onChange={(e) => setPhone(e.target.value)} required className="h-10 text-sm" />
-                                </div>
-                            )}
-
-                            <div className="space-y-[6px]">
-                                <label className="text-[12px] font-bold text-slate-800 ml-1">Date of Birth</label>
-                                <Input type="date" value={dob} onChange={(e) => setDob(e.target.value)} required className="h-10 text-sm" />
-                            </div>
-
                             <div className="space-y-[14px]">
                                 <div className="space-y-[6px]">
-                                    <label className="text-[12px] font-bold text-slate-800 ml-1">Bank Account Name <span className="text-red-500">*</span></label>
-                                    <Input placeholder="John Doe" value={bankAccountName} onChange={(e) => setBankAccountName(e.target.value)} required className="h-10 text-sm" />
+                                    <Input label="Bank Account Name" showAsterisk placeholder="John Doe" value={bankAccountName} onChange={(e) => setBankAccountName(e.target.value)} required className="h-10 text-sm" />
                                 </div>
                                 <div className="grid grid-cols-2 gap-3">
                                     <div className="space-y-[6px]">
-                                        <label className="text-[12px] font-bold text-slate-800 ml-1">Bank BSB <span className="text-red-500">*</span></label>
-                                        <Input placeholder="000-000" value={bankBsb} onChange={(e) => setBankBsb(e.target.value)} required className="h-10 text-sm" />
+                                        <Input label="Bank BSB" showAsterisk placeholder="000-000" value={bankBsb} onChange={(e) => setBankBsb(e.target.value)} required className="h-10 text-sm" />
                                     </div>
                                     <div className="space-y-[6px]">
-                                        <label className="text-[12px] font-bold text-slate-800 ml-1">Account Number <span className="text-red-500">*</span></label>
-                                        <Input placeholder="00000000" value={bankAccountNumber} onChange={(e) => setBankAccountNumber(e.target.value)} required className="h-10 text-sm" />
+                                        <Input label="Account Number" showAsterisk placeholder="00000000" value={bankAccountNumber} onChange={(e) => setBankAccountNumber(e.target.value)} required className="h-10 text-sm" />
                                     </div>
                                 </div>
                                 <div className="space-y-[6px]">
-                                    <label className="text-[12px] font-bold text-slate-800 ml-1">ABN / TFN / ACN</label>
-                                    <Input placeholder="Optional" value={abnTfnAcn} onChange={(e) => setAbnTfnAcn(e.target.value)} className="h-10 text-sm" />
-                                </div>
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-3">
-                                <div className="space-y-[6px]">
-                                    <label className="text-[12px] font-bold text-slate-800 ml-1">Emergency Name</label>
-                                    <Input placeholder="Name" value={emergencyName} onChange={(e) => setEmergencyName(e.target.value)} required className="h-10 text-sm" />
+                                    {employmentType === 'contract' ? (
+                                        <Input label="ABN" showAsterisk placeholder="Format: 00 000 000 000" value={abn} onChange={(e) => setAbn(e.target.value)} required className="h-10 text-sm" />
+                                    ) : (
+                                        <Input label="TFN" showAsterisk placeholder="Format: 000 000 000" value={tfn} onChange={(e) => setTfn(e.target.value)} required className="h-10 text-sm" />
+                                    )}
                                 </div>
                                 <div className="space-y-[6px]">
-                                    <label className="text-[12px] font-bold text-slate-800 ml-1">Emergency Phone</label>
-                                    <Input type="tel" placeholder="Phone" value={emergencyPhone} onChange={(e) => setEmergencyPhone(e.target.value)} required className="h-10 text-sm" />
+                                    <Input 
+                                        label="Date of Birth" 
+                                        type={dob ? "date" : "text"} 
+                                        placeholder="Not Set"
+                                        value={dob} 
+                                        onFocus={(e) => e.target.type = 'date'}
+                                        onBlur={(e) => { if (!e.target.value) e.target.type = 'text' }}
+                                        onChange={(e) => setDob(e.target.value)} 
+                                        className="h-10 text-sm" 
+                                    />
                                 </div>
-                            </div>
-
-                            <div className="space-y-[6px]">
-                                <label className="text-[12px] font-bold text-slate-800 ml-1">Kiosk PIN (4 digits)</label>
-                                <Input maxLength={4} placeholder="e.g. 1234" value={kioskPin} onChange={(e) => setKioskPin(e.target.value.replace(/\D/g, ''))} required className="h-10 text-sm" />
                             </div>
 
                             {!isExistingUser && (
-                                <div className="space-y-[6px]">
-                                    <label className="text-[12px] font-bold text-slate-800 ml-1">Set Password</label>
-                                    <Input type="password" placeholder="Minimum 6 characters" value={password} onChange={(e) => setPassword(e.target.value)} required className="h-10 text-sm" />
-                                </div>
+                                <>
+                                    <div className="space-y-[6px]">
+                                        <Input 
+                                            label="Set New Password" showAsterisk 
+                                            type={showPassword ? "text" : "password"} 
+                                            placeholder="Minimum 6 characters" 
+                                            value={password} onChange={(e) => setPassword(e.target.value)} 
+                                            required className="h-10 text-sm"
+                                            suffix={showPassword ? <EyeOff size={18} onClick={() => setShowPassword(false)} /> : <Eye size={18} onClick={() => setShowPassword(true)} />}
+                                        />
+                                    </div>
+                                    <div className="space-y-[6px]">
+                                        <Input 
+                                            label="Confirm Password" showAsterisk 
+                                            type={showConfirmPassword ? "text" : "password"} 
+                                            placeholder="Repeat password" 
+                                            value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} 
+                                            required className="h-10 text-sm"
+                                            suffix={showConfirmPassword ? <EyeOff size={18} onClick={() => setShowConfirmPassword(false)} /> : <Eye size={18} onClick={() => setShowConfirmPassword(true)} />}
+                                        />
+                                    </div>
+                                </>
                             )}
 
                             <div className="pt-2 flex flex-col items-center">

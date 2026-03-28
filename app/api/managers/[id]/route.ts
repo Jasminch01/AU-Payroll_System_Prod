@@ -41,7 +41,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         // 2. Fetch Employee Record separately
         const { data: employee, error: empError } = await supabase
             .from('Employee')
-            .select('employee_id, first_name, last_name, phone, email, dob, bank_details, emergency_contact_name, emergency_contact_phone, employment_type, role_title, pay_cycle, start_date, end_date, created_at, updated_at, business_id, user_id, status')
+            .select('employee_id, first_name, last_name, phone, email, dob, bank_account_name, bank_bsb, bank_account_number, abn, tfn, emergency_contact_name, emergency_contact_phone, employment_type, role_title, pay_cycle, start_date, end_date, created_at, updated_at, business_id, user_id, status')
             .eq('user_id', id)
             .single();
 
@@ -107,19 +107,15 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
         // 2. Update Employee Record
         const employeeFields: Record<string, any> = {};
         const allowedEmployeeFields = [
-            'first_name', 'last_name', 'phone', 'dob', 'bank_details',
+            'first_name', 'last_name', 'phone', 'dob',
             'emergency_contact_name', 'emergency_contact_phone',
-            'employment_type', 'role_title', 'pay_cycle', 'kiosk_pin',
+            'employment_type', 'role_title', 'pay_cycle',
             'end_date', 'status'
         ];
 
         for (const field of allowedEmployeeFields) {
             if (body[field] !== undefined) {
-                if (field === 'kiosk_pin') {
-                    employeeFields[field] = await bcrypt.hash(body[field], 10);
-                } else {
-                    employeeFields[field] = body[field];
-                }
+                employeeFields[field] = body[field];
             }
         }
 
@@ -132,6 +128,20 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
                 .eq('business_id', authUser.business_id);
 
             if (empError) return errorResponse(`Update employee failed: ${empError.message}`, 400);
+
+            // --- EMAIL SYNCHRONIZATION ---
+            // If the email was changed, update it in Supabase Auth via Admin Client
+            if (body.email) {
+                const adminClient = createAdminClient();
+                const { error: authUpdateError } = await adminClient.auth.admin.updateUserById(id, {
+                    email: body.email as string,
+                    email_confirm: true
+                });
+
+                if (authUpdateError) {
+                    console.error('Auth email synchronization failed for manager:', authUpdateError.message);
+                }
+            }
         }
 
         return successResponse(null, 'Manager and employee records updated successfully');

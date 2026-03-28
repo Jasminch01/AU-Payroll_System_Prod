@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { Bell, Menu, User, Settings, LogOut, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
@@ -16,6 +17,7 @@ export function TopNav({
     onMenuClick,
 }: TopNavProps) {
     const router = useRouter();
+    const queryClient = useQueryClient();
     const { user, fullName, initials, isLoading } = useAuth();
     const [profileOpen, setProfileOpen] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
@@ -35,9 +37,14 @@ export function TopNav({
         setProfileOpen(false);
         try {
             await fetch("/api/auth/logout", { method: "POST" });
+            // Clear ALL cached query data so the next user never sees stale profile/data
+            queryClient.clear();
             router.push("/login");
         } catch (err) {
             console.error("Logout failed:", err);
+            // Still clear the cache even if logout API fails
+            queryClient.clear();
+            router.push("/login");
         }
     };
 

@@ -5,7 +5,7 @@
 
 // ==================== ENUMS ====================
 
-export type EmployeeType = 'full_time' | 'part_time' | 'casual';
+export type EmployeeType = 'full_time' | 'part_time' | 'casual' | 'contract';
 
 export type PayCycle = 'weekly' | 'fortnightly' | 'monthly';
 
@@ -17,7 +17,7 @@ export type RosterStatus = 'draft' | 'published';
 
 export type ShiftType = 'morning' | 'afternoon' | 'evening';
 
-export type EventType = 'CLOCK_IN' | 'CLOCK_OUT';
+export type EventType = 'CLOCK_IN' | 'CLOCK_OUT' | 'BREAK_START' | 'BREAK_END';
 export type TimesheetStatus = 'pending' | 'approved' | 'rejected';
 
 export type RateType = 'weekday' | 'saturday' | 'sunday' | 'public_holiday' | 'evening';
@@ -63,18 +63,17 @@ export interface Employee {
   last_name: string | null;
   phone: string | null;
   email: string;
-  dob: string;
-  bank_details: string;
+  dob: string | null;
   bank_account_name: string | null;
   bank_bsb: string | null;
   bank_account_number: string | null;
-  "ABN/TFN/ACN": string | null;
-  emergency_contact_name: string;
-  emergency_contact_phone: string;
+  abn: string | null;
+  tfn: string | null;
+  emergency_contact_name: string | null;
+  emergency_contact_phone: string | null;
   employment_type: EmployeeType | null;
-  role_title: string;
+  role_title: string | null;
   pay_cycle: PayCycle | null;
-  kiosk_pin: string;
   start_date: string;
   end_date: string | null;
   created_at: string;
@@ -82,6 +81,7 @@ export interface Employee {
   business_id: string;
   user_id: string;
   status: EmployeeStatus;
+  role?: UserRole | 'employee';
 }
 
 export interface EmployeeRateHistory {
