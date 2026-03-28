@@ -44,7 +44,10 @@ export function PushNotificationManager() {
       syncSubscription();
       
       const checkPermission = async () => {
-        if (Notification.permission === 'default' && !localStorage.getItem('push_prompt_dismissed')) {
+        // Only show prompt on mobile devices
+        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        
+        if (isMobile && Notification.permission === 'default' && !localStorage.getItem('push_prompt_dismissed')) {
           // Show a toast to prompt the user
           toast("Enable Push Notifications", {
             description: "Get notified immediately about your latest shifts, updates, and more.",
