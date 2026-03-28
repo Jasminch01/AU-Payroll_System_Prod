@@ -1,4 +1,5 @@
 import { createClient } from './supabase/server';
+import { logAudit } from './audit';
 import { sendEmail } from './email';
 import { sendPushNotification } from './push-notifications';
 
@@ -79,62 +80,162 @@ export async function createNotification(params: CreateNotificationParams) {
 // --- END APP NOTIFICATIONS ---
 
 /**
- * Notify employees that their shifts have been published.
- * Accepts the pre-fetched draft shifts directly from the publish route
- * so there is no timestamp-comparison guessing — we notify EXACTLY
- * the shifts that were in 'draft' status at publish time.
+ * Notify employees that a roster has been published or updated.
+ * Currently logs to audit log and console.
+ * Can be extended to send real emails via Resend/SendGrid.
  */
-export async function notifyRosterPublished(rosterId: string, businessId: string, updatedBy: string, draftShifts: any[]) {
-    if (!draftShifts || draftShifts.length === 0) return;
+export async function notifyRosterPublished(rosterId: string, businessId: string, updatedBy: string, since?: string) {
+    const supabase = await createClient();
 
-    const emailNotifications: any[] = [];
+    // 1. Get roster details
+    const { data: roster } = await supabase
+        .from('Roster')
+        .select('*')
+        .eq('roster_id', rosterId)
+        .single();
 
-    for (const shift of draftShifts) {
-        // Skip unassigned or shifts without employee data
+    if (!roster) return;
+
+    // Get all shifts in this roster
+    const { data: shifts } = await supabase
+        .from('Shift')
+        .select('*, Employee:employee_id(email, first_name, user_id)')
+        .eq('roster_id', rosterId);
+
+    if (!shifts || shifts.length === 0) return;
+
+    // Determine which shifts are new or updated since last publish
+    // FIX: Using 'since' directly to identify changes relative to the previous state.
+    // If 'since' is null/missing, it's a first-time publish, so all shifts are 'new'.
+    const lastPublish = since;
+    const userChanges: Record<string, { 
+        employee: any, 
+        newShifts: any[], 
+        updatedShifts: any[] 
+    }> = {};
+
+    for (const shift of shifts) {
         if (!shift.Employee) continue;
+        
+        const userId = shift.Employee.user_id;
+        const email = shift.Employee.email;
+        if (!userId && !email) continue;
 
-        const { email, first_name, user_id } = shift.Employee;
-        const shiftTime = `${new Date(shift.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - ${new Date(shift.end_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+        let type: 'new' | 'updated' | 'unchanged' = 'unchanged';
+        const updatedAt = new Date(shift.updated_at);
 
-        // Send in-app notification per employee
+        if (!lastPublish) {
+            // First time publish: everything is new
+            type = 'new';
+        } else {
+            const createdAt = new Date(shift.created_at);
+            const pubAt = new Date(lastPublish);
+
+            // Use a small buffer (1 second) to avoid race conditions with same-second updates
+            const isNew = createdAt.getTime() > pubAt.getTime() + 1000;
+            const isUpdated = updatedAt.getTime() > pubAt.getTime() + 1000;
+
+            if (isNew) {
+                type = 'new';
+            } else if (isUpdated) {
+                type = 'updated';
+            }
+        }
+
+        if (type !== 'unchanged') {
+            const key = userId || email;
+            if (!userChanges[key]) {
+                userChanges[key] = {
+                    employee: shift.Employee,
+                    newShifts: [],
+                    updatedShifts: []
+                };
+            }
+            if (type === 'new') userChanges[key].newShifts.push(shift);
+            else userChanges[key].updatedShifts.push(shift);
+        }
+    }
+
+    const notifiedUserKeys = Object.keys(userChanges);
+    if (notifiedUserKeys.length === 0) return;
+
+    console.log(`[Notification] Sending grouped notifications to ${notifiedUserKeys.length} employees for roster ${rosterId}`);
+    
+    // 4. Log the notification event summary (for audit)
+    await logAudit({
+        businessId,
+        tableName: 'Roster',
+        recordId: rosterId,
+        action: 'UPDATE',
+        changedBy: updatedBy,
+        afterValue: {
+            notifiedEmployeeCount: notifiedUserKeys.length,
+            startDate: roster.start_date,
+            endDate: roster.end_date
+        },
+        reason: 'Grouped roster publish notifications triggered'
+    });
+
+    // 5. Send actual notifications and emails
+    for (const key of notifiedUserKeys) {
+        const { employee, newShifts, updatedShifts } = userChanges[key];
+        const { email, first_name, user_id } = employee;
+
+        // Build summary message
+        let summaryMessage = '';
+        if (newShifts.length > 0 && updatedShifts.length > 0) {
+            summaryMessage = `You have ${newShifts.length} new and ${updatedShifts.length} updated shifts in the latest roster.`;
+        } else if (newShifts.length > 0) {
+            summaryMessage = `You have ${newShifts.length} new shift${newShifts.length > 1 ? 's' : ''} in the latest roster.`;
+        } else {
+            summaryMessage = `Your shift${updatedShifts.length > 1 ? 's have' : ' has'} been updated in the latest roster.`;
+        }
+
+        // Send ONE in-app notification
         if (user_id) {
             createNotification({
                 business_id: businessId,
                 user_ids: [user_id],
-                type: 'SHIFT_PUBLISHED',
-                title: 'New Shift Assigned',
-                message: `You have a new shift on ${shift.shift_date} (${shiftTime})`,
-                entity_id: shift.shift_id,
-                entity_type: 'shift'
-            }).catch(err => console.error('[Notify] In-app targeted notification failed:', err));
+                type: newShifts.length > 0 ? 'SHIFT_PUBLISHED' : 'SHIFT_UPDATED',
+                title: newShifts.length > 0 ? 'New Shifts Assigned' : 'Shifts Updated',
+                message: summaryMessage,
+                entity_id: rosterId,
+                entity_type: 'roster'
+            }).catch(err => console.error('[Notify] Grouped in-app notification failed:', err));
         }
 
-        if (email && first_name) {
-            emailNotifications.push({ email, name: first_name, date: shift.shift_date, time: shiftTime });
-        }
-    }
+        // Send ONE email
+        const shiftListHtml = [...newShifts, ...updatedShifts].map(s => {
+            const time = `${new Date(s.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })} - ${new Date(s.end_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })}`;
+            const statusLabel = newShifts.includes(s) ? '<span style="color: #059669; font-weight: bold;">(New)</span>' : '<span style="color: #d97706; font-weight: bold;">(Updated)</span>';
+            return `<div style="padding: 10px; background: #f9fafb; border-radius: 6px; margin-bottom: 8px; border-left: 4px solid ${newShifts.includes(s) ? '#059669' : '#d97706'};">
+                <p style="margin: 0;"><strong>Date:</strong> ${s.shift_date} ${statusLabel}</p>
+                <p style="margin: 3px 0 0 0;"><strong>Time:</strong> ${time}</p>
+            </div>`;
+        }).join('');
 
-    if (emailNotifications.length === 0) return;
-
-    console.log(`[Notification] Sending ${emailNotifications.length} targeted email notifications for roster ${rosterId}`);
-
-    // Send emails
-    for (const n of emailNotifications) {
-        const html = `<div style="font-family: sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
-            <h2 style="color: #4f46e5;">AU Payroll System</h2>
-            <p>Hi ${n.name},</p>
-            <p>You have been assigned a <b>new shift</b> for the upcoming roster:</p>
-            <div style="background: #f9fafb; padding: 15px; border-radius: 8px; margin: 20px 0;">
-                <p style="margin: 0;"><strong>Date:</strong> ${n.date}</p>
-                <p style="margin: 5px 0 0 0;"><strong>Time:</strong> ${n.time}</p>
+        const html = `
+            <div style="font-family: sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
+                <h2 style="color: #4f46e5;">AU Payroll System</h2>
+                <p>Hi ${first_name},</p>
+                <p>${summaryMessage} Details:</p>
+                <div style="margin: 20px 0;">
+                    ${shiftListHtml}
+                </div>
+                <p>Please log in to your dashboard to view your full schedule.</p>
+                <a href="${process.env.NEXT_PUBLIC_APP_URL}/employee/shifts" style="display: inline-block; background: #4f46e5; color: white; padding: 10px 20px; text-decoration: none; border-radius: 6px; margin-top: 10px;">View Full Roster</a>
+                <p style="font-size: 12px; color: #6b7280; margin-top: 30px;">This is an automated notification. Please do not reply.</p>
             </div>
-            <p>Please log in to your dashboard to view your full schedule.</p>
-            <a href="${process.env.NEXT_PUBLIC_APP_URL}/employee/shifts" style="display: inline-block; background: #4f46e5; color: white; padding: 10px 20px; text-decoration: none; border-radius: 6px; margin-top: 10px;">View Full Roster</a>
-            <p style="font-size: 12px; color: #6b7280; margin-top: 30px;">This is an automated notification. Please do not reply.</p>
-        </div>`;
-        const text = `Hi ${n.name}, you have a new shift on ${n.date} (${n.time}). View: ${process.env.NEXT_PUBLIC_APP_URL}/employee/shifts`;
+        `;
 
-        await sendEmail({ to: n.email, subject: 'New Shift Assigned', html, text });
+        const text = `Hi ${first_name}, ${summaryMessage} View your schedule: ${process.env.NEXT_PUBLIC_APP_URL}/employee/shifts`;
+
+        await sendEmail({
+            to: email,
+            subject: newShifts.length > 0 ? 'New Shifts Assigned' : 'Shifts Updated',
+            html,
+            text
+        });
     }
 }
 

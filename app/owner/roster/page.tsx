@@ -920,25 +920,25 @@ export default function OwnerRosterPage() {
                     <div className="flex flex-col h-[75vh] sm:h-[700px] relative">
                         {/* Integrated Mobile Calendar Header */}
                         <div className="bg-white px-3 pt-3 flex items-center justify-between border-b border-[hsl(var(--border))]">
-                            <button 
+                            <button
                                 onClick={() => setIsCalendarExpanded(!isCalendarExpanded)}
                                 className="flex items-center gap-2 py-2 px-1 active:opacity-60 transition-opacity"
                             >
                                 <span className="text-xl font-black text-[hsl(var(--foreground))] tracking-tight">
                                     {format(rosterDates[selectedDayIndex], "EEE, d MMM")}
                                 </span>
-                                <ChevronRight 
-                                    size={18} 
+                                <ChevronRight
+                                    size={18}
                                     className={cn(
                                         "text-[hsl(var(--muted-foreground))] transition-transform duration-300",
                                         isCalendarExpanded ? "rotate-90" : "rotate-0"
-                                    )} 
+                                    )}
                                 />
                             </button>
                             <div className="flex items-center gap-1">
-                                <Button 
-                                    variant="ghost" 
-                                    size="icon" 
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
                                     className={cn("h-10 w-10 text-[hsl(var(--muted-foreground))]", isCalendarExpanded && "text-[hsl(var(--brand))] bg-[hsl(var(--brand-light))]/30")}
                                     onClick={() => setIsCalendarExpanded(!isCalendarExpanded)}
                                 >
@@ -953,7 +953,7 @@ export default function OwnerRosterPage() {
                         {/* Expandable Month Calendar */}
                         <AnimatePresence>
                             {isCalendarExpanded && (
-                                <motion.div 
+                                <motion.div
                                     initial={{ height: 0, opacity: 0 }}
                                     animate={{ height: "auto", opacity: 1 }}
                                     exit={{ height: 0, opacity: 0 }}
@@ -1002,7 +1002,7 @@ export default function OwnerRosterPage() {
                                                     const isSelected = isSameDay(day, rosterDates[selectedDayIndex]);
                                                     const isCurrentMonth = isSameMonth(day, monthStart);
                                                     const isToday = isSameDay(day, new Date());
-                                                    
+
                                                     // Find if this day exists in current roster range
                                                     const rosterIndex = rosterDates.findIndex(rd => isSameDay(rd, day));
 
@@ -1024,10 +1024,10 @@ export default function OwnerRosterPage() {
                                                             }}
                                                             className={cn(
                                                                 "h-10 w-full flex items-center justify-center rounded-lg text-sm transition-all",
-                                                                isSelected 
-                                                                    ? "bg-[hsl(var(--brand))] text-white font-bold shadow-sm" 
-                                                                    : isToday 
-                                                                        ? "text-[hsl(var(--brand))] font-bold bg-[hsl(var(--brand-light))]/20" 
+                                                                isSelected
+                                                                    ? "bg-[hsl(var(--brand))] text-white font-bold shadow-sm"
+                                                                    : isToday
+                                                                        ? "text-[hsl(var(--brand))] font-bold bg-[hsl(var(--brand-light))]/20"
                                                                         : isCurrentMonth ? "text-[hsl(var(--foreground))]" : "text-[hsl(var(--muted-foreground))]/40",
                                                                 rosterIndex === -1 && isCurrentMonth && "opacity-40"
                                                             )}
@@ -1064,28 +1064,28 @@ export default function OwnerRosterPage() {
                                             onClick={() => setSelectedDayIndex(i)}
                                             className={cn(
                                                 "flex flex-col items-center justify-center min-w-[56px] h-14 rounded-xl transition-all border shrink-0",
-                                                isSelected 
-                                                    ? "bg-[hsl(var(--brand))] text-white border-[hsl(var(--brand))] shadow-md shadow-[hsl(var(--brand))]/20 scale-105" 
+                                                isSelected
+                                                    ? "bg-[hsl(var(--brand))] text-white border-[hsl(var(--brand))] shadow-md shadow-[hsl(var(--brand))]/20 scale-105"
                                                     : "bg-white text-[hsl(var(--muted-foreground))] border-[hsl(var(--border))] hover:border-[hsl(var(--brand))]/30",
                                                 isToday && !isSelected && "ring-2 ring-[hsl(var(--brand))]/30"
                                             )}
                                         >
                                             <span className="text-[9px] uppercase font-black tracking-tighter opacity-70">{dayName}</span>
-                                        <span className="text-base font-black leading-tight">{dayNum}</span>
-                                    </button>
-                                );
-                            })}
-                        </div>
-                    )}
+                                            <span className="text-base font-black leading-tight">{dayNum}</span>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        )}
 
                         {/* Shifts List for selected day */}
                         <div className="flex-1 overflow-y-auto p-4 space-y-6 pb-24 scrollbar-thin">
                             {(() => {
                                 const selectedDateStr = formatDate(rosterDates[selectedDayIndex]);
                                 const today = new Date();
-                                today.setHours(0,0,0,0);
+                                today.setHours(0, 0, 0, 0);
                                 const selectedDateObj = new Date(rosterDates[selectedDayIndex]);
-                                selectedDateObj.setHours(0,0,0,0);
+                                selectedDateObj.setHours(0, 0, 0, 0);
                                 const isPastDay = selectedDateObj < today;
 
                                 // Filter employees based on search/role (already handled by paginatedEmployees)
@@ -1104,9 +1104,9 @@ export default function OwnerRosterPage() {
                                                 {activeEmployees.length} {activeEmployees.length === 1 ? 'Employee' : 'Employees'} in List
                                             </h3>
                                             {dayDrafts > 0 && !isPastDay && (
-                                                <Button 
-                                                    size="sm" 
-                                                    variant="success" 
+                                                <Button
+                                                    size="sm"
+                                                    variant="success"
                                                     className="h-7 text-[10px] font-black uppercase tracking-wider px-2"
                                                     onClick={() => publishRosterMutation.mutate(currentRoster.roster_id)}
                                                 >
@@ -1136,9 +1136,9 @@ export default function OwnerRosterPage() {
                                                                     <span className="text-[10px] uppercase font-bold tracking-widest text-[hsl(var(--muted-foreground))]">{emp.role_title}</span>
                                                                 </div>
                                                             </div>
-                                                            <Button 
-                                                                variant="ghost" 
-                                                                size="icon" 
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="icon"
                                                                 className="h-8 w-8 rounded-full text-[hsl(var(--brand))] hover:bg-[hsl(var(--brand))]/10"
                                                                 onClick={() => openAddShift(selectedDateStr, emp.employee_id)}
                                                             >
@@ -1156,8 +1156,8 @@ export default function OwnerRosterPage() {
                                                                             onClick={() => openAddShift(selectedDateStr, emp.employee_id, s)}
                                                                             className={cn(
                                                                                 "p-3 rounded-xl border transition-all active:scale-[0.98] relative overflow-hidden flex items-center justify-between shadow-sm",
-                                                                                isPublished 
-                                                                                    ? "bg-[#F1F8E9] border-[#C5E1A5] text-green-900" 
+                                                                                isPublished
+                                                                                    ? "bg-[#F1F8E9] border-[#C5E1A5] text-green-900"
                                                                                     : "bg-white border-[hsl(var(--border))] text-[hsl(var(--foreground))]",
                                                                                 isPastDay && "opacity-60 grayscale-[0.2]"
                                                                             )}
@@ -1188,7 +1188,7 @@ export default function OwnerRosterPage() {
                                                                     );
                                                                 })
                                                             ) : (
-                                                                <div 
+                                                                <div
                                                                     onClick={() => openAddShift(selectedDateStr, emp.employee_id)}
                                                                     className="p-3 rounded-xl border border-dashed border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))] text-[10px] font-bold italic flex items-center justify-center gap-2 hover:bg-[hsl(var(--brand))]/5 transition-colors cursor-pointer bg-white/50"
                                                                 >
@@ -1208,7 +1208,7 @@ export default function OwnerRosterPage() {
 
                         {/* Floating Action Button (FAB) for adding shifts */}
                         <div className="absolute bottom-6 right-6">
-                            <Button 
+                            <Button
                                 size="icon"
                                 onClick={() => openAddShift(formatDate(rosterDates[selectedDayIndex]), "")}
                                 className="h-14 w-14 rounded-2xl bg-[hsl(var(--brand))] text-white shadow-xl shadow-[hsl(var(--brand))]/30 hover:scale-105 transition-transform"
