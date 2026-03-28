@@ -11,7 +11,7 @@ import {
     Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Pencil, CheckCircle, XCircle, Palmtree } from "lucide-react";
+import { Pencil, CheckCircle, XCircle, Palmtree, FileText } from "lucide-react";
 import type { LeaveBalance, LeaveRequest } from "@/types/database";
 
 interface LeaveBalanceWithType extends LeaveBalance {
@@ -180,9 +180,21 @@ export function EmployeeLeave({ employeeId }: { employeeId: string }) {
                                             <span className="mx-1.5">·</span>
                                             {req.total_hours}h
                                         </p>
-                                        {req.reason && (
-                                            <p className="text-xs text-[hsl(var(--muted-foreground))] mt-0.5 italic">"{req.reason}"</p>
-                                        )}
+                                        <div className="flex flex-wrap gap-2 mt-1">
+                                            {req.reason && (
+                                                <p className="text-xs text-[hsl(var(--muted-foreground))] italic">"{req.reason}"</p>
+                                            )}
+                                            {req.document_url && (
+                                                <a
+                                                    href={req.document_url}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="text-[10px] flex items-center gap-1 text-[hsl(var(--brand))] hover:underline"
+                                                >
+                                                    <FileText size={10} /> View Document
+                                                </a>
+                                            )}
+                                        </div>
                                         {req.rejection_reason && (
                                             <p className="text-xs text-[hsl(var(--danger))] mt-0.5">
                                                 Rejection: {req.rejection_reason}

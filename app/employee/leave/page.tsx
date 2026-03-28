@@ -10,7 +10,7 @@ import { StatusBadge } from "@/components/ui/badge";
 import {
     Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription
 } from "@/components/ui/dialog";
-import { apiGet, apiPost, apiDelete } from "@/lib/api-client";
+import { apiGet, apiPost, apiDelete, apiUpload } from "@/lib/api-client";
 import { toast } from "sonner";
 import { Palmtree, Plus, Calendar, Trash2, FileText, Upload } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -119,7 +119,7 @@ export default function EmployeeLeavePage() {
             try {
                 const formData = new FormData();
                 formData.append("file", file);
-                const uploadRes = await apiPost<{ url: string }>("/upload/document", formData);
+                const uploadRes = await apiUpload<{ url: string }>("/upload/document", formData);
                 documentUrl = uploadRes.url;
             } catch (err: any) {
                 setUploading(false);

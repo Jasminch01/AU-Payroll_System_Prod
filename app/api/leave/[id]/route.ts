@@ -35,23 +35,38 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
         const supabase = await createClient();
 
-        // 1. Fetch current leave request along with the requesting employee's role
+        // 1. Fetch current leave request
         const { data: current, error: fetchError } = await supabase
             .from('LeaveRequest')
-            .select(`
-                *,
-                Employee:employee_id (
-                    user_id,
-                    User:user_id (role)
-                )
-            `)
+            .select('*')
             .eq('request_id', id)
             .single();
 
-        if (fetchError || !current) return errorResponse('Leave request not found', 404);
+        if (fetchError || !current) {
+            console.error('LeaveRequest fetch error:', fetchError);
+            return errorResponse('Leave request not found', 404);
+        }
 
-        const targetUserRole = (current as any).Employee?.User?.role;
         const targetEmployeeId = current.employee_id;
+        let targetUserRole = 'employee';
+
+        // Fetch target user's role to apply approval rules
+        const { data: empData } = await supabase
+            .from('Employee')
+            .select('user_id')
+            .eq('employee_id', targetEmployeeId)
+            .single();
+
+        if (empData?.user_id) {
+            const { data: userData } = await supabase
+                .from('User')
+                .select('role')
+                .eq('user_id', empData.user_id)
+                .single();
+            if (userData) {
+                targetUserRole = userData.role;
+            }
+        }
 
         // 2. Validate approval logic
         // Rule: Managers/Owners cannot approve THEIR OWN leave
