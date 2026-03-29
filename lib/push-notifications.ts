@@ -56,12 +56,23 @@ export async function sendPushNotification(userId: string, title: string, body: 
       .catch((err: any) => {
          // Auto-delete expired/invalid subscriptions
          if (err.statusCode === 404 || err.statusCode === 410) {
-            console.log('[Push Service] Subscription expired/revoked. Deleting from database...', sub.subscription.endpoint);
+            const expiredEndpoint = sub.subscription.endpoint;
+            console.log('[Push Service] Subscription expired/revoked. Deleting from database...', expiredEndpoint);
+            // Try deleting by the dedicated endpoint column first; fall back to filtering the jsonb
             supabase.from('push_subscriptions')
                 .delete()
                 .eq('user_id', userId)
-                .contains('subscription', { endpoint: sub.subscription.endpoint })
-                .then(({ error }) => {
+                .eq('endpoint', expiredEndpoint)
+                .then(({ error, count }) => {
+                   if (error || count === 0) {
+                     // Fallback: filter on the jsonb endpoint field
+                     return supabase.from('push_subscriptions')
+                       .delete()
+                       .eq('user_id', userId)
+                       .filter('subscription->>endpoint', 'eq', expiredEndpoint);
+                   }
+                })
+                .then(({ error }: any = {}) => {
                    if (error) console.error('[Push Service] Failed to cleanup expired subscription', error);
                 });
          } else {

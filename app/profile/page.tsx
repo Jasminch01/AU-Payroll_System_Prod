@@ -142,15 +142,24 @@ export default function ProfilePage() {
 
     const data = formData || profile || {};
 
-    if (isLoading) {
-        return (
-            <DashboardLayout role={role as any || "employee"} pageTitle="My Profile" pageDescription="Loading...">
-                <div className="space-y-4">
-                    {[1, 2, 3].map((i) => <div key={i} className="skeleton h-24 rounded-xl" />)}
-                </div>
-            </DashboardLayout>
-        );
-    }
+    // Diagnostic State
+    const [diagnostics, setDiagnostics] = useState<any>({
+        isSecure: false,
+        swSupport: false,
+        pushSupport: false,
+        notificationSupport: false,
+        vapidKeyFound: false,
+    });
+
+    React.useEffect(() => {
+        setDiagnostics({
+            isSecure: typeof window !== 'undefined' && window.isSecureContext,
+            swSupport: typeof navigator !== 'undefined' && 'serviceWorker' in navigator,
+            pushSupport: typeof window !== 'undefined' && 'PushManager' in window,
+            notificationSupport: typeof window !== 'undefined' && 'Notification' in window,
+            vapidKeyFound: !!process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY,
+        });
+    }, []);
 
     return (
         <DashboardLayout
@@ -341,6 +350,35 @@ export default function ProfilePage() {
                                     >
                                         <Send size={14} className="mr-2" /> Send Test Signal to Device
                                     </Button>
+                                </div>
+
+                                <div className="mt-4 pt-4 border-t border-[hsl(var(--border))]">
+                                    <h4 className="text-xs font-semibold mb-2 flex items-center gap-2">
+                                        <Shield size={12} /> Diagnostic Info
+                                    </h4>
+                                    <div className="grid grid-cols-2 gap-2 text-[10px] font-mono">
+                                        <div className="flex items-center gap-1.5 p-1.5 border rounded bg-[hsl(var(--muted))]/10">
+                                            <div className={`h-1.5 w-1.5 rounded-full ${diagnostics.isSecure ? 'bg-[hsl(var(--success))]' : 'bg-[hsl(var(--destructive))]'}`} />
+                                            <span>Secure Context: {diagnostics.isSecure ? 'YES' : 'NO'}</span>
+                                        </div>
+                                        <div className="flex items-center gap-1.5 p-1.5 border rounded bg-[hsl(var(--muted))]/10">
+                                            <div className={`h-1.5 w-1.5 rounded-full ${diagnostics.swSupport ? 'bg-[hsl(var(--success))]' : 'bg-[hsl(var(--destructive))]'}`} />
+                                            <span>SW Support: {diagnostics.swSupport ? 'YES' : 'NO'}</span>
+                                        </div>
+                                        <div className="flex items-center gap-1.5 p-1.5 border rounded bg-[hsl(var(--muted))]/10">
+                                            <div className={`h-1.5 w-1.5 rounded-full ${diagnostics.pushSupport ? 'bg-[hsl(var(--success))]' : 'bg-[hsl(var(--destructive))]'}`} />
+                                            <span>Push Support: {diagnostics.pushSupport ? 'YES' : 'NO'}</span>
+                                        </div>
+                                        <div className="flex items-center gap-1.5 p-1.5 border rounded bg-[hsl(var(--muted))]/10">
+                                            <div className={`h-1.5 w-1.5 rounded-full ${diagnostics.vapidKeyFound ? 'bg-[hsl(var(--success))]' : 'bg-[hsl(var(--destructive))]'}`} />
+                                            <span>VAPID Key: {diagnostics.vapidKeyFound ? 'FOUND' : 'MISSING'}</span>
+                                        </div>
+                                    </div>
+                                    {!diagnostics.isSecure && (
+                                        <p className="text-[10px] text-[hsl(var(--destructive))] mt-2 bg-[hsl(var(--destructive))]/5 p-2 rounded">
+                                            IMPORTANT: Your site is currently not running on HTTPS. Push notifications will NOT work.
+                                        </p>
+                                    )}
                                 </div>
                             </CardContent>
                         </Card>
