@@ -143,11 +143,10 @@ export function PushNotificationManager() {
         const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
         const isPWA = window.matchMedia('(display-mode: standalone)').matches || (navigator as any).standalone;
 
-        if ((isMobile || isPWA) && Notification.permission === 'default' && !localStorage.getItem('push_prompt_dismissed')) {
+        if ((isMobile || isPWA) && Notification.permission === 'default') {
           // Directly trigger the native OS permission prompt instead of showing a web toast.
           // This creates a native-app-like experience where the system dialog appears immediately.
           console.log('[PushManager] Automatically triggering native OS prompt...');
-          localStorage.setItem('push_prompt_dismissed', 'true'); // Prevents spamming on reload if they ignore the prompt
           subscribeToPush(false);
         }
       };
