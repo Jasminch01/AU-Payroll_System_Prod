@@ -112,13 +112,17 @@ export default function ProfilePage() {
     });
 
     const triggerReRegister = () => {
+        console.log('[Profile] dispatching trigger-push-subscribe event from button click');
         window.dispatchEvent(new CustomEvent('trigger-push-subscribe'));
         // Refresh status after a delay
         setTimeout(async () => {
-            setPushStatus(Notification.permission);
-            const reg = await navigator.serviceWorker.ready;
-            const sub = await reg.pushManager.getSubscription();
-            setHasSubscription(!!sub);
+            console.log('[Profile] refreshing status after re-registration attempt');
+            if (typeof window !== "undefined" && "Notification" in window) {
+                setPushStatus(Notification.permission);
+                const reg = await navigator.serviceWorker.ready;
+                const sub = await reg.pushManager.getSubscription();
+                setHasSubscription(!!sub);
+            }
         }, 5000);
     };
 

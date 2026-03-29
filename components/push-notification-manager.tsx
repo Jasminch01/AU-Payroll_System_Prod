@@ -79,7 +79,9 @@ export function PushNotificationManager() {
 
   // Expose the subscribe function to the window so it can be triggered from other components
   useEffect(() => {
+    console.log('[PushManager] Mounted and listening for trigger-push-subscribe event');
     const handleTrigger = () => {
+      console.log('[PushManager] Received trigger-push-subscribe event');
       subscribeToPush();
     };
     window.addEventListener('trigger-push-subscribe', handleTrigger);
@@ -87,9 +89,20 @@ export function PushNotificationManager() {
   }, []);
 
   const subscribeToPush = async () => {
+    console.log('[PushManager] Starting subscribeToPush process...');
     toast.dismiss();
     try {
+      if (!('serviceWorker' in navigator)) {
+        throw new Error('Service workers are not supported by this browser.');
+      }
+      if (!('PushManager' in window)) {
+        throw new Error('Push notifications are not supported by this browser.');
+      }
+
+      console.log('[PushManager] Requesting permission...');
       const permission = await Notification.requestPermission();
+      console.log('[PushManager] Permission status:', permission);
+      
       if (permission !== 'granted') {
         toast.error("Notifications were not allowed.", {
           description: "You can enable them in your browser/device settings."
@@ -97,7 +110,10 @@ export function PushNotificationManager() {
         return;
       }
 
+      console.log('[PushManager] Waiting for service worker to be ready...');
       const registration = await navigator.serviceWorker.ready;
+      console.log('[PushManager] Service worker ready:', registration.scope);
+      
       if (!registration) {
         toast.error("Service worker not active yet.");
         return;
