@@ -1,6 +1,7 @@
 import axios, { AxiosError, AxiosResponse, AxiosRequestConfig } from "axios";
 import { ApiResponse } from "@/types/database";
 
+
 const BASE_URL = "/api";
 
 /**
@@ -31,10 +32,10 @@ axiosInstance.interceptors.response.use(
     (error: AxiosError<ApiResponse>) => {
         // Handle Axios errors (network errors, status codes >= 400)
         // We prioritize the error message returned by our backend
-        const message = 
-            error.response?.data?.error || 
-            error.response?.data?.message || 
-            error.message || 
+        const message =
+            error.response?.data?.error ||
+            error.response?.data?.message ||
+            error.message ||
             "Something went wrong";
         return Promise.reject(new Error(message));
     }
