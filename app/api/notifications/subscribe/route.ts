@@ -15,7 +15,7 @@ export async function POST(request: NextRequest) {
         // If the user isn't logged in yet, gracefully accept but don't database it until they log in.
         // The frontend will re-sync the subscription natively upon login.
         if (!authUser) {
-             return successResponse({ message: 'Anonymous subscription request acknowledged.' });
+            return errorResponse('Authentication required to subscribe to push notifications', 401);
         }
 
         const body = await request.json();

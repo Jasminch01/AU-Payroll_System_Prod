@@ -2,7 +2,7 @@ import { type NextRequest } from 'next/server';
 import { updateSession } from '@/lib/supabase/middleware';
 import { verifyKioskToken } from './lib/kiosk-auth';
 
-export default async function proxy(request: NextRequest) {
+export async function middleware(request: NextRequest) {
     const { pathname } = request.nextUrl;
 
     // Check kiosk security before standard routing
@@ -36,10 +36,9 @@ export default async function proxy(request: NextRequest) {
         if (authCookie) {
             try {
                 // Parse the session cookie to get the user data
-                // The cookie is a JSON array stringified
                 const sessionStr = decodeURIComponent(authCookie.value);
 
-                // Hacky check for base64 encoded JSON
+                // Check for base64 encoded JSON
                 let decodedStr = sessionStr;
                 if (sessionStr.startsWith('base64-')) {
                     decodedStr = atob(sessionStr.replace('base64-', ''));
@@ -47,13 +46,8 @@ export default async function proxy(request: NextRequest) {
 
                 const sessionData = JSON.parse(decodedStr);
 
-                // Note: The role is usually stored in the DB, not the raw JWT, unless customized. 
-                // Since edge middleware can't efficiently query the DB on every request, 
-                // the safest approach is to redirect them to a generic dashboard handler, or their primary entry point
-                // and let the client-side/server-components route them further if needed.
-
-                // For now, redirect to /owner/dashboard as a catch-all if they are logged in.
-                // If they don't have access, the dashboard's own layout/protection will bounce them.
+                // Redirect to owner/dashboard if they are logged in.
+                // The dashboard itself will handle specific role redirects if necessary.
                 return Response.redirect(new URL('/owner/dashboard', request.url));
 
             } catch (e) {

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
+import { useAuth } from '@/hooks/use-auth';
 
 function urlBase64ToUint8Array(base64String: string) {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
@@ -107,12 +108,13 @@ export function PushNotificationManager() {
     }
   };
 
+  const { user, isAuthenticated } = useAuth();
+
   useEffect(() => {
-    if ('serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window) {
+    if (isAuthenticated && user?.user_id && 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window) {
       setIsSupported(true);
 
-      // Silently sync the subscription to the backend. Useful for when a user 
-      // subscribes while logged out, and later logs in.
+      // Silently sync the subscription to the backend.
       const syncSubscription = async () => {
         if (Notification.permission === 'granted') {
           try {
@@ -126,7 +128,6 @@ export function PushNotificationManager() {
               });
             } else {
               // We have permission, but no subscription exists (e.g., SW was re-registered or sub lost)
-              // We can silently subscribe without a prompt!
               console.log('[PushManager] Permission granted but no active subscription found. Silently subscribing...');
               await subscribeToPush(true);
             }
@@ -139,18 +140,16 @@ export function PushNotificationManager() {
       syncSubscription();
 
       const checkPermission = async () => {
-        // Check for mobile or PWA standalone mode
+        // Only trigger the prompt if the app is actually installed (PWA Standalone)
         const isPWA = window.matchMedia('(display-mode: standalone)').matches || (navigator as any).standalone;
 
         if (isPWA && Notification.permission === 'default') {
-          // Directly trigger the native OS permission prompt instead of showing a web toast.
-          // This creates a native-app-like experience where the system dialog appears immediately.
           console.log('[PushManager] Automatically triggering native OS prompt...');
           subscribeToPush(false);
         }
       };
 
-      // Delay the check slightly to let the app load cleanly without immediate interruptions
+      // Delay the check slightly to let the app load cleanly
       const timer = setTimeout(checkPermission, 3000);
 
       // Also trigger prompt immediately if PWA installation finishes
@@ -161,15 +160,11 @@ export function PushNotificationManager() {
         window.removeEventListener('appinstalled', checkPermission);
       };
     }
-  }, []);
+  }, [isAuthenticated, user?.user_id]);
 
-  // Expose the subscribe function to the window so it can be triggered from other components
+  // Expose the subscribe function to the window
   useEffect(() => {
-    console.log('[PushManager] Mounted and listening for trigger-push-subscribe event');
-    const handleTrigger = () => {
-      console.log('[PushManager] Received trigger-push-subscribe event');
-      subscribeToPush(false);
-    };
+    const handleTrigger = () => subscribeToPush(false);
     window.addEventListener('trigger-push-subscribe', handleTrigger);
     return () => window.removeEventListener('trigger-push-subscribe', handleTrigger);
   }, []);

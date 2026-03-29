@@ -12,7 +12,7 @@ export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> 
 }
 
 const Input = React.forwardRef<HTMLInputElement, InputProps>(
-    ({ className, type, error, label, hint, id, showAsterisk, suffix, ...props }, ref) => {
+    ({ className, type, error, label, hint, id, showAsterisk, suffix, autoComplete = "off", ...props }, ref) => {
         const inputId = id || React.useId();
 
         return (
@@ -49,6 +49,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
                         ref={ref}
                         aria-invalid={!!error}
                         aria-describedby={error ? `${inputId}-error` : hint ? `${inputId}-hint` : undefined}
+                        autoComplete={autoComplete}
                         {...props}
                     />
                     {suffix && (
