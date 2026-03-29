@@ -1,40 +1,73 @@
+import axios, { AxiosError, AxiosResponse, AxiosRequestConfig } from "axios";
 import { ApiResponse } from "@/types/database";
 
 const BASE_URL = "/api";
 
 /**
+ * Singleton Axios Instance
+ * Pre-configured with base URL and common headers.
+ */
+const axiosInstance = axios.create({
+    baseURL: BASE_URL,
+    headers: {
+        "Content-Type": "application/json",
+    },
+    withCredentials: true, // Required for cross-origin cookie handling if applicable
+});
+
+/**
+ * Response Interceptor: Standardizes response handling and error extraction
+ * Automatically unwraps the response and handles our standard { success, data, error } format.
+ */
+axiosInstance.interceptors.response.use(
+    (response: AxiosResponse<ApiResponse>) => {
+        const result = response.data;
+        // If the API returns success: false, we treat it as an error even if status is 200
+        if (result.success === false) {
+            return Promise.reject(new Error(result.error || result.message || "API Error"));
+        }
+        return response;
+    },
+    (error: AxiosError<ApiResponse>) => {
+        // Handle Axios errors (network errors, status codes >= 400)
+        // We prioritize the error message returned by our backend
+        const message = 
+            error.response?.data?.error || 
+            error.response?.data?.message || 
+            error.message || 
+            "Something went wrong";
+        return Promise.reject(new Error(message));
+    }
+);
+
+/**
  * Generic API client for calling our Next.js API routes.
- * Used by TanStack Query hooks.
+ * 
+ * @param endpoint - The API endpoint (e.g., "/onboarding/status")
+ * @param config - Standard Axios request configuration
+ * @returns The 'data' field from the ApiResponse
  */
 export async function apiClient<T = unknown>(
     endpoint: string,
-    options?: RequestInit
+    config: AxiosRequestConfig = {}
 ): Promise<T> {
-    const url = endpoint.startsWith("/") ? `${BASE_URL}${endpoint}` : `${BASE_URL}/${endpoint}`;
-
-    const response = await fetch(url, {
-        headers: {
-            "Content-Type": "application/json",
-            ...options?.headers,
-        },
-        ...options,
+    const response = await axiosInstance({
+        url: endpoint,
+        ...config,
     });
 
-    const data: ApiResponse<T> = await response.json();
-
-    if (!data.success) {
-        throw new Error(data.error || data.message || "Something went wrong");
-    }
-
-    return data.data as T;
+    // The interceptor ensures that if we reach here, result.success is true
+    return response.data.data as T;
 }
 
 /**
  * GET request helper
  */
-export function apiGet<T = unknown>(endpoint: string, params?: Record<string, string>) {
-    const searchParams = params ? `?${new URLSearchParams(params).toString()}` : "";
-    return apiClient<T>(`${endpoint}${searchParams}`);
+export function apiGet<T = unknown>(endpoint: string, params?: Record<string, any>) {
+    return apiClient<T>(endpoint, {
+        method: "GET",
+        params,
+    });
 }
 
 /**
@@ -43,7 +76,7 @@ export function apiGet<T = unknown>(endpoint: string, params?: Record<string, st
 export function apiPost<T = unknown>(endpoint: string, body?: unknown) {
     return apiClient<T>(endpoint, {
         method: "POST",
-        body: body ? JSON.stringify(body) : undefined,
+        data: body,
     });
 }
 
@@ -53,7 +86,7 @@ export function apiPost<T = unknown>(endpoint: string, body?: unknown) {
 export function apiPut<T = unknown>(endpoint: string, body?: unknown) {
     return apiClient<T>(endpoint, {
         method: "PUT",
-        body: body ? JSON.stringify(body) : undefined,
+        data: body,
     });
 }
 
@@ -63,7 +96,7 @@ export function apiPut<T = unknown>(endpoint: string, body?: unknown) {
 export function apiPatch<T = unknown>(endpoint: string, body?: unknown) {
     return apiClient<T>(endpoint, {
         method: "PATCH",
-        body: body ? JSON.stringify(body) : undefined,
+        data: body,
     });
 }
 
@@ -77,25 +110,20 @@ export function apiDelete<T = unknown>(endpoint: string) {
 }
 
 /**
- * Upload file via FormData (for certificates, documents, avatars)
+ * Upload file via FormData (standardizes header for multipart)
  */
 export async function apiUpload<T = unknown>(
     endpoint: string,
     formData: FormData
 ): Promise<T> {
-    const url = endpoint.startsWith("/") ? `${BASE_URL}${endpoint}` : `${BASE_URL}/${endpoint}`;
-
-    const response = await fetch(url, {
-        method: "POST",
-        body: formData,
-        // Don't set Content-Type — browser sets it with boundary for multipart
+    const response = await axiosInstance.post(endpoint, formData, {
+        headers: {
+            // We omit Content-Type to let Axios/Browser set it with the boundary automatically
+            "Content-Type": undefined,
+        },
     });
 
-    const data: ApiResponse<T> = await response.json();
-
-    if (!data.success) {
-        throw new Error(data.error || data.message || "Upload failed");
-    }
-
-    return data.data as T;
+    return response.data.data as T;
 }
+
+export default axiosInstance;

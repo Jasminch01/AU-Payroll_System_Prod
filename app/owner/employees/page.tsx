@@ -69,6 +69,10 @@ export default function OwnerEmployeesPage() {
         bank_account_name: '', bank_bsb: '', bank_account_number: '', abn: '', tfn: ''
     });
 
+    const [inviteExistingOpen, setInviteExistingOpen] = useState(false);
+    const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
+    const [inviteExistingEmail, setInviteExistingEmail] = useState("");
+
     const { user } = useAuth();
     const { data: employees = [], isLoading } = useQuery({
         queryKey: ["employees"],
@@ -193,8 +197,8 @@ export default function OwnerEmployeesPage() {
     });
 
     const handleManualAdd = () => {
-        if (!manualData.email || !manualData.password || !manualData.first_name || !manualData.last_name || !manualData.start_date) {
-            return toast.error("Please fill in all required (*) fields.");
+        if (!manualData.first_name || !manualData.last_name || !manualData.start_date) {
+            return toast.error("Please fill in first name, last name, and start date.");
         }
         addManualMutation.mutate({
             ...manualData,
@@ -253,6 +257,22 @@ export default function OwnerEmployeesPage() {
         }
     };
 
+    const handleInviteExisting = () => {
+        if (!inviteExistingEmail || !selectedEmployee) {
+            return toast.error("Please enter an email address.");
+        }
+        inviteMutation.mutate({
+            email: inviteExistingEmail,
+            first_name: selectedEmployee.first_name,
+            last_name: selectedEmployee.last_name,
+            employee_id: selectedEmployee.employee_id,
+            invite_as: selectedEmployee.role === 'manager' ? 'manager' : 'employee'
+        });
+        setInviteExistingOpen(false);
+        setSelectedEmployee(null);
+        setInviteExistingEmail("");
+    };
+
 
 
     const STATUS_TABS: { key: StatusFilter; label: string }[] = [
@@ -274,7 +294,7 @@ export default function OwnerEmployeesPage() {
                     </div>
                     <div>
                         <p className="font-medium">{row.first_name} {row.last_name}</p>
-                        <p className="text-xs text-[hsl(var(--muted-foreground))]">{row.email}</p>
+                        <p className="text-xs text-[hsl(var(--muted-foreground))]">{row.email || "Not Invited"}</p>
                     </div>
                 </div>
             ),
@@ -336,13 +356,25 @@ export default function OwnerEmployeesPage() {
                                 <Briefcase size={14} className="mr-2" />
                                 Edit Employment
                             </DropdownMenuItem>
-                            {row.status === "invited" && (
+                             {row.status === "invited" && (
                                 <DropdownMenuItem
                                     onClick={() => resendInviteMutation.mutate(row.employee_id)}
                                     className="cursor-pointer"
                                 >
                                     <RefreshCw size={14} className="mr-2" />
                                     Resend Invite
+                                </DropdownMenuItem>
+                            )}
+                            {!row.user_id && (
+                                <DropdownMenuItem
+                                    onClick={() => {
+                                        setSelectedEmployee(row);
+                                        setInviteExistingOpen(true);
+                                    }}
+                                    className="cursor-pointer text-[hsl(var(--brand))]"
+                                >
+                                    <Send size={14} className="mr-2" />
+                                    Invite Now
                                 </DropdownMenuItem>
                             )}
 
@@ -838,9 +870,10 @@ export default function OwnerEmployeesPage() {
                             <div className="grid grid-cols-2 gap-3 mb-3">
                                 <Input label="First Name" showAsterisk value={manualData.first_name} onChange={(e) => setManualData({ ...manualData, first_name: e.target.value })} />
                                 <Input label="Last Name" showAsterisk value={manualData.last_name} onChange={(e) => setManualData({ ...manualData, last_name: e.target.value })} />
-                                <Input label="Email" showAsterisk type="email" value={manualData.email} onChange={(e) => setManualData({ ...manualData, email: e.target.value })} />
-                                <Input label="Temporary Password" showAsterisk type="password" value={manualData.password} onChange={(e) => setManualData({ ...manualData, password: e.target.value })} />
+                                <Input label="Email (Optional)" type="email" value={manualData.email} onChange={(e) => setManualData({ ...manualData, email: e.target.value })} />
+                                <Input label="Temporary Password (Optional)" type="password" value={manualData.password} onChange={(e) => setManualData({ ...manualData, password: e.target.value })} />
                                 <Input label="Phone" type="tel" value={manualData.phone} onChange={(e) => setManualData({ ...manualData, phone: e.target.value })} />
+                                {/* Date of Birth skipped for now
                                 <Input
                                     label="Date of Birth"
                                     type={manualData.dob ? "date" : "text"}
@@ -850,6 +883,7 @@ export default function OwnerEmployeesPage() {
                                     onBlur={(e) => { if (!e.target.value) e.target.type = 'text' }}
                                     onChange={(e) => setManualData({ ...manualData, dob: e.target.value })}
                                 />
+                                */}
                             </div>
                         </section>
 
@@ -874,6 +908,7 @@ export default function OwnerEmployeesPage() {
                                                 <option value="contract">Contract</option>
                                             </select>
                                         </div>
+                                        {/* Pay Cycle skipped for now
                                         <div className="space-y-1.5">
                                             <label className="text-xs font-semibold ml-0.5">
                                                 Pay Cycle <span className={cn(
@@ -887,6 +922,7 @@ export default function OwnerEmployeesPage() {
                                                 <option value="monthly">monthly</option>
                                             </select>
                                         </div>
+                                        */}
                                         {/* <Input label="Base Hourly Rate ($)" type="number" step="0.01" value={manualData.weekday_rate} onChange={(e) => setManualData({ ...manualData, weekday_rate: e.target.value })} /> */}
                                     </>
                                 )}
@@ -902,6 +938,7 @@ export default function OwnerEmployeesPage() {
                             </div>
                         </section>
 
+                        {/* Bank Details hidden for Rostering module Phase
                         <section>
                             <h3 className="text-sm font-bold border-b pb-2 mb-3">Bank Details</h3>
                             <div className="grid grid-cols-2 gap-3">
@@ -927,12 +964,44 @@ export default function OwnerEmployeesPage() {
                                 )}
                             </div>
                         </section>
+                        */}
                     </div>
 
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setManualAddOpen(false)}>Cancel</Button>
                         <Button onClick={handleManualAdd} loading={addManualMutation.isPending}>
                             <UserPlus size={16} className="mr-2" /> Save Employee
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Invite Existing Employee Dialog */}
+            <Dialog open={inviteExistingOpen} onOpenChange={setInviteExistingOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Invite Employee</DialogTitle>
+                        <DialogDescription>
+                            Send an invitation to {selectedEmployee?.first_name} {selectedEmployee?.last_name}. They will be able to set their own password and access the system.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="py-4">
+                        <Input 
+                            label="Email Address" 
+                            type="email" 
+                            showAsterisk
+                            placeholder="jane@company.com" 
+                            value={inviteExistingEmail} 
+                            onChange={(e) => setInviteExistingEmail(e.target.value)} 
+                        />
+                    </div>
+
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => { setInviteExistingOpen(false); setSelectedEmployee(null); setInviteExistingEmail(""); }}>Cancel</Button>
+                        <Button onClick={handleInviteExisting} loading={inviteMutation.isPending}>
+                            <Send size={16} />
+                            Send Invitation
                         </Button>
                     </DialogFooter>
                 </DialogContent>

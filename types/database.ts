@@ -62,7 +62,7 @@ export interface Employee {
   first_name: string | null;
   last_name: string | null;
   phone: string | null;
-  email: string;
+  email: string | null;
   dob: string | null;
   bank_account_name: string | null;
   bank_bsb: string | null;
@@ -79,7 +79,7 @@ export interface Employee {
   created_at: string;
   updated_at: string | null;
   business_id: string;
-  user_id: string;
+  user_id: string | null;
   status: EmployeeStatus;
   role?: UserRole | 'employee';
 }

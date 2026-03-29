@@ -4,7 +4,6 @@ import { createClient } from '@/lib/supabase/server';
 import { requireRole } from '@/lib/auth';
 import { successResponse, errorResponse, validateRequiredFields } from '@/lib/api-helpers';
 import { logAudit } from '@/lib/audit';
-import bcrypt from 'bcryptjs';
 import { generateBusinessPrefix, formatEmpSuffix, getNumericSuffix } from '@/lib/utils/employee-id';
 
 /**
@@ -34,7 +33,7 @@ export async function GET(request: NextRequest) {
             'email', 'phone', 'dob', 'employment_type', 'pay_cycle', 'start_date', 'end_date', 'created_at',
             'abn', 'tfn', 'bank_account_name', 'bank_bsb', 'bank_account_number'
         ];
-        
+
         // Build the select string
         let selectFields = columns.join(', ');
 
@@ -133,9 +132,9 @@ export async function GET(request: NextRequest) {
                 .from('User')
                 .select('user_id, role')
                 .in('user_id', filtered.map(e => e.user_id).filter(Boolean));
-            
+
             const roleMap = new Map((userRoles || []).map(u => [u.user_id, u.role]));
-            
+
             filtered = filtered.map((emp: any) => ({
                 ...emp,
                 role: roleMap.get(emp.user_id) || 'employee'
@@ -172,8 +171,6 @@ export async function POST(request: NextRequest) {
 
         // Validate required employee fields
         const validationError = validateRequiredFields(body, [
-            'email',
-            'password',
             'first_name',
             'last_name',
             'start_date',
@@ -221,7 +218,7 @@ export async function POST(request: NextRequest) {
         // Ensure employee_id follows the business-prefixed format (e.g. BVL0001)
         // If it starts with "EMP-" or doesn't match the new format, we regenerate it.
         const isOldFormat = employee_id.startsWith('EMP-') || !/^[A-Z]{3}\d{4}$/.test(employee_id);
-        
+
         if (isOldFormat) {
             const { data: business } = await supabase
                 .from('Business')
@@ -230,7 +227,7 @@ export async function POST(request: NextRequest) {
                 .single();
 
             const businessPrefix = business?.business_name ? generateBusinessPrefix(business.business_name) : 'EMP';
-            
+
             const { data: allEmps } = await supabase
                 .from('Employee')
                 .select('employee_id')
@@ -244,26 +241,31 @@ export async function POST(request: NextRequest) {
             finalEmployeeId = `${businessPrefix}${formatEmpSuffix(maxSerial + 1)}`;
         }
 
-        if (password.length < 6) {
-            return errorResponse('Password must be at least 6 characters', 400);
-        }
+        let authUserId: string | null = null;
 
-        // Step 1: Create auth user via admin API
-        const adminClient = createAdminClient();
+        // Step 1: Create auth user via admin API (only if email/password provided)
+        if (email && password) {
+            if (password.length < 6) {
+                return errorResponse('Password must be at least 6 characters', 400);
+            }
 
-        const { data: authData, error: authError } =
-            await adminClient.auth.admin.createUser({
-                email,
-                password,
-                email_confirm: true,
-            });
+            const adminClient = createAdminClient();
+            const { data: authData, error: authError } =
+                await adminClient.auth.admin.createUser({
+                    email,
+                    password,
+                    email_confirm: true,
+                });
 
-        if (authError) {
-            return errorResponse(`Failed to create auth account: ${authError.message}`, 400);
-        }
+            if (authError) {
+                return errorResponse(`Failed to create auth account: ${authError.message}`, 400);
+            }
 
-        if (!authData.user) {
-            return errorResponse('Failed to create user account', 500);
+            if (!authData.user) {
+                return errorResponse('Failed to create user account', 500);
+            }
+
+            authUserId = authData.user.id;
         }
 
         const { data: employeeData, error: employeeError } = await supabase
@@ -273,30 +275,33 @@ export async function POST(request: NextRequest) {
                 first_name,
                 last_name,
                 phone: phone || null,
-                email,
-                dob: dob || null,
-                bank_account_name: bank_account_name || null,
-                bank_bsb: bank_bsb || null,
-                bank_account_number: bank_account_number || null,
-                abn: abn || null,
-                tfn: tfn || null,
+                email: email || null,
+                dob: null, // Skip for now
+                bank_account_name: null, // Skip for now
+                bank_bsb: null, // Skip for now
+                bank_account_number: null, // Skip for now
+                abn: null, // Skip for now
+                tfn: null, // Skip for now
                 emergency_contact_name,
                 emergency_contact_phone,
                 employment_type: employment_type || null,
                 role_title,
-                pay_cycle: pay_cycle || null,
+                pay_cycle: null, // Skip for now
                 start_date,
                 end_date: end_date || null,
                 business_id: authUser.business_id,
-                user_id: authData.user.id,
-                status: 'active',
+                user_id: authUserId,
+                status: authUserId ? 'active' : 'inactive',
             })
             .select()
             .single();
 
         if (employeeError) {
             // Cleanup: delete auth user if employee creation fails
-            await adminClient.auth.admin.deleteUser(authData.user.id);
+            if (authUserId) {
+                const adminClient = createAdminClient();
+                await adminClient.auth.admin.deleteUser(authUserId);
+            }
             return errorResponse(`Failed to create employee: ${employeeError.message}`, 400);
         }
 
@@ -328,10 +333,10 @@ export async function POST(request: NextRequest) {
             }
         }
 
-        // Step 3.5: If manager, create User record
-        if (invite_as === 'manager') {
+        // Step 3.5: If manager and has auth user, create User record
+        if (authUserId && invite_as === 'manager') {
             const { error: userError } = await supabase.from('User').insert({
-                user_id: authData.user.id,
+                user_id: authUserId,
                 business_id: authUser.business_id,
                 role: 'manager',
                 first_name,
