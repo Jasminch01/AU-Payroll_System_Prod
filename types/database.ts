@@ -29,6 +29,7 @@ export type PaymentStatus = 'pending' | 'paid' | 'failed';
 export type AuditAction = 'INSERT' | 'UPDATE' | 'DELETE';
 
 export type UserRole = 'owner' | 'manager';
+export type EmployeeRole = 'employee' | 'manager';
 
 export type SwapStatus = 'pending_acceptance' | 'pending_approval' | 'approved' | 'rejected' | 'cancelled' | 'expired';
 
@@ -81,7 +82,7 @@ export interface Employee {
   business_id: string;
   user_id: string | null;
   status: EmployeeStatus;
-  role?: UserRole | 'employee';
+  role: EmployeeRole;
 }
 
 export interface EmployeeRateHistory {

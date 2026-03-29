@@ -24,9 +24,11 @@ import { toast } from "sonner";
 import { UserPlus, Users, Send, RefreshCw, Copy, Check, MoreHorizontal, Eye, ExternalLink, Trash2, AlertTriangle, Filter, X, Briefcase, User, ShieldCheck, UserPlus2, ChevronRight } from "lucide-react";
 import type { Employee } from "@/types/database";
 import { useAuth } from "@/hooks/use-auth";
+import { createClient } from "@/lib/supabase/client";
 import { generateBusinessPrefix, formatEmpSuffix, getNumericSuffix } from "@/lib/utils/employee-id";
 
 type StatusFilter = "all" | "active" | "invited" | "inactive";
+type RoleFilter = "all" | "employee" | "manager";
 
 export default function OwnerEmployeesPage() {
     const router = useRouter();
@@ -35,6 +37,14 @@ export default function OwnerEmployeesPage() {
     const [generatedLink, setGeneratedLink] = useState<string | null>(null);
     const [copied, setCopied] = useState(false);
     const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+    const [roleFilter, setRoleFilter] = useState<RoleFilter>("all");
+
+    // Server-side table state
+    const [page, setPage] = useState(1);
+    const [search, setSearch] = useState("");
+    const [sortKey, setSortKey] = useState("first_name");
+    const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+    const pageSize = 10;
 
 
 
@@ -50,7 +60,7 @@ export default function OwnerEmployeesPage() {
 
     // Bulk Invite state
     const [bulkInviteOpen, setBulkInviteOpen] = useState(false);
-    const [bulkData, setBulkData] = useState<any[]>([{ first_name: '', last_name: '', email: '', role_title: '', phone: '', employment_type: '', invite_as: 'employee' }]);
+    const [bulkData, setBulkData] = useState<any[]>([{ first_name: '', last_name: '', email: '', role_title: '', phone: '', employment_type: '', role: 'employee' }]);
 
     // Join Code state
     const [joinCode, setJoinCode] = useState<string | null>(null);
@@ -65,7 +75,7 @@ export default function OwnerEmployeesPage() {
         start_date: new Date().toISOString().split('T')[0],
         weekday_rate: '',
         password: '',
-        invite_as: 'employee',
+        role: 'employee',
         bank_account_name: '', bank_bsb: '', bank_account_number: '', abn: '', tfn: ''
     });
 
@@ -74,16 +84,75 @@ export default function OwnerEmployeesPage() {
     const [inviteExistingEmail, setInviteExistingEmail] = useState("");
 
     const { user } = useAuth();
-    const { data: employees = [], isLoading } = useQuery({
-        queryKey: ["employees"],
-        queryFn: () => apiGet<Employee[]>("/employees"),
+
+    // Query payload builder
+    const queryParams = useMemo(() => {
+        const params = new URLSearchParams({
+            page: page.toString(),
+            limit: pageSize.toString(),
+            paginate: 'true',
+            search,
+            sortBy: sortKey,
+            sortDir,
+        });
+        if (statusFilter !== "all") params.append("status", statusFilter);
+        if (roleFilter !== "all") params.append("role", roleFilter);
+        return params.toString();
+    }, [page, search, sortKey, sortDir, statusFilter, roleFilter]);
+
+    const { data: responseData, isLoading } = useQuery({
+        queryKey: ["employees", queryParams],
+        queryFn: () => apiGet<any>(`/employees?${queryParams}`),
     });
+
+    const employees = responseData?.employees || [];
+    const metaCounts = responseData?.meta?.counts || {
+        all: 0,
+        active: 0,
+        invited: 0,
+        inactive: 0,
+        employee: 0,
+        manager: 0
+    };
+    const totalItems = responseData?.meta?.total_count || 0;
+
+    // Reset page when filters change
+    React.useEffect(() => {
+        setPage(1);
+    }, [statusFilter, roleFilter, search]);
+
+    // Real-time Sync for Employee List
+    React.useEffect(() => {
+        if (!user?.business_id) return;
+
+        const supabase = createClient();
+        const channel = supabase
+            .channel('employee-table-changes')
+            .on(
+                'postgres_changes',
+                {
+                    event: '*',
+                    schema: 'public',
+                    table: 'Employee',
+                    filter: `business_id=eq.${user.business_id}`
+                },
+                (payload: any) => {
+                    console.log('Real-time update received:', payload);
+                    queryClient.invalidateQueries({ queryKey: ["employees"] });
+                }
+            )
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [user?.business_id, queryClient]);
 
     // Auto-generate employee_id for manual add
     React.useEffect(() => {
         if (manualAddOpen && user?.business?.business_name) {
             const prefix = generateBusinessPrefix(user.business.business_name);
-            const activeEmps = employees.map(e => e.employee_id);
+            const activeEmps = employees.map((e: Employee) => e.employee_id);
 
             let maxSerial = 0;
             for (const id of activeEmps) {
@@ -96,17 +165,10 @@ export default function OwnerEmployeesPage() {
         }
     }, [manualAddOpen, user?.business?.business_name, employees]);
 
-    const filteredEmployees = useMemo(() => {
-        if (statusFilter === "all") return employees;
-        return employees.filter((e: Employee) => e.status === statusFilter);
-    }, [employees, statusFilter]);
+    // We don't need client-side filtering anymore since server handles it
+    const filteredEmployees = employees;
 
-    const counts = useMemo(() => ({
-        all: employees.length,
-        active: employees.filter((e: Employee) => e.status === "active").length,
-        invited: employees.filter((e: Employee) => e.status === "invited").length,
-        inactive: employees.filter((e: Employee) => e.status === "inactive").length,
-    }), [employees]);
+    const counts = metaCounts;
 
     const inviteMutation = useMutation({
         mutationFn: (data: any) => apiPost("/employees/invite", data),
@@ -157,7 +219,7 @@ export default function OwnerEmployeesPage() {
                 start_date: new Date().toISOString().split('T')[0],
                 weekday_rate: '',
                 password: '',
-                invite_as: 'employee',
+                role: 'employee',
                 bank_account_name: '', bank_bsb: '', bank_account_number: '', abn: '', tfn: ''
             });
         }
@@ -187,7 +249,7 @@ export default function OwnerEmployeesPage() {
                 start_date: new Date().toISOString().split('T')[0],
                 weekday_rate: '',
                 password: '',
-                invite_as: 'employee',
+                role: 'employee',
                 employee_id: '',
                 bank_account_name: '', bank_bsb: '', bank_account_number: '', abn: '', tfn: ''
             });
@@ -202,6 +264,7 @@ export default function OwnerEmployeesPage() {
         }
         addManualMutation.mutate({
             ...manualData,
+            invite_as: manualData.role, // Map role to invite_as for backward compatibility in backend if needed
             weekday_rate: manualData.weekday_rate ? parseFloat(manualData.weekday_rate) : undefined
         });
     };
@@ -217,7 +280,7 @@ export default function OwnerEmployeesPage() {
         setInvEmploymentType("");
         setInvRate("");
         setInvAs("employee");
-        setBulkData([{ first_name: '', last_name: '', email: '', role_title: '', phone: '', employment_type: '', invite_as: 'employee' }]);
+        setBulkData([{ first_name: '', last_name: '', email: '', role_title: '', phone: '', employment_type: '', role: 'employee' }]);
     };
 
     const handleInvite = () => {
@@ -285,7 +348,7 @@ export default function OwnerEmployeesPage() {
     const columns: Column<Employee>[] = [
         {
             key: "name",
-            label: "Name",
+            label: "Employee",
             sortable: true,
             render: (row) => (
                 <div className="flex items-center gap-3">
@@ -293,24 +356,34 @@ export default function OwnerEmployeesPage() {
                         {(row.first_name?.[0] ?? "")}{(row.last_name?.[0] ?? "")}
                     </div>
                     <div>
-                        <p className="font-medium">{row.first_name} {row.last_name}</p>
+                        <p className="font-medium leading-none mb-1">{row.first_name} {row.last_name}</p>
                         <p className="text-xs text-[hsl(var(--muted-foreground))]">{row.email || "Not Invited"}</p>
                     </div>
                 </div>
             ),
         },
         {
-            key: "role_title",
-            label: "Role",
+            key: "role",
+            label: "Access",
             sortable: true,
             render: (row) => (
-                <div className="flex flex-col">
-                    <span className="font-medium">{row.role_title || "—"}</span>
-                    <span className="text-[10px] text-[hsl(var(--muted-foreground))] uppercase font-bold tracking-tight">
-                        {row.role || "employee"}
+                <div className="flex items-center">
+                    <span className={cn(
+                        "text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-tight",
+                        row.role === 'manager'
+                            ? "bg-[hsl(var(--brand-light))] text-[hsl(var(--brand))]"
+                            : "bg-slate-100 text-slate-500"
+                    )}>
+                        {row.role === 'manager' ? 'Manager' : 'Staff'}
                     </span>
                 </div>
             )
+        },
+        {
+            key: "role_title",
+            label: "Job Title",
+            sortable: true,
+            render: (row) => <span className="font-medium">{row.role_title || "—"}</span>
         },
         {
             key: "employment_type",
@@ -356,7 +429,7 @@ export default function OwnerEmployeesPage() {
                                 <Briefcase size={14} className="mr-2" />
                                 Edit Employment
                             </DropdownMenuItem>
-                             {row.status === "invited" && (
+                            {row.status === "invited" && (
                                 <DropdownMenuItem
                                     onClick={() => resendInviteMutation.mutate(row.employee_id)}
                                     className="cursor-pointer"
@@ -391,51 +464,21 @@ export default function OwnerEmployeesPage() {
             pageTitle="Employees"
             pageDescription="Manage your team"
         >
-            {/* Status Filter Button */}
-            <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2">
-                    <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                            <Button variant="outline" className="h-9 gap-2 rounded-lg border-[hsl(var(--border))]">
-                                <Filter size={14} />
-                                <span>Filter: {statusFilter.charAt(0).toUpperCase() + statusFilter.slice(1)}</span>
-                                <span className="ml-1 px-1.5 py-0.5 rounded-full bg-[hsl(var(--brand-light))] text-[hsl(var(--brand))] text-[10px] font-bold">
-                                    {counts[statusFilter]}
-                                </span>
-                            </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="start" className="w-48">
-                            {STATUS_TABS.map((tab) => (
-                                <DropdownMenuItem
-                                    key={tab.key}
-                                    onClick={() => setStatusFilter(tab.key)}
-                                    className="flex items-center justify-between cursor-pointer"
-                                >
-                                    <span>{tab.label}</span>
-                                    <span className="text-xs text-[hsl(var(--muted-foreground))]">{counts[tab.key]}</span>
-                                </DropdownMenuItem>
-                            ))}
-                        </DropdownMenuContent>
-                    </DropdownMenu>
-
-                    {statusFilter !== "all" && (
-                        <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setStatusFilter("all")}
-                            className="h-8 text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] px-2"
-                        >
-                            <X size={14} className="mr-1" /> Clear
-                        </Button>
-                    )}
-                </div>
-            </div>
-
             <DataTable
+                serverPagination
+                maxHeight="calc(90vh - 280px)"
+                totalItems={totalItems}
+                pageSize={pageSize}
+                page={page}
+                onPageChange={setPage}
+                onSearch={setSearch}
+                onSort={(key, dir) => {
+                    setSortKey(key);
+                    setSortDir(dir);
+                }}
                 columns={columns}
                 data={filteredEmployees}
                 searchable
-                searchKeys={["first_name", "last_name", "email", "role_title", "role"]}
                 searchPlaceholder="Search employees..."
                 emptyMessage="No employees found."
                 emptyIcon={<UserPlus size={40} />}
@@ -460,42 +503,116 @@ export default function OwnerEmployeesPage() {
                         <ChevronRight size={16} className="text-[hsl(var(--muted-foreground))]/40" />
                     </div>
                 )}
+                filters={
+                    <>
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button variant="outline" className="h-9 gap-2 rounded-lg border-[hsl(var(--border))] px-3 shadow-sm shrink-0">
+                                    <Filter size={14} className="text-[hsl(var(--muted-foreground))]" />
+                                    <span className="hidden sm:inline-block font-semibold">Status: {statusFilter.charAt(0).toUpperCase() + statusFilter.slice(1)}</span>
+                                    <span className="sm:hidden font-semibold">{statusFilter.charAt(0).toUpperCase() + statusFilter.slice(1)}</span>
+                                    <span className="ml-1 px-1.5 py-0.5 rounded-full bg-[hsl(var(--brand-light))] text-[hsl(var(--brand))] text-[9px] font-black">
+                                        {counts[statusFilter]}
+                                    </span>
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-48 rounded-xl shadow-xl">
+                                {STATUS_TABS.map((tab) => (
+                                    <DropdownMenuItem
+                                        key={tab.key}
+                                        onClick={() => setStatusFilter(tab.key)}
+                                        className={cn("flex items-center justify-between cursor-pointer rounded-lg py-2 transition-all", statusFilter === tab.key && "bg-[hsl(var(--brand-light))]/50 text-[hsl(var(--brand))]")}
+                                    >
+                                        <span className="font-medium">{tab.label}</span>
+                                        <span className="text-xs text-[hsl(var(--muted-foreground))]">{counts[tab.key]}</span>
+                                    </DropdownMenuItem>
+                                ))}
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+
+                        {statusFilter !== "all" && (
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => setStatusFilter("all")}
+                                className="h-9 w-9 text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] shrink-0 ml-[-8px]"
+                            >
+                                <X size={14} />
+                            </Button>
+                        )}
+
+                        <div className="hidden lg:block h-5 w-px bg-[hsl(var(--border))] mx-1 opacity-50 shrink-0" />
+
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button variant="outline" className="h-9 gap-2 rounded-lg border-[hsl(var(--border))] px-3 shadow-sm shrink-0">
+                                    <ShieldCheck size={14} className="text-[hsl(var(--muted-foreground))]" />
+                                    <span className="hidden sm:inline-block font-semibold">Access: {roleFilter === 'all' ? 'All Roles' : (roleFilter === 'manager' ? 'Managers' : 'Staff')}</span>
+                                    <span className="sm:hidden font-semibold">{roleFilter === 'all' ? 'Access' : (roleFilter === 'manager' ? 'Managers' : 'Staff')}</span>
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-48 rounded-xl shadow-xl">
+                                <DropdownMenuItem onClick={() => setRoleFilter("all")} className={cn("cursor-pointer rounded-lg py-2 font-medium transition-all", roleFilter === "all" && "bg-[hsl(var(--brand-light))]/50 text-[hsl(var(--brand))]")}>All Access Levels</DropdownMenuItem>
+                                <DropdownMenuSeparator className="my-1" />
+                                <DropdownMenuItem onClick={() => setRoleFilter("manager")} className={cn("flex items-center justify-between cursor-pointer rounded-lg py-2 font-medium transition-all", roleFilter === "manager" && "bg-[hsl(var(--brand-light))]/50 text-[hsl(var(--brand))]")}>
+                                    <span>Managers</span>
+                                    <span className="text-xs text-[hsl(var(--muted-foreground))]">{counts.manager}</span>
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => setRoleFilter("employee")} className={cn("flex items-center justify-between cursor-pointer rounded-lg py-2 font-medium transition-all", roleFilter === "employee" && "bg-[hsl(var(--brand-light))]/50 text-[hsl(var(--brand))]")}>
+                                    <span>Staff</span>
+                                    <span className="text-xs text-[hsl(var(--muted-foreground))]">{counts.employee}</span>
+                                </DropdownMenuItem>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+
+                        {roleFilter !== "all" && (
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => setRoleFilter("all")}
+                                className="h-9 w-9 text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] shrink-0 ml-[-8px]"
+                            >
+                                <X size={14} />
+                            </Button>
+                        )}
+                    </>
+                }
                 actions={
                     <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                            <Button className="h-9 gap-2 shadow-sm">
+                            <Button className="h-9 gap-2 shadow-md hover:shadow-lg transition-all lg:ml-2">
                                 <UserPlus size={16} />
                                 Add People
                             </Button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-56">
-                            <DropdownMenuItem onClick={() => setInviteOpen(true)} className="py-2.5">
-                                <User size={16} className="mr-2 text-[hsl(var(--muted-foreground))]" />
+                        <DropdownMenuContent align="end" className="w-56 rounded-xl shadow-xl p-1.5 border-[hsl(var(--border))]">
+                            <DropdownMenuItem onClick={() => setInviteOpen(true)} className="py-3 px-3 rounded-lg cursor-pointer hover:bg-[hsl(var(--muted))]/50">
+                                <User size={16} className="mr-3 text-[hsl(var(--brand))]" />
                                 <div className="flex flex-col">
-                                    <span className="font-medium">Single Invitation</span>
-                                    <span className="text-[10px] text-[hsl(var(--muted-foreground))]">Invite one person at a time</span>
+                                    <span className="font-bold text-sm">Single Invitation</span>
+                                    <span className="text-[11px] text-[hsl(var(--muted-foreground))]">Invite one person at a time</span>
                                 </div>
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => setBulkInviteOpen(true)} className="py-2.5">
-                                <Users size={16} className="mr-2 text-[hsl(var(--muted-foreground))]" />
+                            <DropdownMenuItem onClick={() => setBulkInviteOpen(true)} className="py-3 px-3 rounded-lg cursor-pointer hover:bg-[hsl(var(--muted))]/50">
+                                <Users size={16} className="mr-3 text-[hsl(var(--brand))]" />
                                 <div className="flex flex-col">
-                                    <span className="font-medium">Multiple Invitations</span>
-                                    <span className="text-[10px] text-[hsl(var(--muted-foreground))]">Add many people at once</span>
+                                    <span className="font-bold text-sm">Multiple Invitations</span>
+                                    <span className="text-[11px] text-[hsl(var(--muted-foreground))]">Add many people at once</span>
                                 </div>
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => setManualAddOpen(true)} className="py-2.5">
-                                <Briefcase size={16} className="mr-2 text-[hsl(var(--muted-foreground))]" />
+                            <DropdownMenuItem onClick={() => setManualAddOpen(true)} className="py-3 px-3 rounded-lg cursor-pointer hover:bg-[hsl(var(--muted))]/50">
+                                <Briefcase size={16} className="mr-3 text-[hsl(var(--brand))]" />
                                 <div className="flex flex-col">
-                                    <span className="font-medium">Add Employee Manually</span>
-                                    <span className="text-[10px] text-[hsl(var(--muted-foreground))]">Complete setup right now</span>
+                                    <span className="font-bold text-sm">Add Manually</span>
+                                    <span className="text-[11px] text-[hsl(var(--muted-foreground))]">Complete setup right now</span>
                                 </div>
                             </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem onClick={handleGenerateJoinCode} disabled={isGeneratingJoinCode} className="py-2.5">
-                                <ExternalLink size={16} className="mr-2 text-[hsl(var(--muted-foreground))]" />
+                            <DropdownMenuSeparator className="my-1.5" />
+                            <DropdownMenuItem onClick={handleGenerateJoinCode} disabled={isGeneratingJoinCode} className="py-3 px-3 rounded-lg cursor-pointer hover:bg-[hsl(var(--muted))]/50">
+                                <ExternalLink size={16} className="mr-3 text-[hsl(var(--brand))]" />
                                 <div className="flex flex-col">
-                                    <span className="font-medium">Business Join Link</span>
-                                    <span className="text-[10px] text-[hsl(var(--muted-foreground))]">Reusable link for your team</span>
+                                    <span className="font-bold text-sm">Business Join Link</span>
+                                    <span className="text-[11px] text-[hsl(var(--muted-foreground))]">Reusable link for your team</span>
                                 </div>
                             </DropdownMenuItem>
                         </DropdownMenuContent>
@@ -522,8 +639,8 @@ export default function OwnerEmployeesPage() {
                                 onChange={(e) => setInvAs(e.target.value as any)}
                                 className="flex h-10 w-full rounded-lg border border-[hsl(var(--input))] bg-transparent px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[hsl(var(--brand))]/20"
                             >
-                                <option value="employee">Employee</option>
-                                <option value="manager">Manager</option>
+                                <option value="employee">Standard Staff</option>
+                                <option value="manager">Business Manager</option>
                             </select>
                         </div>
 
@@ -773,7 +890,7 @@ export default function OwnerEmployeesPage() {
                             <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={() => setBulkData([...bulkData, { first_name: '', last_name: '', email: '', role_title: '', phone: '', employment_type: '', invite_as: 'employee' }])}
+                                onClick={() => setBulkData([...bulkData, { first_name: '', last_name: '', email: '', role_title: '', phone: '', employment_type: '', role: 'employee' }])}
                                 className="h-9 border-dashed border-slate-300 text-slate-600 hover:border-[#3724B3] hover:text-[#3724B3] bg-white"
                             >
                                 <UserPlus size={14} className="mr-2" /> Add Another Team Member
@@ -856,12 +973,12 @@ export default function OwnerEmployeesPage() {
                         <div className="space-y-2">
                             <label className="text-[12px] font-bold text-[hsl(var(--muted-foreground))] uppercase tracking-wider">Access Level</label>
                             <select
-                                value={manualData.invite_as}
-                                onChange={(e) => setManualData({ ...manualData, invite_as: e.target.value })}
+                                value={manualData.role}
+                                onChange={(e) => setManualData({ ...manualData, role: e.target.value })}
                                 className="flex h-10 w-full rounded-lg border border-[hsl(var(--input))] bg-transparent px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[hsl(var(--brand))]/20"
                             >
-                                <option value="employee">Employee</option>
-                                <option value="manager">Manager</option>
+                                <option value="employee">Standard Staff</option>
+                                <option value="manager">Business Manager</option>
                             </select>
                         </div>
 
@@ -890,7 +1007,7 @@ export default function OwnerEmployeesPage() {
                         <section>
                             <h3 className="text-sm font-bold border-b pb-2 mb-3">Employment Details</h3>
                             <div className="grid grid-cols-2 gap-3 mb-3">
-                                {manualData.invite_as === "employee" && (
+                                {manualData.role === "employee" && (
                                     <>
                                         <Input label="Role Title" value={manualData.role_title} onChange={(e) => setManualData({ ...manualData, role_title: e.target.value })} />
                                         <div className="space-y-1.5">
@@ -987,13 +1104,13 @@ export default function OwnerEmployeesPage() {
                     </DialogHeader>
 
                     <div className="py-4">
-                        <Input 
-                            label="Email Address" 
-                            type="email" 
+                        <Input
+                            label="Email Address"
+                            type="email"
                             showAsterisk
-                            placeholder="jane@company.com" 
-                            value={inviteExistingEmail} 
-                            onChange={(e) => setInviteExistingEmail(e.target.value)} 
+                            placeholder="jane@company.com"
+                            value={inviteExistingEmail}
+                            onChange={(e) => setInviteExistingEmail(e.target.value)}
                         />
                     </div>
 

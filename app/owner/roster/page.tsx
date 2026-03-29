@@ -13,7 +13,7 @@ import {
 import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/api-client";
 import { useEffect } from "react";
 import { toast } from "sonner";
-import { Plus, ChevronLeft, ChevronRight, Clock, Trash2, CheckCircle2, FileText, RefreshCcw, Copy, Bell, CalendarDays, Search, Filter, ChevronsLeft, ChevronsRight, GripVertical, MoreHorizontal, Users } from "lucide-react";
+import { Plus, ChevronLeft, ChevronRight, Clock, Trash2, CheckCircle2, FileText, RefreshCcw, Copy, Bell, CalendarDays, Search, Filter, ChevronsLeft, ChevronsRight, GripVertical, MoreHorizontal, Users, ChevronDown, ArrowUpDown, ArrowDownAZ, ArrowDownZA } from "lucide-react";
 import { Reorder, AnimatePresence, motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -23,7 +23,7 @@ import {
     Popover, PopoverTrigger, PopoverContent
 } from "@/components/ui/popover";
 import {
-    DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem
+    DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator
 } from "@/components/ui/dropdown-menu";
 import {
     format, addMonths, subMonths, startOfMonth, endOfMonth,
@@ -182,6 +182,7 @@ export default function OwnerRosterPage() {
     // Search, Filter & Pagination State
     const [searchQuery, setSearchQuery] = useState("");
     const [roleFilter, setRoleFilter] = useState("all");
+    const [sortOrder, setSortOrder] = useState<"custom" | "asc" | "desc">("custom");
     const [currentPage, setCurrentPage] = useState(1);
     const pageSize = 10;
 
@@ -202,22 +203,28 @@ export default function OwnerRosterPage() {
     const filteredEmployees = useMemo(() => {
         const active = employees.filter((e: any) => e.status === "active");
 
-        // Sort by the local ordered list
-        const sorted = [...active].sort((a, b) => {
-            const indexA = orderedEmployeeIds.indexOf(a.employee_id);
-            const indexB = orderedEmployeeIds.indexOf(b.employee_id);
-            if (indexA === -1 && indexB === -1) return 0;
-            if (indexA === -1) return 1;
-            if (indexB === -1) return -1;
-            return indexA - indexB;
-        });
+        const sorted = [...active];
+        if (sortOrder === "custom") {
+            sorted.sort((a, b) => {
+                const indexA = orderedEmployeeIds.indexOf(a.employee_id);
+                const indexB = orderedEmployeeIds.indexOf(b.employee_id);
+                if (indexA === -1 && indexB === -1) return 0;
+                if (indexA === -1) return 1;
+                if (indexB === -1) return -1;
+                return indexA - indexB;
+            });
+        } else if (sortOrder === "asc") {
+            sorted.sort((a, b) => a.first_name.localeCompare(b.first_name));
+        } else if (sortOrder === "desc") {
+            sorted.sort((a, b) => b.first_name.localeCompare(a.first_name));
+        }
 
         return sorted.filter((e: any) => {
             const matchesSearch = `${e.first_name} ${e.last_name}`.toLowerCase().includes(searchQuery.toLowerCase());
-            const matchesRole = roleFilter === "all" || e.role_title?.toLowerCase() === roleFilter;
+            const matchesRole = roleFilter === "all" || e.role?.toLowerCase() === roleFilter;
             return matchesSearch && matchesRole;
         });
-    }, [employees, searchQuery, roleFilter, orderedEmployeeIds]);
+    }, [employees, searchQuery, roleFilter, orderedEmployeeIds, sortOrder]);
 
     const paginatedEmployees = useMemo(() => {
         const start = (currentPage - 1) * pageSize;
@@ -228,7 +235,7 @@ export default function OwnerRosterPage() {
 
     // Get unique roles for filter
     const roles = useMemo(() => {
-        const allRoles = employees.map((e: any) => e.role_title).filter(Boolean);
+        const allRoles = employees.map((e: any) => e.role).filter(Boolean);
         return Array.from(new Set(allRoles));
     }, [employees]);
 
@@ -549,10 +556,10 @@ export default function OwnerRosterPage() {
         } else {
             setEditingShiftId(null);
             setInitialFormState(null);
-            
+
             setShiftStart("08:00");
             setShiftEnd("17:00");
-            
+
             setShiftType("morning");
         }
         setAddShiftOpen(true);
@@ -793,12 +800,12 @@ export default function OwnerRosterPage() {
 
                 </div>
 
-                <div className="flex items-center gap-3 flex-1 max-w-md mx-4">
-                    <div className="relative flex-1 group">
+                <div className="flex flex-wrap lg:flex-nowrap items-center gap-3 flex-1 w-full lg:max-w-xl mx-4">
+                    <div className="relative flex-1 group min-w-[150px]">
                         <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[hsl(var(--muted-foreground))] group-focus-within:text-[hsl(var(--brand))] transition-colors" />
                         <Input
                             placeholder="Search employee..."
-                            className="pl-9 h-10 bg-white border-[hsl(var(--border))] rounded-xl focus:ring-[hsl(var(--brand))]/10"
+                            className="pl-9 h-10 w-full bg-white border-[hsl(var(--border))] rounded-xl focus:ring-2 focus:ring-[hsl(var(--brand))]/10"
                             value={searchQuery}
                             onChange={(e) => {
                                 setSearchQuery(e.target.value);
@@ -806,23 +813,58 @@ export default function OwnerRosterPage() {
                             }}
                         />
                     </div>
-                    <div className="relative w-40">
-                        <Filter size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[hsl(var(--muted-foreground))]" />
-                        <select
-                            value={roleFilter}
-                            onChange={(e) => {
-                                setRoleFilter(e.target.value);
-                                setCurrentPage(1);
-                            }}
-                            className="w-full pl-9 h-10 rounded-xl border border-[hsl(var(--border))] bg-white text-xs font-medium focus:ring-2 focus:ring-[hsl(var(--brand))]/10 outline-none appearance-none cursor-pointer"
-                        >
-                            <option value="all">All Roles</option>
-                            {roles.map(r => (
-                                <option key={r} value={r.toLowerCase()}>
-                                    {r.split(' ').map((word: string) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join(' ')}
-                                </option>
-                            ))}
-                        </select>
+                    
+                    <div className="flex items-center gap-2 shrink-0">
+                        {/* Role Filter */}
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button variant="outline" className="h-10 rounded-xl gap-2 px-3 border-[hsl(var(--border))] bg-white hover:bg-[hsl(var(--muted))]/30 text-xs shadow-sm focus:ring-2 focus:ring-[hsl(var(--brand))]/10 focus:border-transparent">
+                                    <Filter size={14} className="text-[hsl(var(--muted-foreground))]" />
+                                    <span className="font-semibold">{roleFilter === 'all' ? 'All Roles' : (roleFilter === 'manager' ? 'Managers' : 'Staff')}</span>
+                                    <ChevronDown size={14} className="opacity-50" />
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-40 rounded-2xl shadow-xl p-1.5 border-[hsl(var(--border))] animate-in fade-in zoom-in-95 duration-200">
+                                <DropdownMenuItem onClick={() => { setRoleFilter("all"); setCurrentPage(1); }} className={cn("cursor-pointer font-medium text-xs rounded-lg py-2 transition-all", roleFilter === "all" && "bg-[hsl(var(--brand-light))]/50 text-[hsl(var(--brand))]")}>All Roles</DropdownMenuItem>
+                                <DropdownMenuSeparator className="my-1" />
+                                {roles.map(r => (
+                                    <DropdownMenuItem 
+                                        key={r} 
+                                        onClick={() => { setRoleFilter(r.toLowerCase()); setCurrentPage(1); }}
+                                        className={cn(
+                                            "cursor-pointer font-medium text-xs rounded-lg py-2 transition-all",
+                                            roleFilter === r.toLowerCase() && "bg-[hsl(var(--brand-light))]/50 text-[hsl(var(--brand))]"
+                                        )}
+                                    >
+                                        {r === 'manager' ? 'Managers' : r === 'employee' ? 'Staff' : r.split(' ').map((word: string) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join(' ')}
+                                    </DropdownMenuItem>
+                                ))}
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+
+                        {/* Sort Filter */}
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button variant="outline" className="h-10 rounded-xl gap-2 px-3 border-[hsl(var(--border))] bg-white hover:bg-[hsl(var(--muted))]/30 text-xs shadow-sm focus:ring-2 focus:ring-[hsl(var(--brand))]/10 focus:border-transparent">
+                                    <ArrowUpDown size={14} className="text-[hsl(var(--muted-foreground))]" />
+                                    <span className="font-semibold hidden sm:inline-block">
+                                        {sortOrder === "custom" ? "Custom Order" : sortOrder === "asc" ? "Sort A-Z" : "Sort Z-A"}
+                                    </span>
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-44 rounded-2xl shadow-xl p-1.5 border-[hsl(var(--border))] animate-in fade-in zoom-in-95 duration-200">
+                                <DropdownMenuItem onClick={() => setSortOrder("custom")} className={cn("cursor-pointer font-medium text-xs rounded-lg py-2 gap-2 transition-all", sortOrder === "custom" && "bg-[hsl(var(--brand-light))]/50 text-[hsl(var(--brand))]")}>
+                                    <GripVertical size={14} className="opacity-70" /> Custom / Drag
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator className="my-1" />
+                                <DropdownMenuItem onClick={() => setSortOrder("asc")} className={cn("cursor-pointer font-medium text-xs rounded-lg py-2 gap-2 transition-all", sortOrder === "asc" && "bg-[hsl(var(--brand-light))]/50 text-[hsl(var(--brand))]")}>
+                                    <ArrowDownAZ size={14} className="opacity-70" /> First Name (A-Z)
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => setSortOrder("desc")} className={cn("cursor-pointer font-medium text-xs rounded-lg py-2 gap-2 transition-all", sortOrder === "desc" && "bg-[hsl(var(--brand-light))]/50 text-[hsl(var(--brand))]")}>
+                                    <ArrowDownZA size={14} className="opacity-70" /> First Name (Z-A)
+                                </DropdownMenuItem>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
                     </div>
                 </div>
 
@@ -910,7 +952,7 @@ export default function OwnerRosterPage() {
                 </div>
             </div>
 
-            <div className="w-full max-w-full rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] overflow-hidden shadow-md relative">
+            <div className="w-full max-w-full rounded-xl border overflow-hidden relative">
                 {isMobile ? (
                     /* MOBILE DAY VIEW */
                     <div className="flex flex-col h-[75vh] sm:h-[700px] relative">
@@ -1052,6 +1094,12 @@ export default function OwnerRosterPage() {
                                     const isToday = formatDate(d) === formatDate(new Date());
                                     const dayName = d.toLocaleDateString("en-AU", { weekday: "short" });
                                     const dayNum = d.getDate();
+                                    
+                                    const todayMidnight = new Date();
+                                    todayMidnight.setHours(0, 0, 0, 0);
+                                    const dMidnight = new Date(d);
+                                    dMidnight.setHours(0, 0, 0, 0);
+                                    const isPastDay = dMidnight < todayMidnight;
 
                                     return (
                                         <button
@@ -1063,7 +1111,8 @@ export default function OwnerRosterPage() {
                                                 isSelected
                                                     ? "bg-[hsl(var(--brand))] text-white border-[hsl(var(--brand))] shadow-md shadow-[hsl(var(--brand))]/20 scale-105"
                                                     : "bg-white text-[hsl(var(--muted-foreground))] border-[hsl(var(--border))] hover:border-[hsl(var(--brand))]/30",
-                                                isToday && !isSelected && "ring-2 ring-[hsl(var(--brand))]/30"
+                                                isToday && !isSelected && "ring-2 ring-[hsl(var(--brand))]/30",
+                                                isPastDay && !isSelected && "opacity-40 grayscale bg-[hsl(var(--muted))]/40"
                                             )}
                                         >
                                             <span className="text-[9px] uppercase font-black tracking-tighter opacity-70">{dayName}</span>
@@ -1129,7 +1178,7 @@ export default function OwnerRosterPage() {
                                                                 </div>
                                                                 <div className="flex flex-col">
                                                                     <span className="text-sm font-black text-[hsl(var(--foreground))]">{emp.first_name} {emp.last_name}</span>
-                                                                    <span className="text-[10px] uppercase font-bold tracking-widest text-[hsl(var(--muted-foreground))]">{emp.role_title}</span>
+                                                                    <span className="text-[10px] uppercase font-bold tracking-widest text-[hsl(var(--muted-foreground))]">{emp.role === 'manager' ? 'Manager' : 'Staff'}</span>
                                                                 </div>
                                                             </div>
                                                             <Button
@@ -1245,7 +1294,8 @@ export default function OwnerRosterPage() {
                                                 key={i}
                                                 className={cn(
                                                     "px-1 py-4 text-center font-bold border-b border-l border-[hsl(var(--border))] first:border-l-0 last:border-r-0 transition-colors",
-                                                    isToday ? "text-[hsl(var(--brand))] bg-[hsl(var(--brand-light))]/30" : (isPast ? "text-[hsl(var(--muted-foreground))] bg-[hsl(var(--muted))]/30" : "text-[hsl(var(--muted-foreground))]")
+                                                    isToday ? "text-[hsl(var(--brand))] bg-[hsl(var(--brand-light))]/30" : "text-[hsl(var(--muted-foreground))]",
+                                                    isPast && !isToday && "opacity-40 grayscale bg-[hsl(var(--muted))]/30"
                                                 )}
                                                 style={{
                                                     minWidth: (rosterPeriod === "monthly" || rosterPeriod === "fortnightly") ? "0" : "140px",
@@ -1297,7 +1347,7 @@ export default function OwnerRosterPage() {
                                             as="tr"
                                             key={emp.employee_id}
                                             value={emp.employee_id}
-                                            dragListener={true}
+                                            dragListener={sortOrder === "custom"}
                                             className="border-b border-[hsl(var(--border))] hover:bg-[hsl(var(--muted))]/30 transition-colors bg-white group"
                                         >
                                             <td className={cn(
@@ -1342,7 +1392,7 @@ export default function OwnerRosterPage() {
                                                         <span className={cn(
                                                             "font-black uppercase tracking-widest relative z-10",
                                                             rosterPeriod === "monthly" ? "text-[8px] text-[hsl(var(--brand))]" : "text-[10px] text-[hsl(var(--muted-foreground))]"
-                                                        )}>{emp.role_title}</span>
+                                                        )}>{emp.role === 'manager' ? 'Manager' : 'Staff'}</span>
                                                     </div>
 
                                                     {/* Actions Menu - Always on hover, kept compact within column */}
@@ -1401,7 +1451,8 @@ export default function OwnerRosterPage() {
                                                             "border-b border-l border-[hsl(var(--border))] align-top transition-colors relative group/cell",
                                                             rosterPeriod === "monthly" ? "p-1 min-w-0" : "p-2 min-w-[140px]",
                                                             formatDate(d) === formatDate(new Date()) ? "bg-[hsl(var(--brand-light))]/5" : "",
-                                                            isPast ? "bg-[hsl(var(--muted))]/10" : "hover:bg-[hsl(var(--brand))]/5"
+                                                            isPast ? "bg-[hsl(var(--muted))]/30 opacity-40 grayscale pointer-events-auto" : "hover:bg-[hsl(var(--brand))]/5",
+                                                            "transition-opacity"
                                                         )}
                                                         onClick={() => !isPast && rosterPeriod !== "monthly" && openAddShift(dateStr, emp.employee_id)}
                                                     >
@@ -1478,77 +1529,79 @@ export default function OwnerRosterPage() {
                 )}
 
                 {/* Pagination Controls */}
-                <div className="flex flex-col sm:flex-row items-center justify-between px-6 py-4 bg-[hsl(var(--muted))]/20 border-t border-[hsl(var(--border))] gap-4 sm:gap-0">
-                    <div className="text-xs text-[hsl(var(--muted-foreground))] font-medium">
-                        Showing <span className="text-[hsl(var(--foreground))] font-bold">{Math.min(filteredEmployees.length, (currentPage - 1) * pageSize + 1)}</span> to <span className="text-[hsl(var(--foreground))] font-bold">{Math.min(filteredEmployees.length, currentPage * pageSize)}</span> of <span className="text-[hsl(var(--foreground))] font-bold">{filteredEmployees.length}</span> employees
-                    </div>
-                    <div className="flex items-center gap-1.5 overflow-x-auto max-w-full pb-2 sm:pb-0 scrollbar-none">
-                        <Button
-                            variant="outline"
-                            size="icon"
-                            disabled={currentPage === 1}
-                            onClick={() => setCurrentPage(1)}
-                            className="h-8 w-8 rounded-lg border-[hsl(var(--border))] shrink-0"
-                        >
-                            <ChevronsLeft size={14} />
-                        </Button>
-                        <Button
-                            variant="outline"
-                            size="icon"
-                            disabled={currentPage === 1}
-                            onClick={() => setCurrentPage(currentPage - 1)}
-                            className="h-8 w-8 rounded-lg border-[hsl(var(--border))] shrink-0"
-                        >
-                            <ChevronLeft size={14} />
-                        </Button>
-
-                        <div className="flex items-center gap-1 mx-1 shrink-0">
-                            {Array.from({ length: totalPages }, (_, i) => i + 1)
-                                .filter(p => {
-                                    if (isMobile) return Math.abs(p - currentPage) <= 0; // Only show current page on mobile
-                                    return p === 1 || p === totalPages || Math.abs(p - currentPage) <= 1;
-                                })
-                                .map((p, i, arr) => {
-                                    if (i > 0 && p !== arr[i - 1] + 1) {
-                                        return <span key={`dots-${p}`} className="text-[hsl(var(--muted-foreground))]">...</span>;
-                                    }
-                                    return (
-                                        <button
-                                            key={p}
-                                            onClick={() => setCurrentPage(p)}
-                                            className={cn(
-                                                "h-8 w-8 text-xs font-bold rounded-lg transition-all",
-                                                currentPage === p
-                                                    ? "bg-[hsl(var(--brand))] text-white shadow-md shadow-[hsl(var(--brand))]/20"
-                                                    : "hover:bg-[hsl(var(--muted))] text-[hsl(var(--foreground))]"
-                                            )}
-                                        >
-                                            {isMobile ? `Page ${p}` : p}
-                                        </button>
-                                    );
-                                })}
+                {totalPages > 1 && (
+                    <div className="flex flex-col sm:flex-row items-center justify-between px-6 py-4 bg-[hsl(var(--muted))]/20 border-t border-[hsl(var(--border))] gap-4 sm:gap-0">
+                        <div className="text-xs text-[hsl(var(--muted-foreground))] font-medium">
+                            Showing <span className="text-[hsl(var(--foreground))] font-bold">{Math.min(filteredEmployees.length, (currentPage - 1) * pageSize + 1)}</span> to <span className="text-[hsl(var(--foreground))] font-bold">{Math.min(filteredEmployees.length, currentPage * pageSize)}</span> of <span className="text-[hsl(var(--foreground))] font-bold">{filteredEmployees.length}</span> employees
                         </div>
+                        <div className="flex items-center gap-1.5 overflow-x-auto max-w-full pb-2 sm:pb-0 scrollbar-none">
+                            <Button
+                                variant="outline"
+                                size="icon"
+                                disabled={currentPage === 1}
+                                onClick={() => setCurrentPage(1)}
+                                className="h-8 w-8 rounded-lg border-[hsl(var(--border))] shrink-0"
+                            >
+                                <ChevronsLeft size={14} />
+                            </Button>
+                            <Button
+                                variant="outline"
+                                size="icon"
+                                disabled={currentPage === 1}
+                                onClick={() => setCurrentPage(currentPage - 1)}
+                                className="h-8 w-8 rounded-lg border-[hsl(var(--border))] shrink-0"
+                            >
+                                <ChevronLeft size={14} />
+                            </Button>
 
-                        <Button
-                            variant="outline"
-                            size="icon"
-                            disabled={currentPage >= totalPages}
-                            onClick={() => setCurrentPage(currentPage + 1)}
-                            className="h-8 w-8 rounded-lg border-[hsl(var(--border))] shrink-0"
-                        >
-                            <ChevronRight size={14} />
-                        </Button>
-                        <Button
-                            variant="outline"
-                            size="icon"
-                            disabled={currentPage >= totalPages}
-                            onClick={() => setCurrentPage(totalPages)}
-                            className="h-8 w-8 rounded-lg border-[hsl(var(--border))] shrink-0"
-                        >
-                            <ChevronsRight size={14} />
-                        </Button>
+                            <div className="flex items-center gap-1 mx-1 shrink-0">
+                                {Array.from({ length: totalPages }, (_, i) => i + 1)
+                                    .filter(p => {
+                                        if (isMobile) return Math.abs(p - currentPage) <= 0; // Only show current page on mobile
+                                        return p === 1 || p === totalPages || Math.abs(p - currentPage) <= 1;
+                                    })
+                                    .map((p, i, arr) => {
+                                        if (i > 0 && p !== arr[i - 1] + 1) {
+                                            return <span key={`dots-${p}`} className="text-[hsl(var(--muted-foreground))]">...</span>;
+                                        }
+                                        return (
+                                            <button
+                                                key={p}
+                                                onClick={() => setCurrentPage(p)}
+                                                className={cn(
+                                                    "h-8 w-8 text-xs font-bold rounded-lg transition-all",
+                                                    currentPage === p
+                                                        ? "bg-[hsl(var(--brand))] text-white shadow-md shadow-[hsl(var(--brand))]/20"
+                                                        : "hover:bg-[hsl(var(--muted))] text-[hsl(var(--foreground))]"
+                                                )}
+                                            >
+                                                {isMobile ? `Page ${p}` : p}
+                                            </button>
+                                        );
+                                    })}
+                            </div>
+
+                            <Button
+                                variant="outline"
+                                size="icon"
+                                disabled={currentPage >= totalPages}
+                                onClick={() => setCurrentPage(currentPage + 1)}
+                                className="h-8 w-8 rounded-lg border-[hsl(var(--border))] shrink-0"
+                            >
+                                <ChevronRight size={14} />
+                            </Button>
+                            <Button
+                                variant="outline"
+                                size="icon"
+                                disabled={currentPage >= totalPages}
+                                onClick={() => setCurrentPage(totalPages)}
+                                className="h-8 w-8 rounded-lg border-[hsl(var(--border))] shrink-0"
+                            >
+                                <ChevronsRight size={14} />
+                            </Button>
+                        </div>
                     </div>
-                </div>
+                )}
             </div>
 
             <Dialog open={addShiftOpen} onOpenChange={setAddShiftOpen}>

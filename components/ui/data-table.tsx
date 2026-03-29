@@ -29,7 +29,17 @@ interface DataTableProps<T> {
     className?: string;
     loading?: boolean;
     actions?: React.ReactNode;
+    filters?: React.ReactNode;
     mobileCardRender?: (row: T) => React.ReactNode;
+    // Server-side pagination and handlers
+    serverPagination?: boolean;
+    totalItems?: number;
+    pageSize?: number;
+    page?: number;     // controlled page state
+    onPageChange?: (page: number) => void;
+    onSearch?: (search: string) => void;
+    onSort?: (key: string, dir: "asc" | "desc") => void;
+    maxHeight?: string; // e.g. "calc(100vh - 300px)"
 }
 
 export function DataTable<T extends Record<string, any>>({
@@ -44,7 +54,16 @@ export function DataTable<T extends Record<string, any>>({
     className,
     loading = false,
     actions,
+    filters,
     mobileCardRender,
+    serverPagination = false,
+    totalItems = 0,
+    pageSize = 10,
+    page: controlledPage,
+    onPageChange,
+    onSearch,
+    onSort,
+    maxHeight,
 }: DataTableProps<T>) {
     const isMobile = useIsMobile();
     const [search, setSearch] = React.useState("");
@@ -52,11 +71,25 @@ export function DataTable<T extends Record<string, any>>({
     const [sortDir, setSortDir] = React.useState<"asc" | "desc">("asc");
 
     const [currentPage, setCurrentPage] = React.useState(1);
-    const pageSize = 10;
+    
+    // Default to controlled if provided
+    const actualPage = serverPagination && controlledPage !== undefined ? controlledPage : currentPage;
 
     React.useEffect(() => {
-        setCurrentPage(1);
-    }, [search, sortKey, sortDir]);
+        if (!serverPagination) {
+            setCurrentPage(1);
+        }
+    }, [search, sortKey, sortDir, serverPagination]);
+
+    // Handle debounced search for server pagination
+    React.useEffect(() => {
+        if (serverPagination && onSearch) {
+            const timer = setTimeout(() => {
+                onSearch(search);
+            }, 300);
+            return () => clearTimeout(timer);
+        }
+    }, [search, serverPagination, onSearch]);
 
     // Helper to get nested values by dot-notation key (e.g. "Employee.first_name")
     const getNestedValue = (obj: any, path: string): any => {
@@ -65,16 +98,16 @@ export function DataTable<T extends Record<string, any>>({
 
     // Filter
     const filtered = React.useMemo(() => {
-        if (!search || searchKeys.length === 0) return data;
+        if (serverPagination || !search || searchKeys.length === 0) return data;
         const lower = search.toLowerCase();
         return data.filter((row) =>
             searchKeys.some((key) => String(getNestedValue(row, key) ?? "").toLowerCase().includes(lower))
         );
-    }, [data, search, searchKeys]);
+    }, [data, search, searchKeys, serverPagination]);
 
     // Sort
     const sorted = React.useMemo(() => {
-        if (!sortKey) return filtered;
+        if (serverPagination || !sortKey) return filtered;
         return [...filtered].sort((a, b) => {
             const aVal = a[sortKey] ?? "";
             const bVal = b[sortKey] ?? "";
@@ -82,45 +115,79 @@ export function DataTable<T extends Record<string, any>>({
             if (aVal > bVal) return sortDir === "asc" ? 1 : -1;
             return 0;
         });
-    }, [filtered, sortKey, sortDir]);
+    }, [filtered, sortKey, sortDir, serverPagination]);
 
     // Pagination
-    const totalPages = Math.ceil(sorted.length / pageSize) || 1;
+    const totalPages = serverPagination ? Math.ceil(totalItems / pageSize) || 1 : Math.ceil(sorted.length / pageSize) || 1;
     const paginated = React.useMemo(() => {
-        const start = (currentPage - 1) * pageSize;
+        if (serverPagination) return sorted; // data is already paginated
+        const start = (actualPage - 1) * pageSize;
         return sorted.slice(start, start + pageSize);
-    }, [sorted, currentPage, pageSize]);
+    }, [sorted, actualPage, pageSize, serverPagination]);
 
     const handleSort = (key: string) => {
+        let newDir: "asc" | "desc" = "asc";
         if (sortKey === key) {
-            setSortDir(sortDir === "asc" ? "desc" : "asc");
-        } else {
-            setSortKey(key);
-            setSortDir("asc");
+            newDir = sortDir === "asc" ? "desc" : "asc";
         }
+        setSortKey(key);
+        setSortDir(newDir);
+        if (serverPagination && onSort) {
+            onSort(key, newDir);
+        }
+    };
+    
+    const handlePageChange = (newPage: number) => {
+        if (serverPagination && onPageChange) {
+            onPageChange(newPage);
+        } else {
+            setCurrentPage(newPage);
+        }
+    };
+    
+    // Generate page numbers for pagination
+    const getPageNumbers = () => {
+        const maxVisible = 5;
+        let start = Math.max(1, actualPage - 2);
+        let end = Math.min(totalPages, start + maxVisible - 1);
+        
+        if (end - start < maxVisible - 1) {
+            start = Math.max(1, end - maxVisible + 1);
+        }
+        
+        const pages = [];
+        for (let p = start; p <= end; p++) {
+            pages.push(p);
+        }
+        return { pages, start, end };
     };
 
     return (
         <div className={cn("space-y-4", className)}>
             {/* Toolbar (Search & Actions) */}
-            {(searchable || actions) && (
+            {(searchable || filters || actions) && (
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                    {searchable ? (
-                        <div className="relative w-full sm:max-w-sm">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[hsl(var(--muted-foreground))]" />
-                            <input
-                                type="text"
-                                placeholder={searchPlaceholder}
-                                value={search}
-                                onChange={(e) => setSearch(e.target.value)}
-                                className="flex h-10 w-full rounded-lg border border-[hsl(var(--input))] bg-transparent pl-9 pr-3 py-2 text-sm transition-all placeholder:text-[hsl(var(--muted-foreground))] focus:outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]/20 focus:border-[hsl(var(--brand))]"
-                            />
-                        </div>
-                    ) : (
-                        <div />
-                    )}
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 lg:gap-3 w-full sm:w-auto flex-1">
+                        {searchable && (
+                            <div className="relative w-full sm:max-w-sm shrink-0">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[hsl(var(--muted-foreground))]" />
+                                <input
+                                    type="text"
+                                    placeholder={searchPlaceholder}
+                                    value={search}
+                                    onChange={(e) => setSearch(e.target.value)}
+                                    className="flex h-10 w-full rounded-lg border border-[hsl(var(--input))] bg-transparent pl-9 pr-3 py-2 text-sm transition-all placeholder:text-[hsl(var(--muted-foreground))] focus:outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]/20 focus:border-[hsl(var(--brand))]"
+                                />
+                            </div>
+                        )}
+                        {filters && (
+                            <div className="flex items-center gap-2 w-full sm:w-auto mt-2 sm:mt-0 shrink-0">
+                                {filters}
+                            </div>
+                        )}
+                    </div>
                     {actions && (
-                        <div className="w-full sm:w-auto flex shrink-0">
+                        <div className="w-full sm:w-auto flex justify-end shrink-0">
                             {actions}
                         </div>
                     )}
@@ -191,10 +258,13 @@ export function DataTable<T extends Record<string, any>>({
                     </div>
                 ) : (
                     /* Desktop Table View */
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
-                            <thead>
-                                <tr className="border-b border-[hsl(var(--border))] bg-[hsl(var(--muted))]">
+                    <div 
+                        className="overflow-auto custom-scrollbar"
+                        style={{ maxHeight: maxHeight || undefined }}
+                    >
+                        <table className="w-full text-sm relative">
+                            <thead className="sticky top-0 z-10 bg-[hsl(var(--muted))] shadow-sm border-b border-[hsl(var(--border))]">
+                                <tr>
                                     {columns.map((col) => (
                                         <th
                                             key={col.key}
@@ -264,22 +334,54 @@ export function DataTable<T extends Record<string, any>>({
 
             {/* Pagination Controls */}
             {totalPages > 1 && (
-                <div className="flex items-center justify-between pt-2">
-                    <span className="text-sm text-[hsl(var(--muted-foreground))]">
-                        Showing {((currentPage - 1) * pageSize) + 1} to {Math.min(currentPage * pageSize, sorted.length)} of {sorted.length} entries
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 border-t border-[hsl(var(--border))]">
+                    <span className="text-sm text-[hsl(var(--muted-foreground))] font-medium">
+                        Showing {((actualPage - 1) * pageSize) + 1} to {serverPagination ? Math.min(actualPage * pageSize, totalItems) : Math.min(actualPage * pageSize, sorted.length)} of {serverPagination ? totalItems : sorted.length} entries
                     </span>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5 bg-[hsl(var(--muted))]/30 p-1 rounded-xl border border-[hsl(var(--border))]">
                         <button
-                            disabled={currentPage === 1}
-                            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                            className="h-8 px-3 rounded-md text-sm border border-[hsl(var(--input))] disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[hsl(var(--muted))] transition-colors text-[hsl(var(--foreground))]"
+                            disabled={actualPage === 1}
+                            onClick={() => handlePageChange(Math.max(1, actualPage - 1))}
+                            className="h-8 px-3 rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[hsl(var(--background))] hover:shadow-sm transition-all text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"
                         >
-                            Previous
+                            Prev
                         </button>
+                        
+                        <div className="flex items-center gap-1 px-1">
+                            {getPageNumbers().start > 1 && (
+                                <>
+                                    <button onClick={() => handlePageChange(1)} className="h-8 w-8 rounded-lg text-sm font-medium hover:bg-[hsl(var(--background))] hover:shadow-sm transition-all text-[hsl(var(--muted-foreground))]">1</button>
+                                    {getPageNumbers().start > 2 && <span className="text-[hsl(var(--muted-foreground))] px-1">...</span>}
+                                </>
+                            )}
+                            
+                            {getPageNumbers().pages.map(p => (
+                                <button
+                                    key={p}
+                                    onClick={() => handlePageChange(p)}
+                                    className={cn(
+                                        "h-8 w-8 rounded-lg text-sm font-medium transition-all",
+                                        actualPage === p 
+                                            ? "bg-[hsl(var(--brand))] text-white shadow-sm" 
+                                            : "hover:bg-[hsl(var(--background))] hover:shadow-sm text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"
+                                    )}
+                                >
+                                    {p}
+                                </button>
+                            ))}
+
+                            {getPageNumbers().end < totalPages && (
+                                <>
+                                    {getPageNumbers().end < totalPages - 1 && <span className="text-[hsl(var(--muted-foreground))] px-1">...</span>}
+                                    <button onClick={() => handlePageChange(totalPages)} className="h-8 w-8 rounded-lg text-sm font-medium hover:bg-[hsl(var(--background))] hover:shadow-sm transition-all text-[hsl(var(--muted-foreground))]">{totalPages}</button>
+                                </>
+                            )}
+                        </div>
+
                         <button
-                            disabled={currentPage === totalPages}
-                            onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                            className="h-8 px-3 rounded-md text-sm border border-[hsl(var(--input))] disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[hsl(var(--muted))] transition-colors text-[hsl(var(--foreground))]"
+                            disabled={actualPage === totalPages}
+                            onClick={() => handlePageChange(Math.min(totalPages, actualPage + 1))}
+                            className="h-8 px-3 rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[hsl(var(--background))] hover:shadow-sm transition-all text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"
                         >
                             Next
                         </button>

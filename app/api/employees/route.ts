@@ -21,15 +21,31 @@ export async function GET(request: NextRequest) {
 
         const supabase = await createClient();
         const { searchParams } = new URL(request.url);
+        
+        // Paging Parameters
+        const isPaginated = searchParams.get('paginate') === 'true';
+        const page = parseInt(searchParams.get('page') || '1', 10);
+        const limit = parseInt(searchParams.get('limit') || '10', 10);
+        
+        // Sorting and Searching
+        const search = searchParams.get('search') || '';
+        const sortBy = searchParams.get('sortBy') || 'first_name';
+        const sortDir = searchParams.get('sortDir') || 'asc';
+        
+        // Filters
         const statusFilter = searchParams.get('status');
         const roleFilter = searchParams.get('role');
         const excludeSelf = searchParams.get('exclude_self') === 'true';
         const excludeConflictsForShift = searchParams.get('exclude_conflicts_for_shift');
         const onlyWithShifts = searchParams.get('only_with_shifts') === 'true';
 
+        // Calculate offset
+        const from = (page - 1) * limit;
+        const to = from + limit - 1;
+
         // Explicitly list ALL columns we need to avoid PostgREST join ambiguity/conflicts
         const columns = [
-            'employee_id', 'first_name', 'last_name', 'role_title', 'status', 'business_id', 'user_id',
+            'employee_id', 'first_name', 'last_name', 'role_title', 'role', 'status', 'business_id', 'user_id',
             'email', 'phone', 'dob', 'employment_type', 'pay_cycle', 'start_date', 'end_date', 'created_at',
             'abn', 'tfn', 'bank_account_name', 'bank_bsb', 'bank_account_number'
         ];
@@ -39,11 +55,15 @@ export async function GET(request: NextRequest) {
 
         let query = supabase
             .from('Employee')
-            .select(selectFields)
+            .select(selectFields, isPaginated ? { count: 'exact' } : undefined)
             .eq('business_id', authUser.business_id);
 
-        if (statusFilter) {
+        if (statusFilter && statusFilter !== 'all') {
             query = query.eq('status', statusFilter);
+        }
+
+        if (search) {
+            query = query.or(`first_name.ilike.%${search}%,last_name.ilike.%${search}%,email.ilike.%${search}%,role_title.ilike.%${search}%`);
         }
 
         if (roleFilter) {
@@ -104,53 +124,128 @@ export async function GET(request: NextRequest) {
             }
         }
 
-        const { data: employees, error } = await query.order('first_name', { ascending: true });
+        // First determine eligible employees if onlyWithShifts or excludeConflictsForShift
+        // Only run these complex in-memory filters if needed
+        let doInMemoryFilter = busyEmployeeIds.size > 0 || eligibleEmployeeIds !== null || excludeSelf;
+
+        if (doInMemoryFilter) {
+            // Apply IDs directly inside the DB query if it's less than thousands of IDs (safest fallback)
+            // But PostgREST has a limit on 'in' / 'not.in' array size.
+            // If we have to do memory filtering, we might need all employees.
+            // For now, let's inject valid IDs if possible
+            if (eligibleEmployeeIds !== null) {
+                query = query.in('employee_id', eligibleEmployeeIds);
+            }
+        }
+
+        // Apply sorting and pagination
+        const validSortFields = ['first_name', 'last_name', 'start_date', 'status', 'role_title', 'email', 'employment_type'];
+        const safeSortBy = validSortFields.includes(sortBy) ? sortBy : 'first_name';
+        
+        query = query.order(safeSortBy, { ascending: sortDir === 'asc' });
+
+        // Only paginate if not applying dynamic in-memory exclude list (which requires all available before slice)
+        // Note: exclude_self can safely just exclude the requester by DB query.
+        if (excludeSelf) {
+            query = query.neq('user_id', authUser.user_id);
+        }
+
+        if (busyEmployeeIds.size > 0) {
+           // Wait, filter 'not.in' is supported in PostgREST but with limits.
+           // Since it's shift conflicts, it's safe to use not.in for a small team.
+           query = query.not('employee_id', 'in', `(${Array.from(busyEmployeeIds).join(',')})`);
+        }
+
+        // Apply server pagination only if requested
+        if (isPaginated) {
+            query = query.range(from, to);
+        }
+
+        const { data: employees, error, count } = await query;
 
         if (error) {
             console.error('Employees API Query Error:', error);
             return errorResponse(error.message, 400);
         }
 
-        const employeesRaw: any[] = employees || [];
-        let filtered = [...employeesRaw];
+        let filtered = employees || [];
 
-        // Apply in-memory filters (safe for custom string IDs like BEA0002)
-        if (busyEmployeeIds.size > 0) {
-            filtered = filtered.filter(e => !busyEmployeeIds.has(e.employee_id));
-        }
-        if (eligibleEmployeeIds !== null) {
-            const eligibleSet = new Set(eligibleEmployeeIds);
-            filtered = filtered.filter(e => eligibleSet.has(e.employee_id));
-            if (filtered.length === 0) {
-                return successResponse([], 'No colleagues with available shifts found');
-            }
-        }
-
-        // Fetch user roles for all found employees
+        // Fetch user roles for all found employees to compute 'role' properly (if DB role string happens to be stale or needs merging)
         if (filtered.length > 0) {
             const { data: userRoles } = await supabase
                 .from('User')
                 .select('user_id, role')
-                .in('user_id', filtered.map(e => e.user_id).filter(Boolean));
+                .in('user_id', filtered.map((e: any) => e.user_id).filter(Boolean));
 
             const roleMap = new Map((userRoles || []).map(u => [u.user_id, u.role]));
 
             filtered = filtered.map((emp: any) => ({
                 ...emp,
-                role: roleMap.get(emp.user_id) || 'employee'
+                role: roleMap.get(emp.user_id) || emp.role || 'employee'
             }));
 
-            // If roleFilter was provided, apply it now
-            if (roleFilter) {
+            // Re-apply roleFilter since we compute standard roles here
+            if (roleFilter && roleFilter !== 'all') {
                 filtered = filtered.filter((emp: any) => emp.role === roleFilter);
             }
         }
+        
+        // Extremely lightweight query to compute badges accurately across entire table
+        // We only fetch status and user_id to compute role categories correctly
+        const { data: allStatuses } = await supabase
+            .from('Employee')
+            .select('status, role, user_id')
+            .eq('business_id', authUser.business_id);
 
-        if (excludeSelf) {
-            filtered = filtered.filter((e: any) => e.user_id !== authUser.user_id);
+        let activeCount = 0;
+        let invitedCount = 0;
+        let inactiveCount = 0;
+        let managerCount = 0;
+        let employeeCount = 0;
+
+        // Optionally reconcile roles globally
+        let allValidUserIds = (allStatuses || []).map(e => e.user_id).filter(Boolean);
+        let globalRoleMap = new Map();
+        if (allValidUserIds.length > 0) {
+            const { data: allUserRoles } = await supabase
+                .from('User')
+                .select('user_id, role')
+                .in('user_id', allValidUserIds);
+            globalRoleMap = new Map((allUserRoles || []).map(u => [u.user_id, u.role]));
         }
 
-        return successResponse(filtered, `Found ${filtered.length} employee(s)`);
+        (allStatuses || []).forEach(e => {
+            if (e.status === 'active') activeCount++;
+            else if (e.status === 'invited') invitedCount++;
+            else if (e.status === 'inactive') inactiveCount++;
+            
+            const actualRole = globalRoleMap.get(e.user_id) || e.role || 'employee';
+            if (actualRole === 'manager') managerCount++;
+            else employeeCount++;
+        });
+
+        const totalItems = count || 0;
+
+        if (isPaginated) {
+            return successResponse({
+                employees: filtered,
+                meta: {
+                    total_count: totalItems,
+                    page,
+                    limit,
+                    counts: {
+                        all: (allStatuses || []).length,
+                        active: activeCount,
+                        invited: invitedCount,
+                        inactive: inactiveCount,
+                        manager: managerCount,
+                        employee: employeeCount
+                    }
+                }
+            }, `Found ${filtered.length} employee(s) page`);
+        } else {
+            return successResponse(filtered, `Found ${filtered.length} employee(s)`);
+        }
     } catch (error) {
         console.error('List employees error:', error);
         return errorResponse('Internal server error', 500);
@@ -292,6 +387,7 @@ export async function POST(request: NextRequest) {
                 business_id: authUser.business_id,
                 user_id: authUserId,
                 status: authUserId ? 'active' : 'inactive',
+                role: invite_as === 'manager' ? 'manager' : 'employee',
             })
             .select()
             .single();

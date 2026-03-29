@@ -211,6 +211,7 @@ export async function POST(request: NextRequest) {
                         employment_type: employment_type || null, business_id: authUser.business_id,
                         user_id: authUserId, status: 'invited', start_date: new Date().toISOString().split('T')[0],
                         dob: null, emergency_contact_name: null, emergency_contact_phone: null,
+                        role: invite_as === 'manager' ? 'manager' : 'employee',
                     });
 
                 if (empError) {
@@ -223,7 +224,10 @@ export async function POST(request: NextRequest) {
 
             // Skipping Rate History for now (Payroll Module)
 
-            if (invite_as === 'manager') {
+            // Use stored role for existing employees, or the provided invite_as for new ones
+            const finalRole = existingEmployee?.role || (invite_as === 'manager' ? 'manager' : 'employee');
+
+            if (finalRole === 'manager') {
                 await supabase.from('User').insert({
                     user_id: authUserId, business_id: authUser.business_id,
                     role: 'manager', first_name, last_name,
