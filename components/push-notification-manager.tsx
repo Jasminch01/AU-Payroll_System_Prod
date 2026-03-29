@@ -32,7 +32,7 @@ export function PushNotificationManager() {
       if (!isSilent) console.log('[PushManager] Requesting permission...');
       const permission = await Notification.requestPermission();
       if (!isSilent) console.log('[PushManager] Permission status:', permission);
-      
+
       if (permission !== 'granted') {
         if (!isSilent) {
           toast.error("Notifications were not allowed.", {
@@ -44,7 +44,7 @@ export function PushNotificationManager() {
 
       if (!isSilent) console.log('[PushManager] Waiting for service worker to be ready...');
       const registration = await navigator.serviceWorker.ready;
-      
+
       if (!registration) {
         if (!isSilent) toast.error("Service worker not active yet.");
         return;
@@ -140,12 +140,26 @@ export function PushNotificationManager() {
       syncSubscription();
 
       const checkPermission = async () => {
-        // Only trigger the prompt if the app is actually installed (PWA Standalone)
+        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
         const isPWA = window.matchMedia('(display-mode: standalone)').matches || (navigator as any).standalone;
 
-        if (isPWA && Notification.permission === 'default') {
-          console.log('[PushManager] Automatically triggering native OS prompt...');
-          subscribeToPush(false);
+        // FIX: Instead of firing the native OS prompt directly (which was
+        // happening before the user consciously chose to enable notifications),
+        // show a dismissible toast so the user is in control. The OS dialog
+        // only appears when they click "Enable" in the toast.
+        if ((isMobile || isPWA) && Notification.permission === 'default' && !localStorage.getItem('push_prompt_dismissed')) {
+          toast('Enable Push Notifications', {
+            description: 'Get notified immediately about your shifts, leave, and updates.',
+            duration: Infinity,
+            action: {
+              label: 'Enable',
+              onClick: () => subscribeToPush(false),
+            },
+            cancel: {
+              label: 'Later',
+              onClick: () => localStorage.setItem('push_prompt_dismissed', 'true'),
+            },
+          });
         }
       };
 

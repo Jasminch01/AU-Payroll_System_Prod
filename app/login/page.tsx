@@ -49,6 +49,10 @@ export default function LoginPage() {
 
             toast.success("Welcome back!");
 
+            // Session cookie is now set — trigger push subscription sync so any
+            // previously-granted permission gets saved to push_subscriptions DB.
+            window.dispatchEvent(new CustomEvent('trigger-push-subscribe'));
+
             // Redirect based on role
             const role = data.data?.role || data.data?.user?.role;
             if (role === "owner") router.push("/owner/dashboard");
@@ -142,6 +146,7 @@ export default function LoginPage() {
                         <Input
                             label="Email address"
                             type="email"
+                            name="email"
                             placeholder="you@company.com"
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
@@ -150,6 +155,7 @@ export default function LoginPage() {
 
                         <PasswordInput
                             label="Password"
+                            name="password"
                             placeholder="Enter your password"
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
