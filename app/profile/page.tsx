@@ -82,8 +82,6 @@ export default function ProfilePage() {
         }
     };
 
-
-
     const updateField = (field: string, value: any) => {
         setFormData((prev: any) => ({ ...prev, [field]: value }));
     };

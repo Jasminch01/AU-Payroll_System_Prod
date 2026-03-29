@@ -144,19 +144,11 @@ export function PushNotificationManager() {
         const isPWA = window.matchMedia('(display-mode: standalone)').matches || (navigator as any).standalone;
 
         if ((isMobile || isPWA) && Notification.permission === 'default' && !localStorage.getItem('push_prompt_dismissed')) {
-          // Show a toast to prompt the user
-          toast("Enable Push Notifications", {
-            description: "Get notified immediately about your latest shifts, updates, and more.",
-            duration: Infinity, // Keep it visible until action is taken
-            action: {
-              label: "Enable",
-              onClick: () => subscribeToPush(false)
-            },
-            cancel: {
-              label: "Later",
-              onClick: () => localStorage.setItem('push_prompt_dismissed', 'true')
-            }
-          });
+          // Directly trigger the native OS permission prompt instead of showing a web toast.
+          // This creates a native-app-like experience where the system dialog appears immediately.
+          console.log('[PushManager] Automatically triggering native OS prompt...');
+          localStorage.setItem('push_prompt_dismissed', 'true'); // Prevents spamming on reload if they ignore the prompt
+          subscribeToPush(false);
         }
       };
 
