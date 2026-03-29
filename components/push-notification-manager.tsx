@@ -140,10 +140,9 @@ export function PushNotificationManager() {
 
       const checkPermission = async () => {
         // Check for mobile or PWA standalone mode
-        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
         const isPWA = window.matchMedia('(display-mode: standalone)').matches || (navigator as any).standalone;
 
-        if ((isMobile || isPWA) && Notification.permission === 'default') {
+        if (isPWA && Notification.permission === 'default') {
           // Directly trigger the native OS permission prompt instead of showing a web toast.
           // This creates a native-app-like experience where the system dialog appears immediately.
           console.log('[PushManager] Automatically triggering native OS prompt...');
