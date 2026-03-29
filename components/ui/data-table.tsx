@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { cn } from "@/lib/utils";
-import { ChevronUp, ChevronDown, Search } from "lucide-react";
+import { ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Search } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 /* ============================================
@@ -342,9 +342,10 @@ export function DataTable<T extends Record<string, any>>({
                         <button
                             disabled={actualPage === 1}
                             onClick={() => handlePageChange(Math.max(1, actualPage - 1))}
-                            className="h-8 px-3 rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[hsl(var(--background))] hover:shadow-sm transition-all text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"
+                            className="h-8 w-8 flex items-center justify-center rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[hsl(var(--background))] hover:shadow-sm transition-all text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"
+                            title="Previous Page"
                         >
-                            Prev
+                            <ChevronLeft size={16} />
                         </button>
                         
                         <div className="flex items-center gap-1 px-1">
@@ -381,9 +382,10 @@ export function DataTable<T extends Record<string, any>>({
                         <button
                             disabled={actualPage === totalPages}
                             onClick={() => handlePageChange(Math.min(totalPages, actualPage + 1))}
-                            className="h-8 px-3 rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[hsl(var(--background))] hover:shadow-sm transition-all text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"
+                            className="h-8 w-8 flex items-center justify-center rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[hsl(var(--background))] hover:shadow-sm transition-all text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"
+                            title="Next Page"
                         >
-                            Next
+                            <ChevronRight size={16} />
                         </button>
                     </div>
                 </div>

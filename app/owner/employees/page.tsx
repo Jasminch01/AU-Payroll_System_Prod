@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { apiGet, apiPost, apiDelete } from "@/lib/api-client";
 import { toast } from "sonner";
-import { UserPlus, Users, Send, RefreshCw, Copy, Check, MoreHorizontal, Eye, ExternalLink, Trash2, AlertTriangle, Filter, X, Briefcase, User, ShieldCheck, UserPlus2, ChevronRight } from "lucide-react";
+import { UserPlus, Users, Send, RefreshCw, Copy, Check, MoreHorizontal, Eye, ExternalLink, Trash2, AlertTriangle, Filter, X, Briefcase, User, ShieldCheck, UserPlus2, ChevronRight, Shield, Lock, CreditCard, ChevronDown, Info } from "lucide-react";
 import type { Employee } from "@/types/database";
 import { useAuth } from "@/hooks/use-auth";
 import { createClient } from "@/lib/supabase/client";
@@ -960,134 +960,157 @@ export default function OwnerEmployeesPage() {
 
             {/* Manual Add Dialog */}
             <Dialog open={manualAddOpen} onOpenChange={setManualAddOpen}>
-                <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-                    <DialogHeader>
-                        <DialogTitle>Add Employee Manually</DialogTitle>
-                        <DialogDescription>
-                            Create a complete employee profile instantly.
-                        </DialogDescription>
-                    </DialogHeader>
+                <DialogContent className="max-w-3xl overflow-hidden p-0 border-0 rounded-2xl shadow-2xl [&>button]:text-white [&>button]:font-black [&>button]:z-50 [&>button]:right-6 [&>button]:top-6 [&>button]:scale-125">
+                    <div className="p-6 bg-[hsl(var(--brand))] text-white relative overflow-hidden shrink-0">
+                        <div className="relative z-10 flex items-center gap-3">
+                            <div className="h-12 w-12 rounded-xl bg-white/20 backdrop-blur-md flex items-center justify-center border border-white/30">
+                                <UserPlus size={24} />
+                            </div>
+                            <div>
+                                <DialogTitle className="text-xl font-bold">Add New Team Member</DialogTitle>
+                                <DialogDescription className="text-white/70 text-sm mt-1">
+                                    Create a complete profile and grant system access.
+                                </DialogDescription>
+                            </div>
+                        </div>
+                        {/* Decorative background elements */}
+                        <div className="absolute -right-8 -top-8 h-32 w-32 bg-white/10 rounded-full blur-3xl" />
+                        <div className="absolute right-20 bottom-0 h-16 w-16 bg-white/10 rounded-full blur-2xl" />
+                    </div>
 
-                    <div className="space-y-6 py-4">
+                    <div className="overflow-y-auto max-h-[calc(90vh-160px)] p-6 space-y-8 custom-scrollbar">
                         {/* Access Level Selector */}
-                        <div className="space-y-2">
-                            <label className="text-[12px] font-bold text-[hsl(var(--muted-foreground))] uppercase tracking-wider">Access Level</label>
-                            <select
-                                value={manualData.role}
-                                onChange={(e) => setManualData({ ...manualData, role: e.target.value })}
-                                className="flex h-10 w-full rounded-lg border border-[hsl(var(--input))] bg-transparent px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[hsl(var(--brand))]/20"
-                            >
-                                <option value="employee">Standard Staff</option>
-                                <option value="manager">Business Manager</option>
-                            </select>
+                        <div className="bg-slate-50 border border-slate-100 p-5 rounded-2xl space-y-4">
+                            <div className="flex items-center gap-3 border-b border-slate-200/50 pb-3">
+                                <div className="h-8 w-8 rounded-lg bg-[hsl(var(--brand-light))]/20 flex items-center justify-center text-[hsl(var(--brand))]">
+                                    <Shield size={18} />
+                                </div>
+                                <h3 className="font-bold text-slate-800 tracking-tight">System Permissions</h3>
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1">Choose Access Level</label>
+                                <div className="relative group">
+                                    <select
+                                        value={manualData.role}
+                                        onChange={(e) => setManualData({ ...manualData, role: e.target.value })}
+                                        className="w-full h-12 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 outline-none transition-all focus:ring-4 focus:ring-[hsl(var(--brand))]/10 focus:border-[hsl(var(--brand))] hover:border-[hsl(var(--brand))]/30 appearance-none cursor-pointer pr-10"
+                                    >
+                                        <option value="employee">Standard Staff Member</option>
+                                        <option value="manager">Business Manager</option>
+                                    </select>
+                                    <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 group-hover:text-[hsl(var(--brand))] transition-colors">
+                                        <ChevronDown size={18} />
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-2 mt-2 px-1">
+                                    <div className="h-4 w-4 rounded-full bg-blue-50 flex items-center justify-center text-blue-500">
+                                        <Info size={10} />
+                                    </div>
+                                    <p className="text-[10px] text-slate-500 italic">Managers can edit rosters and manage other team members</p>
+                                </div>
+                            </div>
                         </div>
 
-                        <section>
-                            <h3 className="text-sm font-bold border-b pb-2 mb-3">Identity & Account</h3>
-                            <div className="grid grid-cols-2 gap-3 mb-3">
-                                <Input label="First Name" showAsterisk value={manualData.first_name} onChange={(e) => setManualData({ ...manualData, first_name: e.target.value })} />
-                                <Input label="Last Name" showAsterisk value={manualData.last_name} onChange={(e) => setManualData({ ...manualData, last_name: e.target.value })} />
-                                <Input label="Email (Optional)" type="email" value={manualData.email} onChange={(e) => setManualData({ ...manualData, email: e.target.value })} />
-                                <Input label="Temporary Password (Optional)" type="password" value={manualData.password} onChange={(e) => setManualData({ ...manualData, password: e.target.value })} />
-                                <Input label="Phone" type="tel" value={manualData.phone} onChange={(e) => setManualData({ ...manualData, phone: e.target.value })} />
-                                {/* Date of Birth skipped for now
-                                <Input
-                                    label="Date of Birth"
-                                    type={manualData.dob ? "date" : "text"}
-                                    placeholder="Not Set"
-                                    value={manualData.dob}
-                                    onFocus={(e) => e.target.type = 'date'}
-                                    onBlur={(e) => { if (!e.target.value) e.target.type = 'text' }}
-                                    onChange={(e) => setManualData({ ...manualData, dob: e.target.value })}
-                                />
-                                */}
+                        {/* Identity Section */}
+                        <section className="bg-white rounded-2xl border p-5 shadow-sm space-y-5">
+                            <div className="flex items-center gap-3 border-b border-slate-50 pb-3 mb-1">
+                                <div className="h-8 w-8 rounded-lg bg-orange-100 flex items-center justify-center text-orange-600">
+                                    <User size={18} />
+                                </div>
+                                <h3 className="font-bold text-slate-800 tracking-tight">Personal Identity</h3>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <Input label="First Name" showAsterisk placeholder="John" value={manualData.first_name} onChange={(e) => setManualData({ ...manualData, first_name: e.target.value })} />
+                                <Input label="Last Name" showAsterisk placeholder="Doe" value={manualData.last_name} onChange={(e) => setManualData({ ...manualData, last_name: e.target.value })} />
+                                <Input label="Email (Optional)" type="email" placeholder="john@example.com" value={manualData.email} onChange={(e) => setManualData({ ...manualData, email: e.target.value })} />
+                                <Input label="Phone Number" type="tel" placeholder="0400 000 000" value={manualData.phone} onChange={(e) => setManualData({ ...manualData, phone: e.target.value })} />
                             </div>
                         </section>
 
-                        <section>
-                            <h3 className="text-sm font-bold border-b pb-2 mb-3">Employment Details</h3>
-                            <div className="grid grid-cols-2 gap-3 mb-3">
-                                {manualData.role === "employee" && (
-                                    <>
-                                        <Input label="Role Title" value={manualData.role_title} onChange={(e) => setManualData({ ...manualData, role_title: e.target.value })} />
-                                        <div className="space-y-1.5">
-                                            <label className="text-xs font-semibold ml-0.5">
-                                                Employment Type <span className={cn(
-                                                    "ml-0.5 transition-colors duration-200",
-                                                    manualData.employment_type ? "text-[hsl(var(--foreground))]" : "text-[#FF4A4A]"
-                                                )}>*</span>
-                                            </label>
-                                            <select value={manualData.employment_type} onChange={(e) => setManualData({ ...manualData, employment_type: e.target.value })} className="flex h-10 w-full rounded-md border border-[hsl(var(--input))] bg-transparent px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]/20">
-                                                <option value="" disabled>Select</option>
-                                                <option value="full_time">Full Time</option>
-                                                <option value="part_time">Part Time</option>
-                                                <option value="casual">Casual</option>
-                                                <option value="contract">Contract</option>
-                                            </select>
+                        <div className="grid grid-cols-2 gap-6">
+                            {/* Employment Section */}
+                            <section className="bg-white rounded-2xl border p-5 shadow-sm space-y-5 h-full">
+                                <div className="flex items-center gap-3 border-b border-slate-50 pb-3 mb-1">
+                                    <div className="h-8 w-8 rounded-lg bg-blue-100 flex items-center justify-center text-blue-600">
+                                        <Briefcase size={18} />
+                                    </div>
+                                    <h3 className="font-bold text-slate-800 tracking-tight">Employment</h3>
+                                </div>
+                                <div className="space-y-4">
+                                    {manualData.role === "employee" && (
+                                        <Input label="Job Title" placeholder="e.g. Senior Barista" value={manualData.role_title} onChange={(e) => setManualData({ ...manualData, role_title: e.target.value })} />
+                                    )}
+                                    <div className="space-y-1.5">
+                                        <label className="text-xs font-semibold ml-0.5 text-slate-600">
+                                            Employment Type <span className="text-red-500">*</span>
+                                        </label>
+                                        <select value={manualData.employment_type} onChange={(e) => setManualData({ ...manualData, employment_type: e.target.value })} className="flex h-10 w-full rounded-xl border border-slate-200 bg-slate-50/30 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--brand))]/20 transition-all font-medium">
+                                            <option value="" disabled>Select</option>
+                                            <option value="full_time">Full Time</option>
+                                            <option value="part_time">Part Time</option>
+                                            <option value="casual">Casual</option>
+                                            <option value="contract">Contract</option>
+                                        </select>
+                                    </div>
+                                    <Input label="Start Date" showAsterisk type="date" value={manualData.start_date} onChange={(e) => setManualData({ ...manualData, start_date: e.target.value })} />
+                                </div>
+                            </section>
+
+                            <div className="space-y-6">
+                                {/* Security Section */}
+                                <section className="bg-white rounded-2xl border p-5 shadow-sm space-y-5">
+                                    <div className="flex items-center gap-3 border-b border-slate-50 pb-3 mb-1">
+                                        <div className="h-8 w-8 rounded-lg bg-purple-100 flex items-center justify-center text-purple-600">
+                                            <Lock size={18} />
                                         </div>
-                                        {/* Pay Cycle skipped for now
-                                        <div className="space-y-1.5">
-                                            <label className="text-xs font-semibold ml-0.5">
-                                                Pay Cycle <span className={cn(
-                                                    "ml-0.5 transition-colors duration-200",
-                                                    manualData.pay_cycle ? "text-[hsl(var(--foreground))]" : "text-[#FF4A4A]"
-                                                )}>*</span>
-                                            </label>
-                                            <select value={manualData.pay_cycle} onChange={(e) => setManualData({ ...manualData, pay_cycle: e.target.value })} className="flex h-10 w-full rounded-md border border-[hsl(var(--input))] bg-transparent px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]/20">
-                                                <option value="weekly">weekly</option>
-                                                <option value="fortnightly">fortnightly</option>
-                                                <option value="monthly">monthly</option>
-                                            </select>
+                                        <h3 className="font-bold text-slate-800 tracking-tight">Access Security</h3>
+                                    </div>
+                                    <Input label="Temporary Password (Optional)" type="password" placeholder="Min. 8 characters" value={manualData.password} onChange={(e) => setManualData({ ...manualData, password: e.target.value })} />
+                                </section>
+
+                                {/* Emergency Section */}
+                                <section className="bg-white rounded-2xl border p-5 shadow-sm space-y-5">
+                                    <div className="flex items-center gap-3 border-b border-slate-50 pb-3 mb-1">
+                                        <div className="h-8 w-8 rounded-lg bg-red-100 flex items-center justify-center text-red-600">
+                                            <Shield size={18} />
                                         </div>
-                                        */}
-                                        {/* <Input label="Base Hourly Rate ($)" type="number" step="0.01" value={manualData.weekday_rate} onChange={(e) => setManualData({ ...manualData, weekday_rate: e.target.value })} /> */}
-                                    </>
-                                )}
-                                <Input label="Start Date" showAsterisk type="date" value={manualData.start_date} onChange={(e) => setManualData({ ...manualData, start_date: e.target.value })} />
+                                        <h3 className="font-bold text-slate-800 tracking-tight">Emergency</h3>
+                                    </div>
+                                    <div className="space-y-4">
+                                        <Input label="Contact Name" placeholder="Full name" value={manualData.emergency_contact_name} onChange={(e) => setManualData({ ...manualData, emergency_contact_name: e.target.value })} />
+                                        <Input label="Contact Phone" type="tel" placeholder="0400 000 000" value={manualData.emergency_contact_phone} onChange={(e) => setManualData({ ...manualData, emergency_contact_phone: e.target.value })} />
+                                    </div>
+                                </section>
                             </div>
-                        </section>
+                        </div>
 
-                        <section>
-                            <h3 className="text-sm font-bold border-b pb-2 mb-3">Emergency Contact</h3>
-                            <div className="grid grid-cols-2 gap-3">
-                                <Input label="Contact Name" value={manualData.emergency_contact_name} onChange={(e) => setManualData({ ...manualData, emergency_contact_name: e.target.value })} />
-                                <Input label="Contact Phone" type="tel" value={manualData.emergency_contact_phone} onChange={(e) => setManualData({ ...manualData, emergency_contact_phone: e.target.value })} />
+                        {/* Financial Details hidden for Rostering module Phase */}
+                        {/* 
+                        <section className="bg-white rounded-2xl border p-5 shadow-sm space-y-5">
+                            <div className="flex items-center gap-3 border-b border-slate-50 pb-3 mb-1">
+                                <div className="h-8 w-8 rounded-lg bg-green-100 flex items-center justify-center text-green-600">
+                                    <CreditCard size={18} />
+                                </div>
+                                <h3 className="font-bold text-slate-800 tracking-tight">Financial Details</h3>
                             </div>
-                        </section>
-
-                        {/* Bank Details hidden for Rostering module Phase
-                        <section>
-                            <h3 className="text-sm font-bold border-b pb-2 mb-3">Bank Details</h3>
-                            <div className="grid grid-cols-2 gap-3">
+                            <div className="grid grid-cols-2 gap-4">
                                 <Input label="Account Name" value={manualData.bank_account_name} onChange={(e) => setManualData({ ...manualData, bank_account_name: e.target.value })} />
                                 <Input label="BSB Number" value={manualData.bank_bsb} onChange={(e) => setManualData({ ...manualData, bank_bsb: e.target.value })} />
                                 <Input label="Account Number" value={manualData.bank_account_number} onChange={(e) => setManualData({ ...manualData, bank_account_number: e.target.value })} />
                                 {manualData.employment_type === 'contract' ? (
-                                    <Input
-                                        label="ABN"
-                                        showAsterisk
-                                        value={manualData.abn}
-                                        onChange={(e) => setManualData({ ...manualData, abn: e.target.value })}
-                                        placeholder="Format: 00 000 000 000"
-                                    />
+                                    <Input label="ABN" showAsterisk placeholder="00 000 000 000" ... />
                                 ) : (
-                                    <Input
-                                        label="TFN"
-                                        showAsterisk
-                                        value={manualData.tfn}
-                                        onChange={(e) => setManualData({ ...manualData, tfn: e.target.value })}
-                                        placeholder="Format: 000 000 000"
-                                    />
+                                    <Input label="TFN" showAsterisk placeholder="000 000 000" ... />
                                 )}
                             </div>
                         </section>
                         */}
                     </div>
 
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setManualAddOpen(false)}>Cancel</Button>
-                        <Button onClick={handleManualAdd} loading={addManualMutation.isPending}>
-                            <UserPlus size={16} className="mr-2" /> Save Employee
+                    <DialogFooter className="p-6 bg-slate-50 border-t z-20 shrink-0">
+                        <Button variant="outline" onClick={() => setManualAddOpen(false)} className="rounded-xl px-6">Cancel</Button>
+                        <Button onClick={handleManualAdd} loading={addManualMutation.isPending} className="rounded-xl px-8 shadow-lg shadow-[hsl(var(--brand))]/20">
+                            <UserPlus size={16} className="mr-2" /> Save Employee Profile
                         </Button>
                     </DialogFooter>
                 </DialogContent>

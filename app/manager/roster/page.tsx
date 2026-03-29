@@ -12,9 +12,11 @@ import {
     DialogTitle
 } from "@/components/ui/dialog";
 import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/api-client";
+import { getShiftTypeFromTime } from "@/lib/shift-utils";
+import { EmployeeSearchPicker } from "@/components/roster/employee-search-picker";
 import { useEffect } from "react";
 import { toast } from "sonner";
-import { Plus, ChevronLeft, ChevronRight, Clock, Trash2, CheckCircle2, FileText, RefreshCcw, Copy, Bell, CalendarDays, Search, Filter, ChevronsLeft, ChevronsRight, GripVertical, MoreHorizontal, Users } from "lucide-react";
+import { Plus, ChevronLeft, ChevronRight, ChevronDown, Clock, Trash2, CheckCircle2, FileText, RefreshCcw, Copy, Bell, CalendarDays, Search, Filter, ChevronsLeft, ChevronsRight, GripVertical, MoreHorizontal, Users } from "lucide-react";
 import { Reorder, AnimatePresence, motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -24,7 +26,7 @@ import {
     Popover, PopoverTrigger, PopoverContent
 } from "@/components/ui/popover";
 import {
-    DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem
+    DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator
 } from "@/components/ui/dropdown-menu";
 import {
     format, addMonths, subMonths, startOfMonth, endOfMonth,
@@ -120,6 +122,8 @@ export default function ManagerRosterPage() {
     const [viewDate, setViewDate] = useState(new Date());
 
     const rosterDates = useMemo(() => getRosterDates(offset, rosterPeriod), [offset, rosterPeriod]);
+
+
     const rangeStart = formatDate(rosterDates[0]);
     const rangeEnd = formatDate(rosterDates[rosterDates.length - 1]);
 
@@ -144,6 +148,14 @@ export default function ManagerRosterPage() {
     const [shiftEnd, setShiftEnd] = useState("17:00");
     const [shiftType, setShiftType] = useState("morning");
     const [initialFormState, setInitialFormState] = useState<any>(null);
+
+    // Auto-detect shift type when start time changes
+    useEffect(() => {
+        if (!editingShiftId && shiftStart) {
+            const detectedType = getShiftTypeFromTime(shiftStart);
+            setShiftType(detectedType);
+        }
+    }, [shiftStart, editingShiftId, shiftType]);
 
     // Reset form when dialog closes
     useEffect(() => {
@@ -209,7 +221,7 @@ export default function ManagerRosterPage() {
 
         return sorted.filter((e: any) => {
             const matchesSearch = `${e.first_name} ${e.last_name}`.toLowerCase().includes(searchQuery.toLowerCase());
-            const matchesRole = roleFilter === "all" || e.role_title?.toLowerCase() === roleFilter;
+            const matchesRole = roleFilter === "all" || e.role?.toLowerCase() === roleFilter;
             return matchesSearch && matchesRole;
         });
     }, [employees, searchQuery, roleFilter, orderedEmployeeIds]);
@@ -223,7 +235,7 @@ export default function ManagerRosterPage() {
 
     // Get unique roles for filter
     const roles = useMemo(() => {
-        const allRoles = employees.map((e: any) => e.role_title).filter(Boolean);
+        const allRoles = employees.map((e: any) => e.role).filter(Boolean);
         return Array.from(new Set(allRoles));
     }, [employees]);
 
@@ -728,7 +740,7 @@ export default function ManagerRosterPage() {
                                 </span>
                             </button>
                         </PopoverTrigger>
-                        <PopoverContent className="w-80 p-0 overflow-hidden rounded-xl shadow-2xl border-[hsl(var(--border))]" align="start">
+                        <PopoverContent className="w-(--radix-popover-trigger-width) p-0 z-100 bg-white shadow-2xl border-[hsl(var(--border))] rounded-xl overflow-hidden" align="start">
                             <div className="p-4 bg-white">
                                 <div className="flex items-center justify-between mb-4 px-1">
                                     <h4 className="font-bold text-[hsl(var(--foreground))] text-base">
@@ -821,12 +833,12 @@ export default function ManagerRosterPage() {
                     </Button>
                 </div>
 
-                <div className="flex items-center gap-3 flex-1 max-w-md mx-4">
-                    <div className="relative flex-1 group">
+                <div className="flex flex-wrap lg:flex-nowrap items-center gap-3 flex-1 w-full lg:max-w-xl mx-4">
+                    <div className="relative flex-1 group min-w-[150px]">
                         <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[hsl(var(--muted-foreground))] group-focus-within:text-[hsl(var(--brand))] transition-colors" />
                         <Input
                             placeholder="Search employee..."
-                            className="pl-9 h-10 bg-white border-[hsl(var(--border))] rounded-xl focus:ring-[hsl(var(--brand))]/10"
+                            className="pl-9 h-10 w-full bg-white border-[hsl(var(--border))] rounded-xl focus:ring-2 focus:ring-[hsl(var(--brand))]/10"
                             value={searchQuery}
                             onChange={(e) => {
                                 setSearchQuery(e.target.value);
@@ -834,23 +846,34 @@ export default function ManagerRosterPage() {
                             }}
                         />
                     </div>
-                    <div className="relative w-40">
-                        <Filter size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[hsl(var(--muted-foreground))]" />
-                        <select
-                            value={roleFilter}
-                            onChange={(e) => {
-                                setRoleFilter(e.target.value);
-                                setCurrentPage(1);
-                            }}
-                            className="w-full pl-9 h-10 rounded-xl border border-[hsl(var(--border))] bg-white text-xs font-medium focus:ring-2 focus:ring-[hsl(var(--brand))]/10 outline-none appearance-none cursor-pointer"
-                        >
-                            <option value="all">All Roles</option>
-                            {roles.map(r => (
-                                <option key={r} value={r.toLowerCase()}>
-                                    {r.split(' ').map((word: string) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join(' ')}
-                                </option>
-                            ))}
-                        </select>
+                    
+                    <div className="flex items-center gap-2 shrink-0">
+                        {/* Role Filter */}
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button variant="outline" className="h-10 rounded-xl gap-2 px-3 border-[hsl(var(--border))] bg-white hover:bg-[hsl(var(--muted))]/30 text-xs shadow-sm focus:ring-2 focus:ring-[hsl(var(--brand))]/10 focus:border-transparent">
+                                    <Filter size={14} className="text-[hsl(var(--muted-foreground))]" />
+                                    <span className="font-semibold">{roleFilter === 'all' ? 'All Roles' : (roleFilter === 'manager' ? 'Managers' : 'Staff')}</span>
+                                    <ChevronDown size={14} className="opacity-50" />
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-40 rounded-2xl shadow-xl p-1.5 border-[hsl(var(--border))] animate-in fade-in zoom-in-95 duration-200">
+                                <DropdownMenuItem onClick={() => { setRoleFilter("all"); setCurrentPage(1); }} className={cn("cursor-pointer font-medium text-xs rounded-lg py-2 transition-all", roleFilter === "all" && "bg-[hsl(var(--brand-light))]/50 text-[hsl(var(--brand))]")}>All Roles</DropdownMenuItem>
+                                <DropdownMenuSeparator className="my-1" />
+                                {roles.map(r => (
+                                    <DropdownMenuItem 
+                                        key={r} 
+                                        onClick={() => { setRoleFilter(r.toLowerCase()); setCurrentPage(1); }}
+                                        className={cn(
+                                            "cursor-pointer font-medium text-xs rounded-lg py-2 transition-all",
+                                            roleFilter === r.toLowerCase() && "bg-[hsl(var(--brand-light))]/50 text-[hsl(var(--brand))]"
+                                        )}
+                                    >
+                                        {r === 'manager' ? 'Managers' : r === 'employee' ? 'Staff' : r.split(' ').map((word: string) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join(' ')}
+                                    </DropdownMenuItem>
+                                ))}
+                            </DropdownMenuContent>
+                        </DropdownMenu>
                     </div>
                 </div>
 
@@ -880,7 +903,7 @@ export default function ManagerRosterPage() {
                                             ) : (
                                                 <div className="flex items-center gap-1">
                                                     <FileText size={12} />
-                                                    <span>Draft ({statusSummary.drafts} new{statusSummary.modified > 0 ? `, ${statusSummary.modified} mod` : ''})</span>
+                                                    <span>Draft ({statusSummary.total - statusSummary.published} shifts)</span>
                                                 </div>
                                             )}
                                         </Badge>
@@ -927,12 +950,16 @@ export default function ManagerRosterPage() {
                                 </div>
                             </div>
                         ) : (
-                            <div className="flex items-center gap-2">
-                                <Badge variant="outline" className="border-[hsl(var(--muted-foreground))] text-[hsl(var(--muted-foreground))] bg-[hsl(var(--muted))]/10">
-                                    No shifts
-                                </Badge>
-                                <span className="text-xs text-[hsl(var(--muted-foreground))] italic hidden sm:inline">Add a shift to start rostering</span>
-                            </div>
+                            currentRoster && (
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => setDeleteRosterConfirmOpen(true)}
+                                    className="h-7 px-3 text-xs text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 hover:border-red-300"
+                                >
+                                    <Trash2 size={12} className="mr-1" /> Delete Empty Roster
+                                </Button>
+                            )
                         )
                     )}
                 </div>
@@ -1371,7 +1398,7 @@ export default function ManagerRosterPage() {
                                                     <span className={cn(
                                                         "font-black uppercase tracking-widest relative z-10",
                                                         rosterPeriod === "monthly" ? "text-[8px] text-[hsl(var(--brand))]" : "text-[10px] text-[hsl(var(--muted-foreground))]"
-                                                    )}>{emp.role_title}</span>
+                                                    )}>{emp.role === 'manager' ? 'Manager' : 'Staff'}</span>
                                                 </div>
 
                                                 {/* Actions Menu - Always on hover, kept compact within column */}
@@ -1597,38 +1624,24 @@ export default function ManagerRosterPage() {
                             onChange={(e) => setSelectedDate(e.target.value)}
                             disabled={editingShiftId ? new Date() >= (new Date((shifts.find((s: any) => s.shift_id === editingShiftId) || {}).start_time)) : false}
                         />
-                        <div className="space-y-1.5">
-                            <label className="text-sm font-medium">Employee</label>
-                            <select
-                                value={shiftEmployee}
-                                onChange={(e) => setShiftEmployee(e.target.value)}
-                                className="flex h-10 w-full rounded-lg border border-[hsl(var(--input))] bg-transparent px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]/20 focus:border-[hsl(var(--brand))]"
-                            >
-                                <option value="">Select employee</option>
-                                {activeEmployees.map((emp: any) => (
-                                    <option key={emp.employee_id} value={emp.employee_id}>
-                                        {emp.first_name} {emp.last_name}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
+                        <EmployeeSearchPicker
+                            employees={activeEmployees}
+                            value={shiftEmployee}
+                            onChange={(id) => setShiftEmployee(id)}
+                            disabled={editingShiftId ? new Date() >= (new Date((shifts.find((s: any) => s.shift_id === editingShiftId) || {}).start_time)) : false}
+                        />
 
                         <div className="grid grid-cols-2 gap-3">
                             <Input label="Start Time" type="time" value={shiftStart} onChange={(e) => setShiftStart(e.target.value)} />
                             <Input label="End Time" type="time" value={shiftEnd} onChange={(e) => setShiftEnd(e.target.value)} />
                         </div>
 
-                        <div className="space-y-1.5">
-                            <label className="text-sm font-medium">Shift Type</label>
-                            <select
-                                value={shiftType}
-                                onChange={(e) => setShiftType(e.target.value)}
-                                className="flex h-10 w-full rounded-lg border border-[hsl(var(--input))] bg-transparent px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]/20 focus:border-[hsl(var(--brand))]"
-                            >
-                                <option value="morning">Morning</option>
-                                <option value="afternoon">Afternoon</option>
-                                <option value="evening">Evening</option>
-                            </select>
+                        <div className="space-y-1.5 bg-[hsl(var(--brand-light))]/10 p-3 rounded-xl border border-[hsl(var(--brand))]/10">
+                            <label className="text-[10px] font-black uppercase text-[hsl(var(--muted-foreground))] tracking-widest block mb-1">Shift Type</label>
+                            <div className="flex items-center gap-2">
+                                <Clock size={14} className="text-[hsl(var(--brand))]" />
+                                <span className="text-sm font-bold capitalize text-[hsl(var(--foreground))]">{shiftType}</span>
+                            </div>
                         </div>
                     </div>
 

@@ -11,6 +11,8 @@ import {
     Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter
 } from "@/components/ui/dialog";
 import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/api-client";
+import { getShiftTypeFromTime } from "@/lib/shift-utils";
+import { EmployeeSearchPicker } from "@/components/roster/employee-search-picker";
 import { useEffect } from "react";
 import { toast } from "sonner";
 import { Plus, ChevronLeft, ChevronRight, Clock, Trash2, CheckCircle2, FileText, RefreshCcw, Copy, Bell, CalendarDays, Search, Filter, ChevronsLeft, ChevronsRight, GripVertical, MoreHorizontal, Users, ChevronDown, ArrowUpDown, ArrowDownAZ, ArrowDownZA } from "lucide-react";
@@ -150,6 +152,14 @@ export default function OwnerRosterPage() {
     const [shiftType, setShiftType] = useState("morning");
     const [initialFormState, setInitialFormState] = useState<any>(null);
 
+    // Auto-detect shift type when start time changes
+    useEffect(() => {
+        if (!editingShiftId && shiftStart) {
+            const detectedType = getShiftTypeFromTime(shiftStart);
+            setShiftType(detectedType);
+        }
+    }, [shiftStart, editingShiftId, shiftType]);
+
     // Reset shift form when dialog closes
     useEffect(() => {
         if (!addShiftOpen) {
@@ -182,7 +192,6 @@ export default function OwnerRosterPage() {
     // Search, Filter & Pagination State
     const [searchQuery, setSearchQuery] = useState("");
     const [roleFilter, setRoleFilter] = useState("all");
-    const [sortOrder, setSortOrder] = useState<"custom" | "asc" | "desc">("custom");
     const [currentPage, setCurrentPage] = useState(1);
     const pageSize = 10;
 
@@ -203,28 +212,22 @@ export default function OwnerRosterPage() {
     const filteredEmployees = useMemo(() => {
         const active = employees.filter((e: any) => e.status === "active");
 
-        const sorted = [...active];
-        if (sortOrder === "custom") {
-            sorted.sort((a, b) => {
-                const indexA = orderedEmployeeIds.indexOf(a.employee_id);
-                const indexB = orderedEmployeeIds.indexOf(b.employee_id);
-                if (indexA === -1 && indexB === -1) return 0;
-                if (indexA === -1) return 1;
-                if (indexB === -1) return -1;
-                return indexA - indexB;
-            });
-        } else if (sortOrder === "asc") {
-            sorted.sort((a, b) => a.first_name.localeCompare(b.first_name));
-        } else if (sortOrder === "desc") {
-            sorted.sort((a, b) => b.first_name.localeCompare(a.first_name));
-        }
+        // Sort by the local ordered list
+        const sorted = [...active].sort((a, b) => {
+            const indexA = orderedEmployeeIds.indexOf(a.employee_id);
+            const indexB = orderedEmployeeIds.indexOf(b.employee_id);
+            if (indexA === -1 && indexB === -1) return 0;
+            if (indexA === -1) return 1;
+            if (indexB === -1) return -1;
+            return indexA - indexB;
+        });
 
         return sorted.filter((e: any) => {
             const matchesSearch = `${e.first_name} ${e.last_name}`.toLowerCase().includes(searchQuery.toLowerCase());
             const matchesRole = roleFilter === "all" || e.role?.toLowerCase() === roleFilter;
             return matchesSearch && matchesRole;
         });
-    }, [employees, searchQuery, roleFilter, orderedEmployeeIds, sortOrder]);
+    }, [employees, searchQuery, roleFilter, orderedEmployeeIds]);
 
     const paginatedEmployees = useMemo(() => {
         const start = (currentPage - 1) * pageSize;
@@ -813,7 +816,7 @@ export default function OwnerRosterPage() {
                             }}
                         />
                     </div>
-                    
+
                     <div className="flex items-center gap-2 shrink-0">
                         {/* Role Filter */}
                         <DropdownMenu>
@@ -828,8 +831,8 @@ export default function OwnerRosterPage() {
                                 <DropdownMenuItem onClick={() => { setRoleFilter("all"); setCurrentPage(1); }} className={cn("cursor-pointer font-medium text-xs rounded-lg py-2 transition-all", roleFilter === "all" && "bg-[hsl(var(--brand-light))]/50 text-[hsl(var(--brand))]")}>All Roles</DropdownMenuItem>
                                 <DropdownMenuSeparator className="my-1" />
                                 {roles.map(r => (
-                                    <DropdownMenuItem 
-                                        key={r} 
+                                    <DropdownMenuItem
+                                        key={r}
                                         onClick={() => { setRoleFilter(r.toLowerCase()); setCurrentPage(1); }}
                                         className={cn(
                                             "cursor-pointer font-medium text-xs rounded-lg py-2 transition-all",
@@ -839,30 +842,6 @@ export default function OwnerRosterPage() {
                                         {r === 'manager' ? 'Managers' : r === 'employee' ? 'Staff' : r.split(' ').map((word: string) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join(' ')}
                                     </DropdownMenuItem>
                                 ))}
-                            </DropdownMenuContent>
-                        </DropdownMenu>
-
-                        {/* Sort Filter */}
-                        <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                                <Button variant="outline" className="h-10 rounded-xl gap-2 px-3 border-[hsl(var(--border))] bg-white hover:bg-[hsl(var(--muted))]/30 text-xs shadow-sm focus:ring-2 focus:ring-[hsl(var(--brand))]/10 focus:border-transparent">
-                                    <ArrowUpDown size={14} className="text-[hsl(var(--muted-foreground))]" />
-                                    <span className="font-semibold hidden sm:inline-block">
-                                        {sortOrder === "custom" ? "Custom Order" : sortOrder === "asc" ? "Sort A-Z" : "Sort Z-A"}
-                                    </span>
-                                </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="w-44 rounded-2xl shadow-xl p-1.5 border-[hsl(var(--border))] animate-in fade-in zoom-in-95 duration-200">
-                                <DropdownMenuItem onClick={() => setSortOrder("custom")} className={cn("cursor-pointer font-medium text-xs rounded-lg py-2 gap-2 transition-all", sortOrder === "custom" && "bg-[hsl(var(--brand-light))]/50 text-[hsl(var(--brand))]")}>
-                                    <GripVertical size={14} className="opacity-70" /> Custom / Drag
-                                </DropdownMenuItem>
-                                <DropdownMenuSeparator className="my-1" />
-                                <DropdownMenuItem onClick={() => setSortOrder("asc")} className={cn("cursor-pointer font-medium text-xs rounded-lg py-2 gap-2 transition-all", sortOrder === "asc" && "bg-[hsl(var(--brand-light))]/50 text-[hsl(var(--brand))]")}>
-                                    <ArrowDownAZ size={14} className="opacity-70" /> First Name (A-Z)
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => setSortOrder("desc")} className={cn("cursor-pointer font-medium text-xs rounded-lg py-2 gap-2 transition-all", sortOrder === "desc" && "bg-[hsl(var(--brand-light))]/50 text-[hsl(var(--brand))]")}>
-                                    <ArrowDownZA size={14} className="opacity-70" /> First Name (Z-A)
-                                </DropdownMenuItem>
                             </DropdownMenuContent>
                         </DropdownMenu>
                     </div>
@@ -1094,7 +1073,7 @@ export default function OwnerRosterPage() {
                                     const isToday = formatDate(d) === formatDate(new Date());
                                     const dayName = d.toLocaleDateString("en-AU", { weekday: "short" });
                                     const dayNum = d.getDate();
-                                    
+
                                     const todayMidnight = new Date();
                                     todayMidnight.setHours(0, 0, 0, 0);
                                     const dMidnight = new Date(d);
@@ -1347,7 +1326,7 @@ export default function OwnerRosterPage() {
                                             as="tr"
                                             key={emp.employee_id}
                                             value={emp.employee_id}
-                                            dragListener={sortOrder === "custom"}
+                                            dragListener={true}
                                             className="border-b border-[hsl(var(--border))] hover:bg-[hsl(var(--muted))]/30 transition-colors bg-white group"
                                         >
                                             <td className={cn(
@@ -1625,21 +1604,12 @@ export default function OwnerRosterPage() {
                             onChange={(e) => setSelectedDate(e.target.value)}
                             disabled={editingShiftId ? new Date() >= (new Date((shifts.find((s: any) => s.shift_id === editingShiftId) || {}).start_time)) : false}
                         />
-                        <div className="space-y-1.5">
-                            <label className="text-sm font-medium">Employee</label>
-                            <select
-                                value={shiftEmployee}
-                                onChange={(e) => setShiftEmployee(e.target.value)}
-                                className="flex h-10 w-full rounded-lg border border-[hsl(var(--input))] bg-transparent px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]/20 focus:border-[hsl(var(--brand))]"
-                            >
-                                <option value="">Select employee</option>
-                                {activeEmployees.map((emp: any) => (
-                                    <option key={emp.employee_id} value={emp.employee_id}>
-                                        {emp.first_name} {emp.last_name}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
+                        <EmployeeSearchPicker
+                            employees={activeEmployees}
+                            value={shiftEmployee}
+                            onChange={(id) => setShiftEmployee(id)}
+                            disabled={editingShiftId ? new Date() >= (new Date((shifts.find((s: any) => s.shift_id === editingShiftId) || {}).start_time)) : false}
+                        />
 
                         <div className="grid grid-cols-2 gap-3">
                             <div className="space-y-1.5">
@@ -1668,17 +1638,12 @@ export default function OwnerRosterPage() {
                             </div>
                         </div>
 
-                        <div className="space-y-1.5">
-                            <label className="text-sm font-medium">Shift Type</label>
-                            <select
-                                value={shiftType}
-                                onChange={(e) => setShiftType(e.target.value)}
-                                className="flex h-10 w-full rounded-lg border border-[hsl(var(--input))] bg-transparent px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]/20 focus:border-[hsl(var(--brand))]"
-                            >
-                                <option value="morning">Morning</option>
-                                <option value="afternoon">Afternoon</option>
-                                <option value="evening">Evening</option>
-                            </select>
+                        <div className="space-y-1.5 bg-[hsl(var(--brand-light))]/10 p-3 rounded-xl border border-[hsl(var(--brand))]/10">
+                            <label className="text-[10px] font-black uppercase text-[hsl(var(--muted-foreground))] tracking-widest block mb-1">Shift Type</label>
+                            <div className="flex items-center gap-2">
+                                <Clock size={14} className="text-[hsl(var(--brand))]" />
+                                <span className="text-sm font-bold capitalize text-[hsl(var(--foreground))]">{shiftType}</span>
+                            </div>
                         </div>
                     </div>
 

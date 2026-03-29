@@ -20,7 +20,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { apiGet, apiPost } from "@/lib/api-client";
 import { toast } from "sonner";
-import { UserPlus, Users, Send, RefreshCw, Copy, Check, MoreHorizontal, Eye, ExternalLink, Trash2, Filter, X, Briefcase, User, ShieldCheck, ChevronRight } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { UserPlus, Users, Send, RefreshCw, Copy, Check, MoreHorizontal, Eye, ExternalLink, Trash2, Filter, X, Briefcase, User, ShieldCheck, ChevronRight, AlertTriangle, Shield, Lock, CreditCard, ChevronDown, Info } from "lucide-react";
 import type { Employee } from "@/types/database";
 
 type StatusFilter = "all" | "active" | "invited" | "inactive";
@@ -32,6 +33,7 @@ export default function ManagerTeamPage() {
     const [generatedLink, setGeneratedLink] = useState<string | null>(null);
     const [copied, setCopied] = useState(false);
     const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+    const [roleFilter, setRoleFilter] = useState<"all" | "manager" | "employee">("all");
 
     // Invite form state
     const [invEmail, setInvEmail] = useState("");
@@ -51,21 +53,45 @@ export default function ManagerTeamPage() {
     const [joinCode, setJoinCode] = useState<string | null>(null);
     const [isGeneratingJoinCode, setIsGeneratingJoinCode] = useState(false);
 
+    // Manual Add state
+    const [manualAddOpen, setManualAddOpen] = useState(false);
+    const [manualData, setManualData] = useState({
+        first_name: "",
+        last_name: "",
+        email: "",
+        phone: "",
+        role: "employee",
+        role_title: "",
+        employment_type: "full_time",
+        start_date: new Date().toISOString().split('T')[0],
+        emergency_contact_name: "",
+        emergency_contact_phone: "",
+        password: ""
+    });
+
     const { data: employees = [], isLoading } = useQuery({
         queryKey: ["employees"],
         queryFn: () => apiGet<Employee[]>("/employees"),
     });
 
     const filteredEmployees = useMemo(() => {
-        if (statusFilter === "all") return employees;
-        return employees.filter((e: Employee) => e.status === statusFilter);
-    }, [employees, statusFilter]);
+        let result = employees;
+        if (statusFilter !== "all") {
+            result = result.filter((e: Employee) => e.status === statusFilter);
+        }
+        if (roleFilter !== "all") {
+            result = result.filter((e: Employee) => e.role === roleFilter);
+        }
+        return result;
+    }, [employees, statusFilter, roleFilter]);
 
     const counts = useMemo(() => ({
         all: employees.length,
         active: employees.filter((e: Employee) => e.status === "active").length,
         invited: employees.filter((e: Employee) => e.status === "invited").length,
         inactive: employees.filter((e: Employee) => e.status === "inactive").length,
+        manager: employees.filter((e: Employee) => e.role === "manager").length,
+        employee: employees.filter((e: Employee) => e.role === "employee" || !e.role).length,
     }), [employees]);
 
     const inviteMutation = useMutation({
@@ -80,7 +106,7 @@ export default function ManagerTeamPage() {
                 toast.success("Employee invitation sent successfully!");
                 if (response?.invite_link) setGeneratedLink(response.invite_link);
             }
-            
+
             queryClient.invalidateQueries({ queryKey: ["employees"] });
             setInviteOpen(false);
             setBulkInviteOpen(false);
@@ -143,6 +169,36 @@ export default function ManagerTeamPage() {
         inviteMutation.mutate({ employees: validEmployees });
     };
 
+    const addManualMutation = useMutation({
+        mutationFn: (data: any) => apiPost("/employees/add", data),
+        onSuccess: () => {
+            toast.success("Employee added successfully!");
+            queryClient.invalidateQueries({ queryKey: ["employees"] });
+            setManualAddOpen(false);
+            setManualData({
+                first_name: "",
+                last_name: "",
+                email: "",
+                phone: "",
+                role: "employee",
+                role_title: "",
+                employment_type: "full_time",
+                start_date: new Date().toISOString().split('T')[0],
+                emergency_contact_name: "",
+                emergency_contact_phone: "",
+                password: ""
+            });
+        },
+        onError: (err: Error) => toast.error(err.message),
+    });
+
+    const handleManualAdd = () => {
+        if (!manualData.first_name || !manualData.last_name || !manualData.start_date) {
+            return toast.error("Please fill in required fields (Name and Start Date)");
+        }
+        addManualMutation.mutate(manualData);
+    };
+
     const handleGenerateJoinCode = async () => {
         setIsGeneratingJoinCode(true);
         try {
@@ -181,17 +237,27 @@ export default function ManagerTeamPage() {
             ),
         },
         {
-            key: "role_title",
-            label: "Role",
+            key: "role",
+            label: "Access",
             sortable: true,
             render: (row) => (
-                <div className="flex flex-col">
-                    <span className="font-medium">{row.role_title || "—"}</span>
-                    <span className="text-[10px] text-[hsl(var(--muted-foreground))] uppercase font-bold tracking-tight">
-                        {row.role || "employee"}
+                <div className="flex items-center">
+                    <span className={cn(
+                        "text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-tight",
+                        row.role === 'manager'
+                            ? "bg-[hsl(var(--brand-light))] text-[hsl(var(--brand))]"
+                            : "bg-slate-100 text-slate-500"
+                    )}>
+                        {row.role === 'manager' ? 'Manager' : 'Staff'}
                     </span>
                 </div>
             )
+        },
+        {
+            key: "role_title",
+            label: "Job Title",
+            sortable: true,
+            render: (row) => <span className="font-medium">{row.role_title || "—"}</span>
         },
         {
             key: "employment_type",
@@ -252,47 +318,9 @@ export default function ManagerTeamPage() {
             pageTitle="Team"
             pageDescription="Manage your team members"
         >
-            <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2">
-                    <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                            <Button variant="outline" className="h-9 gap-2 rounded-lg border-[hsl(var(--border))]">
-                                <Filter size={14} />
-                                <span>Filter: {statusFilter.charAt(0).toUpperCase() + statusFilter.slice(1)}</span>
-                                <span className="ml-1 px-1.5 py-0.5 rounded-full bg-[hsl(var(--brand-light))] text-[hsl(var(--brand))] text-[10px] font-bold">
-                                    {counts[statusFilter]}
-                                </span>
-                            </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="start" className="w-48">
-                            {STATUS_TABS.map((tab) => (
-                                <DropdownMenuItem
-                                    key={tab.key}
-                                    onClick={() => setStatusFilter(tab.key)}
-                                    className="flex items-center justify-between cursor-pointer"
-                                >
-                                    <span>{tab.label}</span>
-                                    <span className="text-xs text-[hsl(var(--muted-foreground))]">{counts[tab.key]}</span>
-                                </DropdownMenuItem>
-                            ))}
-                        </DropdownMenuContent>
-                    </DropdownMenu>
-                    
-                    {statusFilter !== "all" && (
-                        <Button 
-                            variant="ghost" 
-                            size="sm" 
-                            onClick={() => setStatusFilter("all")}
-                            className="h-8 text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] px-2"
-                        >
-                            <X size={14} className="mr-1" /> Clear
-                        </Button>
-                    )}
-                </div>
-            </div>
-
             <DataTable
                 columns={columns}
+                maxHeight="calc(90vh - 280px)"
                 data={filteredEmployees}
                 searchable
                 searchKeys={["first_name", "last_name", "email", "role_title", "role"]}
@@ -320,35 +348,116 @@ export default function ManagerTeamPage() {
                         <ChevronRight size={16} className="text-[hsl(var(--muted-foreground))]/40" />
                     </div>
                 )}
+                filters={
+                    <>
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button variant="outline" className="h-9 gap-2 rounded-lg border-[hsl(var(--border))] px-3 shadow-sm shrink-0">
+                                    <Filter size={14} className="text-[hsl(var(--muted-foreground))]" />
+                                    <span className="hidden sm:inline-block font-semibold">Status: {statusFilter.charAt(0).toUpperCase() + statusFilter.slice(1)}</span>
+                                    <span className="sm:hidden font-semibold">{statusFilter.charAt(0).toUpperCase() + statusFilter.slice(1)}</span>
+                                    <span className="ml-1 px-1.5 py-0.5 rounded-full bg-[hsl(var(--brand-light))] text-[hsl(var(--brand))] text-[9px] font-black">
+                                        {counts[statusFilter]}
+                                    </span>
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-48 rounded-xl shadow-xl">
+                                {STATUS_TABS.map((tab) => (
+                                    <DropdownMenuItem
+                                        key={tab.key}
+                                        onClick={() => setStatusFilter(tab.key)}
+                                        className={cn("flex items-center justify-between cursor-pointer rounded-lg py-2 transition-all", statusFilter === tab.key && "bg-[hsl(var(--brand-light))]/50 text-[hsl(var(--brand))]")}
+                                    >
+                                        <span className="font-medium">{tab.label}</span>
+                                        <span className="text-xs text-[hsl(var(--muted-foreground))]">{counts[tab.key]}</span>
+                                    </DropdownMenuItem>
+                                ))}
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+
+                        {statusFilter !== "all" && (
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => setStatusFilter("all")}
+                                className="h-9 w-9 text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] shrink-0 ml-[-8px]"
+                            >
+                                <X size={14} />
+                            </Button>
+                        )}
+
+                        <div className="hidden lg:block h-5 w-px bg-[hsl(var(--border))] mx-1 opacity-50 shrink-0" />
+
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button variant="outline" className="h-9 gap-2 rounded-lg border-[hsl(var(--border))] px-3 shadow-sm shrink-0">
+                                    <ShieldCheck size={14} className="text-[hsl(var(--muted-foreground))]" />
+                                    <span className="hidden sm:inline-block font-semibold">Access: {roleFilter === 'all' ? 'All Roles' : (roleFilter === 'manager' ? 'Managers' : 'Staff')}</span>
+                                    <span className="sm:hidden font-semibold">{roleFilter === 'all' ? 'Access' : (roleFilter === 'manager' ? 'Managers' : 'Staff')}</span>
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-48 rounded-xl shadow-xl">
+                                <DropdownMenuItem onClick={() => setRoleFilter("all")} className={cn("cursor-pointer rounded-lg py-2 font-medium transition-all", roleFilter === "all" && "bg-[hsl(var(--brand-light))]/50 text-[hsl(var(--brand))]")}>All Access Levels</DropdownMenuItem>
+                                <DropdownMenuSeparator className="my-1" />
+                                <DropdownMenuItem onClick={() => setRoleFilter("manager")} className={cn("flex items-center justify-between cursor-pointer rounded-lg py-2 font-medium transition-all", roleFilter === "manager" && "bg-[hsl(var(--brand-light))]/50 text-[hsl(var(--brand))]")}>
+                                    <span>Managers</span>
+                                    <span className="text-xs text-[hsl(var(--muted-foreground))]">{counts.manager}</span>
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => setRoleFilter("employee")} className={cn("flex items-center justify-between cursor-pointer rounded-lg py-2 font-medium transition-all", roleFilter === "employee" && "bg-[hsl(var(--brand-light))]/50 text-[hsl(var(--brand))]")}>
+                                    <span>Staff</span>
+                                    <span className="text-xs text-[hsl(var(--muted-foreground))]">{counts.employee}</span>
+                                </DropdownMenuItem>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+
+                        {roleFilter !== "all" && (
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => setRoleFilter("all")}
+                                className="h-9 w-9 text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] shrink-0 ml-[-8px]"
+                            >
+                                <X size={14} />
+                            </Button>
+                        )}
+                    </>
+                }
                 actions={
                     <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                            <Button className="h-9 gap-2 shadow-sm">
+                            <Button className="h-9 gap-2 shadow-md hover:shadow-lg transition-all lg:ml-2">
                                 <UserPlus size={16} />
                                 Add People
                             </Button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-56">
-                            <DropdownMenuItem onClick={() => setInviteOpen(true)} className="py-2.5">
-                                <User size={16} className="mr-2 text-[hsl(var(--muted-foreground))]" />
+                        <DropdownMenuContent align="end" className="w-56 rounded-xl shadow-xl p-1.5 border-[hsl(var(--border))]">
+                            <DropdownMenuItem onClick={() => setInviteOpen(true)} className="py-3 px-3 rounded-lg cursor-pointer hover:bg-[hsl(var(--muted))]/50">
+                                <User size={16} className="mr-3 text-[hsl(var(--brand))]" />
                                 <div className="flex flex-col">
-                                    <span className="font-medium">Single Invitation</span>
-                                    <span className="text-[10px] text-[hsl(var(--muted-foreground))]">Invite one person at a time</span>
+                                    <span className="font-bold text-sm">Single Invitation</span>
+                                    <span className="text-[11px] text-[hsl(var(--muted-foreground))]">Invite one person at a time</span>
                                 </div>
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => setBulkInviteOpen(true)} className="py-2.5">
-                                <Users size={16} className="mr-2 text-[hsl(var(--muted-foreground))]" />
+                            <DropdownMenuItem onClick={() => setBulkInviteOpen(true)} className="py-3 px-3 rounded-lg cursor-pointer hover:bg-[hsl(var(--muted))]/50">
+                                <Users size={16} className="mr-3 text-[hsl(var(--brand))]" />
                                 <div className="flex flex-col">
-                                    <span className="font-medium">Multiple Invitations</span>
-                                    <span className="text-[10px] text-[hsl(var(--muted-foreground))]">Add many people at once</span>
+                                    <span className="font-bold text-sm">Multiple Invitations</span>
+                                    <span className="text-[11px] text-[hsl(var(--muted-foreground))]">Add many people at once</span>
                                 </div>
                             </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem onClick={handleGenerateJoinCode} disabled={isGeneratingJoinCode} className="py-2.5">
-                                <ExternalLink size={16} className="mr-2 text-[hsl(var(--muted-foreground))]" />
+                            <DropdownMenuItem onClick={() => setManualAddOpen(true)} className="py-3 px-3 rounded-lg cursor-pointer hover:bg-[hsl(var(--muted))]/50">
+                                <Briefcase size={16} className="mr-3 text-[hsl(var(--brand))]" />
                                 <div className="flex flex-col">
-                                    <span className="font-medium">Business Join Link</span>
-                                    <span className="text-[10px] text-[hsl(var(--muted-foreground))]">Reusable link for your team</span>
+                                    <span className="font-bold text-sm">Add Manually</span>
+                                    <span className="text-[11px] text-[hsl(var(--muted-foreground))]">Complete setup right now</span>
+                                </div>
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator className="my-1.5" />
+                            <DropdownMenuItem onClick={handleGenerateJoinCode} disabled={isGeneratingJoinCode} className="py-3 px-3 rounded-lg cursor-pointer hover:bg-[hsl(var(--muted))]/50">
+                                <ExternalLink size={16} className="mr-3 text-[hsl(var(--brand))]" />
+                                <div className="flex flex-col">
+                                    <span className="font-bold text-sm">Business Join Link</span>
+                                    <span className="text-[11px] text-[hsl(var(--muted-foreground))]">Reusable link for your team</span>
                                 </div>
                             </DropdownMenuItem>
                         </DropdownMenuContent>
@@ -615,7 +724,7 @@ export default function ManagerTeamPage() {
                             Share this recurring link with any employee to let them join your business and start onboarding.
                         </DialogDescription>
                     </DialogHeader>
-                    
+
                     <div className="flex flex-col gap-4 py-4">
                         <div className="flex items-center gap-2 p-3 bg-[hsl(var(--success-light))]/10 border border-[hsl(var(--success))]/20 rounded-xl">
                             <div className="h-10 w-10 rounded-full bg-[hsl(var(--success-light))] text-[hsl(var(--success))] flex items-center justify-center shrink-0">
@@ -645,6 +754,141 @@ export default function ManagerTeamPage() {
 
                     <DialogFooter>
                         <Button onClick={() => setJoinCode(null)} className="w-full">Done</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+            {/* Manual Add Dialog */}
+            <Dialog open={manualAddOpen} onOpenChange={setManualAddOpen}>
+                <DialogContent className="max-w-3xl overflow-hidden p-0 border-0 rounded-2xl shadow-2xl [&>button]:text-white [&>button]:font-black [&>button]:z-50 [&>button]:right-6 [&>button]:top-6 [&>button]:scale-125">
+                    <div className="p-6 bg-[hsl(var(--brand))] text-white relative overflow-hidden shrink-0">
+                        <div className="relative z-10 flex items-center gap-3">
+                            <div className="h-12 w-12 rounded-xl bg-white/20 backdrop-blur-md flex items-center justify-center border border-white/30">
+                                <UserPlus size={24} />
+                            </div>
+                            <div>
+                                <DialogTitle className="text-xl font-bold">Add New Team Member</DialogTitle>
+                                <DialogDescription className="text-white/70 text-sm mt-1">
+                                    Create a complete profile and grant system access.
+                                </DialogDescription>
+                            </div>
+                        </div>
+                        {/* Decorative background elements */}
+                        <div className="absolute -right-8 -top-8 h-32 w-32 bg-white/10 rounded-full blur-3xl" />
+                        <div className="absolute right-20 bottom-0 h-16 w-16 bg-white/10 rounded-full blur-2xl" />
+                    </div>
+
+                    <div className="overflow-y-auto max-h-[calc(90vh-160px)] p-6 space-y-8 custom-scrollbar">
+                        {/* Access Level Selector */}
+                        <div className="bg-slate-50 border border-slate-100 p-5 rounded-2xl space-y-4">
+                            <div className="flex items-center gap-3 border-b border-slate-200/50 pb-3">
+                                <div className="h-8 w-8 rounded-lg bg-[hsl(var(--brand-light))]/20 flex items-center justify-center text-[hsl(var(--brand))]">
+                                    <Shield size={18} />
+                                </div>
+                                <h3 className="font-bold text-slate-800 tracking-tight">System Permissions</h3>
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1">Choose Access Level</label>
+                                <div className="relative group">
+                                    <select
+                                        value={manualData.role}
+                                        onChange={(e) => setManualData({ ...manualData, role: e.target.value })}
+                                        className="w-full h-12 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 outline-none transition-all focus:ring-4 focus:ring-[hsl(var(--brand))]/10 focus:border-[hsl(var(--brand))] hover:border-[hsl(var(--brand))]/30 appearance-none cursor-pointer pr-10"
+                                    >
+                                        <option value="employee">Standard Staff Member</option>
+                                        <option value="manager">Business Manager</option>
+                                    </select>
+                                    <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 group-hover:text-[hsl(var(--brand))] transition-colors">
+                                        <ChevronDown size={18} />
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-2 mt-2 px-1">
+                                    <div className="h-4 w-4 rounded-full bg-blue-50 flex items-center justify-center text-blue-500">
+                                        <Info size={10} />
+                                    </div>
+                                    <p className="text-[10px] text-slate-500 italic">Managers can edit rosters and manage other team members</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Identity Section */}
+                        <section className="bg-white rounded-2xl border p-5 shadow-sm space-y-5">
+                            <div className="flex items-center gap-3 border-b border-slate-50 pb-3 mb-1">
+                                <div className="h-8 w-8 rounded-lg bg-orange-100 flex items-center justify-center text-orange-600">
+                                    <User size={18} />
+                                </div>
+                                <h3 className="font-bold text-slate-800 tracking-tight">Personal Identity</h3>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <Input label="First Name" showAsterisk placeholder="John" value={manualData.first_name} onChange={(e) => setManualData({ ...manualData, first_name: e.target.value })} />
+                                <Input label="Last Name" showAsterisk placeholder="Doe" value={manualData.last_name} onChange={(e) => setManualData({ ...manualData, last_name: e.target.value })} />
+                                <Input label="Email (Optional)" type="email" placeholder="john@example.com" value={manualData.email} onChange={(e) => setManualData({ ...manualData, email: e.target.value })} />
+                                <Input label="Phone Number" type="tel" placeholder="0400 000 000" value={manualData.phone} onChange={(e) => setManualData({ ...manualData, phone: e.target.value })} />
+                            </div>
+                        </section>
+
+                        <div className="grid grid-cols-2 gap-6">
+                            {/* Employment Section */}
+                            <section className="bg-white rounded-2xl border p-5 shadow-sm space-y-5 h-full">
+                                <div className="flex items-center gap-3 border-b border-slate-50 pb-3 mb-1">
+                                    <div className="h-8 w-8 rounded-lg bg-blue-100 flex items-center justify-center text-blue-600">
+                                        <Briefcase size={18} />
+                                    </div>
+                                    <h3 className="font-bold text-slate-800 tracking-tight">Employment</h3>
+                                </div>
+                                <div className="space-y-4">
+                                    {manualData.role === "employee" && (
+                                        <Input label="Job Title" placeholder="e.g. Senior Barista" value={manualData.role_title} onChange={(e) => setManualData({ ...manualData, role_title: e.target.value })} />
+                                    )}
+                                    <div className="space-y-1.5">
+                                        <label className="text-xs font-semibold ml-0.5 text-slate-600">
+                                            Employment Type <span className="text-red-500">*</span>
+                                        </label>
+                                        <select value={manualData.employment_type} onChange={(e) => setManualData({ ...manualData, employment_type: e.target.value })} className="flex h-10 w-full rounded-xl border border-slate-200 bg-slate-50/30 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--brand))]/20 transition-all font-medium">
+                                            <option value="" disabled>Select</option>
+                                            <option value="full_time">Full Time</option>
+                                            <option value="part_time">Part Time</option>
+                                            <option value="casual">Casual</option>
+                                            <option value="contract">Contract</option>
+                                        </select>
+                                    </div>
+                                    <Input label="Start Date" showAsterisk type="date" value={manualData.start_date} onChange={(e) => setManualData({ ...manualData, start_date: e.target.value })} />
+                                </div>
+                            </section>
+
+                            <div className="space-y-6">
+                                {/* Security Section */}
+                                <section className="bg-white rounded-2xl border p-5 shadow-sm space-y-5">
+                                    <div className="flex items-center gap-3 border-b border-slate-50 pb-3 mb-1">
+                                        <div className="h-8 w-8 rounded-lg bg-purple-100 flex items-center justify-center text-purple-600">
+                                            <Lock size={18} />
+                                        </div>
+                                        <h3 className="font-bold text-slate-800 tracking-tight">Access Security</h3>
+                                    </div>
+                                    <Input label="Temporary Password (Optional)" type="password" placeholder="Min. 8 characters" value={manualData.password} onChange={(e) => setManualData({ ...manualData, password: e.target.value })} />
+                                </section>
+
+                                {/* Emergency Section */}
+                                <section className="bg-white rounded-2xl border p-5 shadow-sm space-y-5">
+                                    <div className="flex items-center gap-3 border-b border-slate-50 pb-3 mb-1">
+                                        <div className="h-8 w-8 rounded-lg bg-red-100 flex items-center justify-center text-red-600">
+                                            <Shield size={18} />
+                                        </div>
+                                        <h3 className="font-bold text-slate-800 tracking-tight">Emergency</h3>
+                                    </div>
+                                    <div className="space-y-4">
+                                        <Input label="Contact Name" placeholder="Full name" value={manualData.emergency_contact_name} onChange={(e) => setManualData({ ...manualData, emergency_contact_name: e.target.value })} />
+                                        <Input label="Contact Phone" type="tel" placeholder="0400 000 000" value={manualData.emergency_contact_phone} onChange={(e) => setManualData({ ...manualData, emergency_contact_phone: e.target.value })} />
+                                    </div>
+                                </section>
+                            </div>
+                        </div>
+                    </div>
+
+                    <DialogFooter className="p-6 bg-slate-50 border-t z-20 shrink-0">
+                        <Button variant="outline" onClick={() => setManualAddOpen(false)} className="rounded-xl px-6">Cancel</Button>
+                        <Button onClick={handleManualAdd} loading={addManualMutation.isPending} className="rounded-xl px-8 shadow-lg shadow-[hsl(var(--brand))]/20">
+                            <UserPlus size={16} className="mr-2" /> Save Employee Profile
+                        </Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>

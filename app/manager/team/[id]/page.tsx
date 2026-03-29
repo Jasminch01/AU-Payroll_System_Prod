@@ -503,6 +503,13 @@ export default function ManagerEmployeeDetailPage() {
                                                 </select>
                                                 {data.status === 'invited' && <p className="text-[10px] text-[hsl(var(--muted-foreground))] pt-1 ml-0.5">Locked until onboarding complete.</p>}
                                             </div>
+                                            <Input 
+                                                label="TFN" 
+                                                showAsterisk
+                                                value={data.tfn || ""} 
+                                                onChange={(e) => updateField("tfn", e.target.value)} 
+                                                placeholder="Format: 000 000 000"
+                                            />
                                         </div>
                                     </section>
 
@@ -515,21 +522,13 @@ export default function ManagerEmployeeDetailPage() {
                                             <Input label="Account Name" value={data.bank_account_name || ""} onChange={(e) => updateField("bank_account_name", e.target.value)} />
                                             <Input label="BSB Number" value={data.bank_bsb || ""} onChange={(e) => updateField("bank_bsb", e.target.value)} />
                                             <Input label="Account Number" value={data.bank_account_number || ""} onChange={(e) => updateField("bank_account_number", e.target.value)} />
-                                            {data.employment_type === 'contract' ? (
+                                            {data.employment_type === 'contract' && (
                                                 <Input 
                                                     label="ABN" 
                                                     showAsterisk 
                                                     value={data.abn || ""} 
                                                     onChange={(e) => updateField("abn", e.target.value)} 
                                                     placeholder="Format: 00 000 000 000"
-                                                />
-                                            ) : (
-                                                <Input 
-                                                    label="TFN" 
-                                                    showAsterisk 
-                                                    value={data.tfn || ""} 
-                                                    onChange={(e) => updateField("tfn", e.target.value)} 
-                                                    placeholder="Format: 000 000 000"
                                                 />
                                             )}
                                         </div>
