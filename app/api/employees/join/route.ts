@@ -2,7 +2,6 @@ import { NextRequest } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 import { successResponse, errorResponse } from '@/lib/api-helpers';
-import bcrypt from 'bcryptjs';
 import { generateBusinessPrefix, formatEmpSuffix, getNumericSuffix } from '@/lib/utils/employee-id';
 
 /**
@@ -14,7 +13,7 @@ import { generateBusinessPrefix, formatEmpSuffix, getNumericSuffix } from '@/lib
 export async function POST(request: NextRequest) {
     try {
         const body = await request.json();
-        const { 
+        const {
             email, password, first_name, last_name, join_code,
             phone, dob, bank_account_name, bank_bsb, bank_account_number, abn, tfn,
             emergency_contact_name, emergency_contact_phone
@@ -56,7 +55,7 @@ export async function POST(request: NextRequest) {
         }
 
         const authUserId = signUpData.user.id;
-        
+
         // 3. Generate sequential Employee ID using Prefix + 4 digits
         const { data: allEmps } = await supabase
             .from('Employee')
@@ -68,7 +67,7 @@ export async function POST(request: NextRequest) {
             const serial = getNumericSuffix(e.employee_id);
             if (serial > maxSerial) maxSerial = serial;
         }
-        
+
         const businessPrefix = generateBusinessPrefix(business.business_name);
         const employee_id = `${businessPrefix}${formatEmpSuffix(maxSerial + 1)}`;
 
@@ -126,9 +125,9 @@ export async function POST(request: NextRequest) {
             await supabase.from('LeaveBalance').insert(balanceData);
         }
 
-        return successResponse({ 
+        return successResponse({
             business_name: business.business_name,
-            email 
+            email
         }, 'Joined business successfully! You can now log in.');
 
     } catch (error: any) {

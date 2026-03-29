@@ -3,7 +3,6 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { successResponse, errorResponse, validateRequiredFields } from '@/lib/api-helpers';
 import { EventType } from '@/types/database';
 import { getNextAttendanceEvent, validateAttendanceTransition } from '@/lib/attendance-logic';
-import bcrypt from 'bcryptjs';
 import { cookies } from 'next/headers';
 import { verifyKioskToken } from '@/lib/kiosk-auth';
 import { generateBusinessPrefix } from '@/lib/utils/employee-id';

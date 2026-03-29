@@ -1,9 +1,8 @@
 import { NextRequest } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { successResponse, errorResponse, validateRequiredFields } from '@/lib/api-helpers';
+import { successResponse, errorResponse, } from '@/lib/api-helpers';
 import { logAudit } from '@/lib/audit';
-import bcrypt from 'bcryptjs';
 
 /**
  * POST /api/onboarding/complete
