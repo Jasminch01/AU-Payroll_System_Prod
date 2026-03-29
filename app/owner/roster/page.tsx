@@ -937,7 +937,7 @@ export default function OwnerRosterPage() {
                 </div>
             </div>
 
-            <div className="w-full max-w-full rounded-xl border overflow-hidden relative">
+            <div className="w-full max-w-full rounded-xl border overflow-hidden relative z-0">
                 {isMobile ? (
                     /* MOBILE DAY VIEW */
                     <div className="flex flex-col h-[75vh] sm:h-[700px] relative">

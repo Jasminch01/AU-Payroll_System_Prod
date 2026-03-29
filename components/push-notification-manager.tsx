@@ -59,7 +59,7 @@ export function PushNotificationManager() {
 
       const convertedVapidKey = urlBase64ToUint8Array(vapidPublicKey);
 
-      if (!isSilent) toast.loading("Communicating with push service...", { id: 'push-sub' });
+
 
       // Unsubscribe first to ensure a clean slate if we're re-registering
       const existingSub = await registration.pushManager.getSubscription();
@@ -81,15 +81,15 @@ export function PushNotificationManager() {
         body: JSON.stringify({ subscription }),
       });
 
-      if (!isSilent) toast.dismiss('push-sub');
+
 
       if (!response.ok) {
         throw new Error('Failed to save subscription');
       }
 
       if (!isSilent) {
-        toast.success("Push notifications enabled!", {
-          description: "This device is now registered to receive realtime updates."
+        toast.success("Notifications Successfully Enabled", {
+          description: "This device is now set up to receive important alerts and real-time schedule updates."
         });
       } else {
         console.log('[PushManager] Silent subscription successful');
@@ -97,10 +97,9 @@ export function PushNotificationManager() {
 
     } catch (error: any) {
       if (!isSilent) {
-        toast.dismiss('push-sub');
         console.error('Error subscribing to push:', error);
-        toast.error("Failed to enable push notifications.", {
-          description: error.message || "Ensure your browser supports web push and try again."
+        toast.error("Unable to Enable Notifications", {
+          description: error.message || "Ensure your browser supports web notifications and try again."
         });
       } else {
         console.error('[PushManager] Silent subscription error:', error);
@@ -148,8 +147,8 @@ export function PushNotificationManager() {
         // show a dismissible toast so the user is in control. The OS dialog
         // only appears when they click "Enable" in the toast.
         if ((isMobile || isPWA) && Notification.permission === 'default' && !localStorage.getItem('push_prompt_dismissed')) {
-          toast('Enable Push Notifications', {
-            description: 'Get notified immediately about your shifts, leave, and updates.',
+          toast('Enable Real-time Alerts', {
+            description: 'Stay updated with instant alerts for shifts, roster changes, and important announcements.',
             duration: Infinity,
             action: {
               label: 'Enable',
