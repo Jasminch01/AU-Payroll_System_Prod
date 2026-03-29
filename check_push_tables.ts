@@ -1,5 +1,6 @@
 import { createClient } from './lib/supabase/server';
 
+
 async function checkTable() {
     try {
         const supabase = await createClient();
@@ -7,7 +8,7 @@ async function checkTable() {
             .from('push_subscriptions')
             .select('count')
             .limit(1);
-        
+
         if (error) {
             console.error('push_subscriptions table does NOT exist or is inaccessible:', error.message);
         } else {
@@ -18,11 +19,11 @@ async function checkTable() {
             .from('notifications')
             .select('count')
             .limit(1);
-        
+
         if (notifError) {
-             console.error('notifications table does NOT exist or is inaccessible:', notifError.message);
+            console.error('notifications table does NOT exist or is inaccessible:', notifError.message);
         } else {
-             console.log('notifications table exists.');
+            console.log('notifications table exists.');
         }
     } catch (err) {
         console.error('Error checking table:', err);
