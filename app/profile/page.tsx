@@ -6,7 +6,7 @@ import { DashboardLayout } from "@/components/layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { apiGet, apiPut } from "@/lib/api-client";
+import { apiGet, apiPut, apiPost } from "@/lib/api-client";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { toast } from "sonner";
@@ -82,6 +82,8 @@ export default function ProfilePage() {
         }
     };
 
+
+
     const updateField = (field: string, value: any) => {
         setFormData((prev: any) => ({ ...prev, [field]: value }));
     };
@@ -98,15 +100,7 @@ export default function ProfilePage() {
 
     const data = formData || profile || {};
 
-    if (isLoading) {
-        return (
-            <DashboardLayout role={role as any || "employee"} pageTitle="My Profile" pageDescription="Loading...">
-                <div className="space-y-4">
-                    {[1, 2, 3].map((i) => <div key={i} className="skeleton h-24 rounded-xl" />)}
-                </div>
-            </DashboardLayout>
-        );
-    }
+
 
     return (
         <DashboardLayout
@@ -224,7 +218,7 @@ export default function ProfilePage() {
                             <CardContent>
                                 {!pwdOpen ? (
                                     <Button variant="outline" className="w-full" onClick={() => setPwdOpen(true)}>
-                                        Change Password
+                                         Change Password
                                     </Button>
                                 ) : (
                                     <div className="space-y-3 p-4 border border-[hsl(var(--border))] rounded-lg bg-[hsl(var(--muted))]/30">
@@ -248,6 +242,8 @@ export default function ProfilePage() {
                                 )}
                             </CardContent>
                         </Card>
+
+
                     </TabsContent>
 
                     {role !== 'owner' && (

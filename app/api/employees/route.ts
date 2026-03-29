@@ -4,7 +4,6 @@ import { createClient } from '@/lib/supabase/server';
 import { requireRole } from '@/lib/auth';
 import { successResponse, errorResponse, validateRequiredFields } from '@/lib/api-helpers';
 import { logAudit } from '@/lib/audit';
-import bcrypt from 'bcryptjs';
 import { generateBusinessPrefix, formatEmpSuffix, getNumericSuffix } from '@/lib/utils/employee-id';
 
 /**
@@ -22,36 +21,60 @@ export async function GET(request: NextRequest) {
 
         const supabase = await createClient();
         const { searchParams } = new URL(request.url);
+        
+        // Paging Parameters
+        const isPaginated = searchParams.get('paginate') === 'true';
+        const page = parseInt(searchParams.get('page') || '1', 10);
+        const limit = parseInt(searchParams.get('limit') || '10', 10);
+        
+        // Sorting and Searching
+        const search = searchParams.get('search') || '';
+        const sortBy = searchParams.get('sortBy') || 'first_name';
+        const sortDir = searchParams.get('sortDir') || 'asc';
+        
+        // Filters
         const statusFilter = searchParams.get('status');
         const roleFilter = searchParams.get('role');
         const excludeSelf = searchParams.get('exclude_self') === 'true';
         const excludeConflictsForShift = searchParams.get('exclude_conflicts_for_shift');
         const onlyWithShifts = searchParams.get('only_with_shifts') === 'true';
 
+        // Calculate offset
+        const from = (page - 1) * limit;
+        const to = from + limit - 1;
+
         // Explicitly list ALL columns we need to avoid PostgREST join ambiguity/conflicts
         const columns = [
-            'employee_id', 'first_name', 'last_name', 'role_title', 'status', 'business_id', 'user_id',
+            'employee_id', 'first_name', 'last_name', 'role_title', 'role', 'status', 'business_id', 'user_id',
             'email', 'phone', 'dob', 'employment_type', 'pay_cycle', 'start_date', 'end_date', 'created_at',
             'abn', 'tfn', 'bank_account_name', 'bank_bsb', 'bank_account_number'
         ];
-        
+
         // Build the select string
         let selectFields = columns.join(', ');
 
         let query = supabase
             .from('Employee')
-            .select(selectFields)
+            .select(selectFields, isPaginated ? { count: 'exact' } : undefined)
             .eq('business_id', authUser.business_id);
 
-        if (statusFilter) {
+        if (statusFilter && statusFilter !== 'all') {
             query = query.eq('status', statusFilter);
+        }
+
+        if (search) {
+            query = query.or(`first_name.ilike.%${search}%,last_name.ilike.%${search}%,email.ilike.%${search}%,role_title.ilike.%${search}%`);
         }
 
         if (roleFilter) {
             // Role filtering happens later in memory due to join complexity
         }
 
-        // Available for Swap - Conflict Exclusion
+        // Pre-compute IDs for in-memory filtering (avoids PostgREST 'not.in' issues with custom string IDs)
+        let busyEmployeeIds = new Set<string>();
+        let eligibleEmployeeIds: string[] | null = null;
+
+        // Available for Swap - Conflict Exclusion (collect IDs, filter in-memory later)
         if (excludeConflictsForShift) {
             const { data: targetShift } = await supabase
                 .from('Shift')
@@ -67,71 +90,162 @@ export async function GET(request: NextRequest) {
                     .lt('start_time', targetShift.end_time)
                     .gt('end_time', targetShift.start_time);
 
-                const busyIds = (overlappingShifts || [])
-                    .map(s => s.employee_id)
-                    .filter(id => id !== null);
-
-                if (busyIds.length > 0) {
-                    // Exclude busy employees
-                    query = query.not('employee_id', 'in', `(${busyIds.join(',')})`);
-                }
+                (overlappingShifts || []).forEach(s => {
+                    if (s.employee_id) busyEmployeeIds.add(s.employee_id);
+                });
             }
         }
 
-        // Filter for employees who HAVE upcoming shifts (for Swap)
+        // Filter for employees who HAVE upcoming/available shifts (for Swap)
         if (onlyWithShifts) {
-            const now = new Date().toISOString();
+            // Only count PUBLISHED upcoming shifts (ensures colleague actually has a visible swappable shift)
+            const todayStart = new Date();
+            todayStart.setHours(0, 0, 0, 0);
+            const now = todayStart.toISOString();
+
             const { data: employeesWithShifts } = await supabase
                 .from('Shift')
                 .select('employee_id')
                 .eq('business_id', authUser.business_id)
+                .eq('shift_status', 'published')
                 .gt('start_time', now);
-            
-            const eligibleIds = Array.from(new Set((employeesWithShifts || []).map(s => s.employee_id).filter(Boolean)));
-            
-            if (eligibleIds.length > 0) {
-                query = query.in('employee_id', eligibleIds);
-            } else {
-                // Return empty if no one has shifts
-                return successResponse([], 'No employees with upcoming shifts found');
+
+            // Filter out the requester themselves
+            const requesterEmpId = authUser.employee_id;
+            eligibleEmployeeIds = Array.from(new Set(
+                (employeesWithShifts || [])
+                    .map(s => s.employee_id)
+                    .filter((id): id is string => !!id && id !== requesterEmpId)
+            ));
+
+            if (eligibleEmployeeIds.length === 0) {
+                // Return empty if no one else has published shifts
+                return successResponse([], 'No colleagues with available shifts found');
             }
         }
 
-        const { data: employees, error } = await query.order('first_name', { ascending: true });
+        // First determine eligible employees if onlyWithShifts or excludeConflictsForShift
+        // Only run these complex in-memory filters if needed
+        let doInMemoryFilter = busyEmployeeIds.size > 0 || eligibleEmployeeIds !== null || excludeSelf;
+
+        if (doInMemoryFilter) {
+            // Apply IDs directly inside the DB query if it's less than thousands of IDs (safest fallback)
+            // But PostgREST has a limit on 'in' / 'not.in' array size.
+            // If we have to do memory filtering, we might need all employees.
+            // For now, let's inject valid IDs if possible
+            if (eligibleEmployeeIds !== null) {
+                query = query.in('employee_id', eligibleEmployeeIds);
+            }
+        }
+
+        // Apply sorting and pagination
+        const validSortFields = ['first_name', 'last_name', 'start_date', 'status', 'role_title', 'email', 'employment_type'];
+        const safeSortBy = validSortFields.includes(sortBy) ? sortBy : 'first_name';
+        
+        query = query.order(safeSortBy, { ascending: sortDir === 'asc' });
+
+        // Only paginate if not applying dynamic in-memory exclude list (which requires all available before slice)
+        // Note: exclude_self can safely just exclude the requester by DB query.
+        if (excludeSelf) {
+            query = query.neq('user_id', authUser.user_id);
+        }
+
+        if (busyEmployeeIds.size > 0) {
+           // Wait, filter 'not.in' is supported in PostgREST but with limits.
+           // Since it's shift conflicts, it's safe to use not.in for a small team.
+           query = query.not('employee_id', 'in', `(${Array.from(busyEmployeeIds).join(',')})`);
+        }
+
+        // Apply server pagination only if requested
+        if (isPaginated) {
+            query = query.range(from, to);
+        }
+
+        const { data: employees, error, count } = await query;
 
         if (error) {
             console.error('Employees API Query Error:', error);
             return errorResponse(error.message, 400);
         }
 
-        const employeesRaw: any[] = employees || [];
-        let filtered = [...employeesRaw];
+        let filtered = employees || [];
 
-        // Fetch user roles for all found employees
+        // Fetch user roles for all found employees to compute 'role' properly (if DB role string happens to be stale or needs merging)
         if (filtered.length > 0) {
             const { data: userRoles } = await supabase
                 .from('User')
                 .select('user_id, role')
-                .in('user_id', filtered.map(e => e.user_id).filter(Boolean));
-            
+                .in('user_id', filtered.map((e: any) => e.user_id).filter(Boolean));
+
             const roleMap = new Map((userRoles || []).map(u => [u.user_id, u.role]));
-            
+
             filtered = filtered.map((emp: any) => ({
                 ...emp,
-                role: roleMap.get(emp.user_id) || 'employee'
+                role: roleMap.get(emp.user_id) || emp.role || 'employee'
             }));
 
-            // If roleFilter was provided, apply it now
-            if (roleFilter) {
+            // Re-apply roleFilter since we compute standard roles here
+            if (roleFilter && roleFilter !== 'all') {
                 filtered = filtered.filter((emp: any) => emp.role === roleFilter);
             }
         }
+        
+        // Extremely lightweight query to compute badges accurately across entire table
+        // We only fetch status and user_id to compute role categories correctly
+        const { data: allStatuses } = await supabase
+            .from('Employee')
+            .select('status, role, user_id')
+            .eq('business_id', authUser.business_id);
 
-        if (excludeSelf) {
-            filtered = filtered.filter((e: any) => e.user_id !== authUser.user_id);
+        let activeCount = 0;
+        let invitedCount = 0;
+        let inactiveCount = 0;
+        let managerCount = 0;
+        let employeeCount = 0;
+
+        // Optionally reconcile roles globally
+        let allValidUserIds = (allStatuses || []).map(e => e.user_id).filter(Boolean);
+        let globalRoleMap = new Map();
+        if (allValidUserIds.length > 0) {
+            const { data: allUserRoles } = await supabase
+                .from('User')
+                .select('user_id, role')
+                .in('user_id', allValidUserIds);
+            globalRoleMap = new Map((allUserRoles || []).map(u => [u.user_id, u.role]));
         }
 
-        return successResponse(filtered, `Found ${filtered.length} employee(s)`);
+        (allStatuses || []).forEach(e => {
+            if (e.status === 'active') activeCount++;
+            else if (e.status === 'invited') invitedCount++;
+            else if (e.status === 'inactive') inactiveCount++;
+            
+            const actualRole = globalRoleMap.get(e.user_id) || e.role || 'employee';
+            if (actualRole === 'manager') managerCount++;
+            else employeeCount++;
+        });
+
+        const totalItems = count || 0;
+
+        if (isPaginated) {
+            return successResponse({
+                employees: filtered,
+                meta: {
+                    total_count: totalItems,
+                    page,
+                    limit,
+                    counts: {
+                        all: (allStatuses || []).length,
+                        active: activeCount,
+                        invited: invitedCount,
+                        inactive: inactiveCount,
+                        manager: managerCount,
+                        employee: employeeCount
+                    }
+                }
+            }, `Found ${filtered.length} employee(s) page`);
+        } else {
+            return successResponse(filtered, `Found ${filtered.length} employee(s)`);
+        }
     } catch (error) {
         console.error('List employees error:', error);
         return errorResponse('Internal server error', 500);
@@ -152,8 +266,6 @@ export async function POST(request: NextRequest) {
 
         // Validate required employee fields
         const validationError = validateRequiredFields(body, [
-            'email',
-            'password',
             'first_name',
             'last_name',
             'start_date',
@@ -201,7 +313,7 @@ export async function POST(request: NextRequest) {
         // Ensure employee_id follows the business-prefixed format (e.g. BVL0001)
         // If it starts with "EMP-" or doesn't match the new format, we regenerate it.
         const isOldFormat = employee_id.startsWith('EMP-') || !/^[A-Z]{3}\d{4}$/.test(employee_id);
-        
+
         if (isOldFormat) {
             const { data: business } = await supabase
                 .from('Business')
@@ -210,7 +322,7 @@ export async function POST(request: NextRequest) {
                 .single();
 
             const businessPrefix = business?.business_name ? generateBusinessPrefix(business.business_name) : 'EMP';
-            
+
             const { data: allEmps } = await supabase
                 .from('Employee')
                 .select('employee_id')
@@ -224,26 +336,31 @@ export async function POST(request: NextRequest) {
             finalEmployeeId = `${businessPrefix}${formatEmpSuffix(maxSerial + 1)}`;
         }
 
-        if (password.length < 6) {
-            return errorResponse('Password must be at least 6 characters', 400);
-        }
+        let authUserId: string | null = null;
 
-        // Step 1: Create auth user via admin API
-        const adminClient = createAdminClient();
+        // Step 1: Create auth user via admin API (only if email/password provided)
+        if (email && password) {
+            if (password.length < 6) {
+                return errorResponse('Password must be at least 6 characters', 400);
+            }
 
-        const { data: authData, error: authError } =
-            await adminClient.auth.admin.createUser({
-                email,
-                password,
-                email_confirm: true,
-            });
+            const adminClient = createAdminClient();
+            const { data: authData, error: authError } =
+                await adminClient.auth.admin.createUser({
+                    email,
+                    password,
+                    email_confirm: true,
+                });
 
-        if (authError) {
-            return errorResponse(`Failed to create auth account: ${authError.message}`, 400);
-        }
+            if (authError) {
+                return errorResponse(`Failed to create auth account: ${authError.message}`, 400);
+            }
 
-        if (!authData.user) {
-            return errorResponse('Failed to create user account', 500);
+            if (!authData.user) {
+                return errorResponse('Failed to create user account', 500);
+            }
+
+            authUserId = authData.user.id;
         }
 
         const { data: employeeData, error: employeeError } = await supabase
@@ -253,30 +370,34 @@ export async function POST(request: NextRequest) {
                 first_name,
                 last_name,
                 phone: phone || null,
-                email,
-                dob: dob || null,
-                bank_account_name: bank_account_name || null,
-                bank_bsb: bank_bsb || null,
-                bank_account_number: bank_account_number || null,
-                abn: abn || null,
-                tfn: tfn || null,
+                email: email || null,
+                dob: null, // Skip for now
+                bank_account_name: null, // Skip for now
+                bank_bsb: null, // Skip for now
+                bank_account_number: null, // Skip for now
+                abn: null, // Skip for now
+                tfn: null, // Skip for now
                 emergency_contact_name,
                 emergency_contact_phone,
                 employment_type: employment_type || null,
                 role_title,
-                pay_cycle: pay_cycle || null,
+                pay_cycle: null, // Skip for now
                 start_date,
                 end_date: end_date || null,
                 business_id: authUser.business_id,
-                user_id: authData.user.id,
-                status: 'active',
+                user_id: authUserId,
+                status: authUserId ? 'active' : 'inactive',
+                role: invite_as === 'manager' ? 'manager' : 'employee',
             })
             .select()
             .single();
 
         if (employeeError) {
             // Cleanup: delete auth user if employee creation fails
-            await adminClient.auth.admin.deleteUser(authData.user.id);
+            if (authUserId) {
+                const adminClient = createAdminClient();
+                await adminClient.auth.admin.deleteUser(authUserId);
+            }
             return errorResponse(`Failed to create employee: ${employeeError.message}`, 400);
         }
 
@@ -308,10 +429,10 @@ export async function POST(request: NextRequest) {
             }
         }
 
-        // Step 3.5: If manager, create User record
-        if (invite_as === 'manager') {
+        // Step 3.5: If manager and has auth user, create User record
+        if (authUserId && invite_as === 'manager') {
             const { error: userError } = await supabase.from('User').insert({
-                user_id: authData.user.id,
+                user_id: authUserId,
                 business_id: authUser.business_id,
                 role: 'manager',
                 first_name,

@@ -71,11 +71,8 @@ export async function POST(request: NextRequest) {
                 role_title,
                 phone,
                 employment_type,
-                weekday_rate,
-                saturday_multiplier = 1.25,
-                sunday_multiplier = 1.50,
-                public_holiday_multiplier = 2.50,
                 invite_as = 'employee',
+                employee_id: targetEmployeeId, // Added support for existing employee
             } = emp;
 
             // Only owners can invite managers
@@ -84,17 +81,36 @@ export async function POST(request: NextRequest) {
                 continue;
             }
 
-            // Check if employee already exists in this business
-            const { data: existingEmployee } = await supabase
-                .from('Employee')
-                .select('employee_id')
-                .eq('email', email)
-                .eq('business_id', authUser.business_id)
-                .maybeSingle();
+            // Check if employee already exists (by email or ID)
+            let existingEmployee: any = null;
+            if (targetEmployeeId) {
+                const { data } = await supabase
+                    .from('Employee')
+                    .select('*')
+                    .eq('employee_id', targetEmployeeId)
+                    .eq('business_id', authUser.business_id)
+                    .maybeSingle();
+                existingEmployee = data;
 
-            if (existingEmployee) {
-                results.push({ email, success: false, error: 'Employee already exists in this business' });
-                continue;
+                if (!existingEmployee) {
+                    results.push({ email, success: false, error: 'Target employee not found' });
+                    continue;
+                }
+                if (existingEmployee.user_id) {
+                    results.push({ email, success: false, error: 'Employee already has an account' });
+                    continue;
+                }
+            } else {
+                const { data } = await supabase
+                    .from('Employee')
+                    .select('employee_id')
+                    .eq('email', email)
+                    .eq('business_id', authUser.business_id)
+                    .maybeSingle();
+                if (data) {
+                    results.push({ email, success: false, error: 'Employee with this email already exists' });
+                    continue;
+                }
             }
 
             // Invite via Supabase Auth
@@ -153,57 +169,77 @@ export async function POST(request: NextRequest) {
             // If the owner needs a manual link, they can use the "Resend" feature which 
             // can provide one if the email fails, or they can use the Join Code.
 
-            // Generate a unique Employee ID using the new format: PREFIX + 4-digit numeric suffix
-            const { data: allEmps } = await supabase
-                .from('Employee')
-                .select('employee_id')
-                .eq('business_id', authUser.business_id);
+            if (existingEmployee) {
+                // Update existing record
+                const { error: updateError } = await supabase
+                    .from('Employee')
+                    .update({
+                        email: email,
+                        user_id: authUserId,
+                        status: 'invited',
+                        first_name: first_name || existingEmployee.first_name,
+                        last_name: last_name || existingEmployee.last_name,
+                    })
+                    .eq('employee_id', existingEmployee.employee_id);
 
-            let maxSerial = 0;
-            for (const e of allEmps || []) {
-                const serial = getNumericSuffix(e.employee_id);
-                if (serial > maxSerial) maxSerial = serial;
+                if (updateError) {
+                    await adminClient.auth.admin.deleteUser(authUserId);
+                    results.push({ email: email, success: false, error: `Update failed: ${updateError.message}` });
+                    continue;
+                }
+            } else {
+                // Generate a unique Employee ID using the new format: PREFIX + 4-digit numeric suffix
+                const { data: allEmps } = await supabase
+                    .from('Employee')
+                    .select('employee_id')
+                    .eq('business_id', authUser.business_id);
+
+                let maxSerial = 0;
+                for (const e of allEmps || []) {
+                    const serial = getNumericSuffix(e.employee_id);
+                    if (serial > maxSerial) maxSerial = serial;
+                }
+                
+                // Account for employees already successfully added in this bulk request
+                const existingInResults: number = results.filter(r => r.success).length;
+                const new_employee_id = `${businessPrefix}${formatEmpSuffix(maxSerial + 1 + existingInResults)}`;
+
+                const { error: empError } = await supabase
+                    .from('Employee')
+                    .insert({
+                        employee_id: new_employee_id, first_name, last_name, email, role_title, phone: phone || null,
+                        employment_type: employment_type || null, business_id: authUser.business_id,
+                        user_id: authUserId, status: 'invited', start_date: new Date().toISOString().split('T')[0],
+                        dob: null, emergency_contact_name: null, emergency_contact_phone: null,
+                        role: invite_as === 'manager' ? 'manager' : 'employee',
+                    });
+
+                if (empError) {
+                    console.error(`[invite] Employee DB insert failed for ${email}:`, empError.code, empError.message, empError.details);
+                    await adminClient.auth.admin.deleteUser(authUserId);
+                    results.push({ email, success: false, error: `DB record failed: ${empError.message}. Invitation cancelled.` });
+                    continue;
+                }
             }
-            
-            // Account for employees already successfully added in this bulk request
-            const existingInResults: number = results.filter(r => r.success).length;
-            const employee_id = `${businessPrefix}${formatEmpSuffix(maxSerial + 1 + existingInResults)}`;
 
-            const { data: employeeData, error: empError } = await supabase
-                .from('Employee')
-                .insert({
-                    employee_id, first_name, last_name, email, role_title, phone: phone || null,
-                    employment_type: employment_type || null, business_id: authUser.business_id,
-                    user_id: authUserId, status: 'invited', start_date: new Date().toISOString().split('T')[0],
-                    dob: null, emergency_contact_name: null, emergency_contact_phone: null,
-                })
-                .select().single();
+            // Skipping Rate History for now (Payroll Module)
 
-            if (empError) {
-                console.error(`[invite] Employee DB insert failed for ${email}:`, empError.code, empError.message, empError.details);
-                // ROLLBACK: Delete the auth user so they don't have an orphaned invite
-                await adminClient.auth.admin.deleteUser(authUserId);
-                results.push({ email, success: false, error: `DB record failed: ${empError.message}. Invitation cancelled.` });
-                continue;
-            }
+            // Use stored role for existing employees, or the provided invite_as for new ones
+            const finalRole = existingEmployee?.role || (invite_as === 'manager' ? 'manager' : 'employee');
 
-            if (weekday_rate) {
-                await supabase.from('EmployeeRateHistory').insert({
-                    employee_id, business_id: authUser.business_id, weekday_rate,
-                    saturday_multiplier, sunday_multiplier, public_holiday_multiplier,
-                    effective_from: new Date().toISOString().split('T')[0],
-                    created_bv: authUser.user_id,
-                });
-            }
-
-            if (invite_as === 'manager') {
+            if (finalRole === 'manager') {
                 await supabase.from('User').insert({
                     user_id: authUserId, business_id: authUser.business_id,
                     role: 'manager', first_name, last_name,
                 });
             }
 
-            results.push({ email, success: true, employee_id, invite_link: actionLink });
+            results.push({ 
+                email, 
+                success: true, 
+                employee_id: existingEmployee?.employee_id || "new", 
+                invite_link: actionLink 
+            });
         }
 
         const successCount = results.filter(r => r.success).length;

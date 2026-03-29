@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { requireRole } from '@/lib/auth';
 import { successResponse, errorResponse, validateRequiredFields } from '@/lib/api-helpers';
 import { checkShiftConflictWithLeave } from '@/lib/leave-logic';
+import { notifyShiftPublished } from '@/lib/notifications';
 
 /**
  * GET /api/shift
@@ -75,7 +76,7 @@ export async function POST(request: NextRequest) {
         ]);
         if (validationError) return errorResponse(validationError, 400);
 
-        const { employee_id, roster_id, shift_date, start_time, end_time, shift_type } = body;
+        const { employee_id, roster_id, shift_date, start_time, end_time, shift_type, notify } = body;
 
         // Validate time order and prevent past shifts
         const start = new Date(start_time);
@@ -210,12 +211,19 @@ export async function POST(request: NextRequest) {
                 start_time,
                 end_time,
                 shift_type,
-                shift_status: 'draft',
+                shift_status: notify ? 'published' : 'draft',
             })
             .select()
             .single();
 
         if (error) return errorResponse(error.message, 400);
+
+        // If notify is requested, trigger the single shift notification
+        if (notify && shift) {
+            notifyShiftPublished(shift.shift_id).catch(err => 
+                console.error(`[Notify] Single shift publish failed for ${shift.shift_id}:`, err)
+            );
+        }
 
         return successResponse(shift, 'Shift created successfully', 201);
     } catch (err) {

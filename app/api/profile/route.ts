@@ -2,7 +2,6 @@ import { NextRequest } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { successResponse, errorResponse } from '@/lib/api-helpers';
 import { logAudit } from '@/lib/audit';
-import bcrypt from 'bcryptjs';
 
 export async function GET(request: NextRequest) {
     try {
@@ -48,8 +47,8 @@ export async function GET(request: NextRequest) {
                 current_rate = sorted[0];
             }
             const { ...safeEmployeeRecord } = employeeRecord;
-            return successResponse({ 
-                ...safeEmployeeRecord, 
+            return successResponse({
+                ...safeEmployeeRecord,
                 current_rate,
                 role: userData?.role || 'employee'
             });

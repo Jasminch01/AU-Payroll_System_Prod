@@ -5,8 +5,26 @@ import { useState, useEffect } from 'react';
 export function usePWA() {
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [isInstallable, setIsInstallable] = useState(false);
+  const [isIOS, setIsIOS] = useState(false);
+  const [isStandalone, setIsStandalone] = useState(false);
 
   useEffect(() => {
+    // Detect iOS
+    const userAgent = window.navigator.userAgent.toLowerCase();
+    const isIOSDevice = /iphone|ipad|ipod/.test(userAgent) || 
+                       (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); // iPad Pro
+    setIsIOS(isIOSDevice);
+
+    // Check if already installed
+    const isStandaloneMode = window.matchMedia('(display-mode: standalone)').matches || 
+                            (window.navigator as any).standalone === true;
+    setIsStandalone(isStandaloneMode);
+
+    // If it's iOS and not already installed, it's "installable" via our custom prompt
+    if (isIOSDevice && !isStandaloneMode) {
+      setIsInstallable(true);
+    }
+
     const handler = (e: any) => {
       // Prevent the mini-infobar from appearing on mobile
       e.preventDefault();
@@ -21,7 +39,12 @@ export function usePWA() {
   }, []);
 
   const installPWA = async () => {
-    if (!deferredPrompt) return;
+    if (isIOS) {
+      // For iOS, we'll handle this in the UI by showing a prompt
+      return true;
+    }
+
+    if (!deferredPrompt) return false;
     
     // Show the install prompt
     deferredPrompt.prompt();
@@ -38,7 +61,8 @@ export function usePWA() {
     // We've used the prompt, and can't use it again
     setDeferredPrompt(null);
     setIsInstallable(false);
+    return outcome === 'accepted';
   };
 
-  return { isInstallable, installPWA };
+  return { isInstallable, installPWA, isIOS, isStandalone };
 }

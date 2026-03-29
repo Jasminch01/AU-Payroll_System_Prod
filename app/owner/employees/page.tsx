@@ -21,12 +21,14 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { apiGet, apiPost, apiDelete } from "@/lib/api-client";
 import { toast } from "sonner";
-import { UserPlus, Users, Send, RefreshCw, Copy, Check, MoreHorizontal, Eye, ExternalLink, Trash2, AlertTriangle, Filter, X, Briefcase, User, ShieldCheck, UserPlus2 } from "lucide-react";
+import { UserPlus, Users, Send, RefreshCw, Copy, Check, MoreHorizontal, Eye, ExternalLink, Trash2, AlertTriangle, Filter, X, Briefcase, User, ShieldCheck, UserPlus2, ChevronRight, Shield, Lock, CreditCard, ChevronDown, Info } from "lucide-react";
 import type { Employee } from "@/types/database";
 import { useAuth } from "@/hooks/use-auth";
+import { createClient } from "@/lib/supabase/client";
 import { generateBusinessPrefix, formatEmpSuffix, getNumericSuffix } from "@/lib/utils/employee-id";
 
 type StatusFilter = "all" | "active" | "invited" | "inactive";
+type RoleFilter = "all" | "employee" | "manager";
 
 export default function OwnerEmployeesPage() {
     const router = useRouter();
@@ -35,6 +37,14 @@ export default function OwnerEmployeesPage() {
     const [generatedLink, setGeneratedLink] = useState<string | null>(null);
     const [copied, setCopied] = useState(false);
     const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+    const [roleFilter, setRoleFilter] = useState<RoleFilter>("all");
+
+    // Server-side table state
+    const [page, setPage] = useState(1);
+    const [search, setSearch] = useState("");
+    const [sortKey, setSortKey] = useState("first_name");
+    const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+    const pageSize = 10;
 
 
 
@@ -44,13 +54,13 @@ export default function OwnerEmployeesPage() {
     const [invLastName, setInvLastName] = useState("");
     const [invPhone, setInvPhone] = useState("");
     const [invRole, setInvRole] = useState("");
-    const [invEmploymentType, setInvEmploymentType] = useState("full_time");
+    const [invEmploymentType, setInvEmploymentType] = useState("");
     const [invRate, setInvRate] = useState("");
     const [invAs, setInvAs] = useState<"employee" | "manager">("employee");
 
     // Bulk Invite state
     const [bulkInviteOpen, setBulkInviteOpen] = useState(false);
-    const [bulkData, setBulkData] = useState<any[]>([{ first_name: '', last_name: '', email: '', role_title: '', phone: '', employment_type: 'full_time', invite_as: 'employee' }]);
+    const [bulkData, setBulkData] = useState<any[]>([{ first_name: '', last_name: '', email: '', role_title: '', phone: '', employment_type: '', role: 'employee' }]);
 
     // Join Code state
     const [joinCode, setJoinCode] = useState<string | null>(null);
@@ -61,48 +71,104 @@ export default function OwnerEmployeesPage() {
     const [manualData, setManualData] = useState<any>({
         first_name: '', last_name: '', email: '', phone: '', dob: '',
         emergency_contact_name: '', emergency_contact_phone: '',
-        role_title: '', employment_type: 'full_time', pay_cycle: 'weekly',
+        role_title: '', employment_type: '', pay_cycle: 'weekly',
         start_date: new Date().toISOString().split('T')[0],
         weekday_rate: '',
         password: '',
-        invite_as: 'employee',
+        role: 'employee',
         bank_account_name: '', bank_bsb: '', bank_account_number: '', abn: '', tfn: ''
     });
 
+    const [inviteExistingOpen, setInviteExistingOpen] = useState(false);
+    const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
+    const [inviteExistingEmail, setInviteExistingEmail] = useState("");
+
     const { user } = useAuth();
-    const { data: employees = [], isLoading } = useQuery({
-        queryKey: ["employees"],
-        queryFn: () => apiGet<Employee[]>("/employees"),
+
+    // Query payload builder
+    const queryParams = useMemo(() => {
+        const params = new URLSearchParams({
+            page: page.toString(),
+            limit: pageSize.toString(),
+            paginate: 'true',
+            search,
+            sortBy: sortKey,
+            sortDir,
+        });
+        if (statusFilter !== "all") params.append("status", statusFilter);
+        if (roleFilter !== "all") params.append("role", roleFilter);
+        return params.toString();
+    }, [page, search, sortKey, sortDir, statusFilter, roleFilter]);
+
+    const { data: responseData, isLoading } = useQuery({
+        queryKey: ["employees", queryParams],
+        queryFn: () => apiGet<any>(`/employees?${queryParams}`),
     });
+
+    const employees = responseData?.employees || [];
+    const metaCounts = responseData?.meta?.counts || {
+        all: 0,
+        active: 0,
+        invited: 0,
+        inactive: 0,
+        employee: 0,
+        manager: 0
+    };
+    const totalItems = responseData?.meta?.total_count || 0;
+
+    // Reset page when filters change
+    React.useEffect(() => {
+        setPage(1);
+    }, [statusFilter, roleFilter, search]);
+
+    // Real-time Sync for Employee List
+    React.useEffect(() => {
+        if (!user?.business_id) return;
+
+        const supabase = createClient();
+        const channel = supabase
+            .channel('employee-table-changes')
+            .on(
+                'postgres_changes',
+                {
+                    event: '*',
+                    schema: 'public',
+                    table: 'Employee',
+                    filter: `business_id=eq.${user.business_id}`
+                },
+                (payload: any) => {
+                    console.log('Real-time update received:', payload);
+                    queryClient.invalidateQueries({ queryKey: ["employees"] });
+                }
+            )
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [user?.business_id, queryClient]);
 
     // Auto-generate employee_id for manual add
     React.useEffect(() => {
         if (manualAddOpen && user?.business?.business_name) {
             const prefix = generateBusinessPrefix(user.business.business_name);
-            const activeEmps = employees.map(e => e.employee_id);
-            
+            const activeEmps = employees.map((e: Employee) => e.employee_id);
+
             let maxSerial = 0;
             for (const id of activeEmps) {
                 const serial = getNumericSuffix(id);
                 if (serial > maxSerial) maxSerial = serial;
             }
-            
+
             const nextId = `${prefix}${formatEmpSuffix(maxSerial + 1)}`;
             setManualData((prev: any) => ({ ...prev, employee_id: nextId }));
         }
     }, [manualAddOpen, user?.business?.business_name, employees]);
 
-    const filteredEmployees = useMemo(() => {
-        if (statusFilter === "all") return employees;
-        return employees.filter((e: Employee) => e.status === statusFilter);
-    }, [employees, statusFilter]);
+    // We don't need client-side filtering anymore since server handles it
+    const filteredEmployees = employees;
 
-    const counts = useMemo(() => ({
-        all: employees.length,
-        active: employees.filter((e: Employee) => e.status === "active").length,
-        invited: employees.filter((e: Employee) => e.status === "invited").length,
-        inactive: employees.filter((e: Employee) => e.status === "inactive").length,
-    }), [employees]);
+    const counts = metaCounts;
 
     const inviteMutation = useMutation({
         mutationFn: (data: any) => apiPost("/employees/invite", data),
@@ -149,11 +215,11 @@ export default function OwnerEmployeesPage() {
             setManualData({
                 first_name: '', last_name: '', email: '', phone: '', dob: '',
                 emergency_contact_name: '', emergency_contact_phone: '',
-                role_title: '', employment_type: 'full_time', pay_cycle: 'weekly',
+                role_title: '', employment_type: '', pay_cycle: 'weekly',
                 start_date: new Date().toISOString().split('T')[0],
                 weekday_rate: '',
                 password: '',
-                invite_as: 'employee',
+                role: 'employee',
                 bank_account_name: '', bank_bsb: '', bank_account_number: '', abn: '', tfn: ''
             });
         }
@@ -179,11 +245,11 @@ export default function OwnerEmployeesPage() {
             setManualData({
                 first_name: '', last_name: '', email: '', phone: '', dob: '',
                 emergency_contact_name: '', emergency_contact_phone: '',
-                role_title: '', employment_type: 'full_time', pay_cycle: 'weekly',
+                role_title: '', employment_type: '', pay_cycle: 'weekly',
                 start_date: new Date().toISOString().split('T')[0],
                 weekday_rate: '',
                 password: '',
-                invite_as: 'employee',
+                role: 'employee',
                 employee_id: '',
                 bank_account_name: '', bank_bsb: '', bank_account_number: '', abn: '', tfn: ''
             });
@@ -193,11 +259,12 @@ export default function OwnerEmployeesPage() {
     });
 
     const handleManualAdd = () => {
-        if (!manualData.email || !manualData.password || !manualData.first_name || !manualData.last_name || !manualData.start_date) {
-            return toast.error("Please fill in all required (*) fields.");
+        if (!manualData.first_name || !manualData.last_name || !manualData.start_date) {
+            return toast.error("Please fill in first name, last name, and start date.");
         }
         addManualMutation.mutate({
             ...manualData,
+            invite_as: manualData.role, // Map role to invite_as for backward compatibility in backend if needed
             weekday_rate: manualData.weekday_rate ? parseFloat(manualData.weekday_rate) : undefined
         });
     };
@@ -210,10 +277,10 @@ export default function OwnerEmployeesPage() {
         setInvLastName("");
         setInvPhone("");
         setInvRole("");
-        setInvEmploymentType("full_time");
+        setInvEmploymentType("");
         setInvRate("");
         setInvAs("employee");
-        setBulkData([{ first_name: '', last_name: '', email: '', role_title: '', phone: '', employment_type: 'full_time', invite_as: 'employee' }]);
+        setBulkData([{ first_name: '', last_name: '', email: '', role_title: '', phone: '', employment_type: '', role: 'employee' }]);
     };
 
     const handleInvite = () => {
@@ -253,6 +320,22 @@ export default function OwnerEmployeesPage() {
         }
     };
 
+    const handleInviteExisting = () => {
+        if (!inviteExistingEmail || !selectedEmployee) {
+            return toast.error("Please enter an email address.");
+        }
+        inviteMutation.mutate({
+            email: inviteExistingEmail,
+            first_name: selectedEmployee.first_name,
+            last_name: selectedEmployee.last_name,
+            employee_id: selectedEmployee.employee_id,
+            invite_as: selectedEmployee.role === 'manager' ? 'manager' : 'employee'
+        });
+        setInviteExistingOpen(false);
+        setSelectedEmployee(null);
+        setInviteExistingEmail("");
+    };
+
 
 
     const STATUS_TABS: { key: StatusFilter; label: string }[] = [
@@ -265,7 +348,7 @@ export default function OwnerEmployeesPage() {
     const columns: Column<Employee>[] = [
         {
             key: "name",
-            label: "Name",
+            label: "Employee",
             sortable: true,
             render: (row) => (
                 <div className="flex items-center gap-3">
@@ -273,24 +356,34 @@ export default function OwnerEmployeesPage() {
                         {(row.first_name?.[0] ?? "")}{(row.last_name?.[0] ?? "")}
                     </div>
                     <div>
-                        <p className="font-medium">{row.first_name} {row.last_name}</p>
-                        <p className="text-xs text-[hsl(var(--muted-foreground))]">{row.email}</p>
+                        <p className="font-medium leading-none mb-1">{row.first_name} {row.last_name}</p>
+                        <p className="text-xs text-[hsl(var(--muted-foreground))]">{row.email || "Not Invited"}</p>
                     </div>
                 </div>
             ),
         },
         {
-            key: "role_title",
-            label: "Role",
+            key: "role",
+            label: "Access",
             sortable: true,
             render: (row) => (
-                <div className="flex flex-col">
-                    <span className="font-medium">{row.role_title || "—"}</span>
-                    <span className="text-[10px] text-[hsl(var(--muted-foreground))] uppercase font-bold tracking-tight">
-                        {row.role || "employee"}
+                <div className="flex items-center">
+                    <span className={cn(
+                        "text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-tight",
+                        row.role === 'manager'
+                            ? "bg-[hsl(var(--brand-light))] text-[hsl(var(--brand))]"
+                            : "bg-slate-100 text-slate-500"
+                    )}>
+                        {row.role === 'manager' ? 'Manager' : 'Staff'}
                     </span>
                 </div>
             )
+        },
+        {
+            key: "role_title",
+            label: "Job Title",
+            sortable: true,
+            render: (row) => <span className="font-medium">{row.role_title || "—"}</span>
         },
         {
             key: "employment_type",
@@ -345,6 +438,18 @@ export default function OwnerEmployeesPage() {
                                     Resend Invite
                                 </DropdownMenuItem>
                             )}
+                            {!row.user_id && (
+                                <DropdownMenuItem
+                                    onClick={() => {
+                                        setSelectedEmployee(row);
+                                        setInviteExistingOpen(true);
+                                    }}
+                                    className="cursor-pointer text-[hsl(var(--brand))]"
+                                >
+                                    <Send size={14} className="mr-2" />
+                                    Invite Now
+                                </DropdownMenuItem>
+                            )}
 
                         </DropdownMenuContent>
                     </DropdownMenu>
@@ -359,92 +464,155 @@ export default function OwnerEmployeesPage() {
             pageTitle="Employees"
             pageDescription="Manage your team"
         >
-            {/* Status Filter Button */}
-            <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2">
-                    <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                            <Button variant="outline" className="h-9 gap-2 rounded-lg border-[hsl(var(--border))]">
-                                <Filter size={14} />
-                                <span>Filter: {statusFilter.charAt(0).toUpperCase() + statusFilter.slice(1)}</span>
-                                <span className="ml-1 px-1.5 py-0.5 rounded-full bg-[hsl(var(--brand-light))] text-[hsl(var(--brand))] text-[10px] font-bold">
-                                    {counts[statusFilter]}
-                                </span>
-                            </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="start" className="w-48">
-                            {STATUS_TABS.map((tab) => (
-                                <DropdownMenuItem
-                                    key={tab.key}
-                                    onClick={() => setStatusFilter(tab.key)}
-                                    className="flex items-center justify-between cursor-pointer"
-                                >
-                                    <span>{tab.label}</span>
-                                    <span className="text-xs text-[hsl(var(--muted-foreground))]">{counts[tab.key]}</span>
-                                </DropdownMenuItem>
-                            ))}
-                        </DropdownMenuContent>
-                    </DropdownMenu>
-
-                    {statusFilter !== "all" && (
-                        <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setStatusFilter("all")}
-                            className="h-8 text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] px-2"
-                        >
-                            <X size={14} className="mr-1" /> Clear
-                        </Button>
-                    )}
-                </div>
-            </div>
-
             <DataTable
+                serverPagination
+                maxHeight="calc(90vh - 280px)"
+                totalItems={totalItems}
+                pageSize={pageSize}
+                page={page}
+                onPageChange={setPage}
+                onSearch={setSearch}
+                onSort={(key, dir) => {
+                    setSortKey(key);
+                    setSortDir(dir);
+                }}
                 columns={columns}
                 data={filteredEmployees}
                 searchable
-                searchKeys={["first_name", "last_name", "email", "role_title", "role"]}
                 searchPlaceholder="Search employees..."
                 emptyMessage="No employees found."
                 emptyIcon={<UserPlus size={40} />}
                 loading={isLoading}
                 onRowClick={(row) => router.push(`/owner/employees/${row.employee_id}`)}
+                mobileCardRender={(row) => (
+                    <div className="p-4 flex items-center justify-between border-b border-[hsl(var(--border))] last:border-0 active:bg-[hsl(var(--muted))]/30 transition-colors">
+                        <div className="flex items-center gap-3">
+                            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[hsl(var(--brand-light))] text-[hsl(var(--brand))] text-sm font-bold shadow-sm">
+                                {(row.first_name?.[0] ?? "")}{(row.last_name?.[0] ?? "")}
+                            </div>
+                            <div className="flex flex-col">
+                                <span className="font-bold text-[hsl(var(--foreground))]">{row.first_name} {row.last_name}</span>
+                                <div className="flex items-center gap-2">
+                                    <span className="text-[10px] uppercase font-bold text-[hsl(var(--muted-foreground))] tracking-wider">
+                                        {row.role_title || "No Role"}
+                                    </span>
+                                    <StatusBadge status={row.status} className="scale-75 origin-left h-4" />
+                                </div>
+                            </div>
+                        </div>
+                        <ChevronRight size={16} className="text-[hsl(var(--muted-foreground))]/40" />
+                    </div>
+                )}
+                filters={
+                    <>
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button variant="outline" className="h-9 gap-2 rounded-lg border-[hsl(var(--border))] px-3 shadow-sm shrink-0">
+                                    <Filter size={14} className="text-[hsl(var(--muted-foreground))]" />
+                                    <span className="hidden sm:inline-block font-semibold">Status: {statusFilter.charAt(0).toUpperCase() + statusFilter.slice(1)}</span>
+                                    <span className="sm:hidden font-semibold">{statusFilter.charAt(0).toUpperCase() + statusFilter.slice(1)}</span>
+                                    <span className="ml-1 px-1.5 py-0.5 rounded-full bg-[hsl(var(--brand-light))] text-[hsl(var(--brand))] text-[9px] font-black">
+                                        {counts[statusFilter]}
+                                    </span>
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-48 rounded-xl shadow-xl">
+                                {STATUS_TABS.map((tab) => (
+                                    <DropdownMenuItem
+                                        key={tab.key}
+                                        onClick={() => setStatusFilter(tab.key)}
+                                        className={cn("flex items-center justify-between cursor-pointer rounded-lg py-2 transition-all", statusFilter === tab.key && "bg-[hsl(var(--brand-light))]/50 text-[hsl(var(--brand))]")}
+                                    >
+                                        <span className="font-medium">{tab.label}</span>
+                                        <span className="text-xs text-[hsl(var(--muted-foreground))]">{counts[tab.key]}</span>
+                                    </DropdownMenuItem>
+                                ))}
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+
+                        {statusFilter !== "all" && (
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => setStatusFilter("all")}
+                                className="h-9 w-9 text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] shrink-0 ml-[-8px]"
+                            >
+                                <X size={14} />
+                            </Button>
+                        )}
+
+                        <div className="hidden lg:block h-5 w-px bg-[hsl(var(--border))] mx-1 opacity-50 shrink-0" />
+
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button variant="outline" className="h-9 gap-2 rounded-lg border-[hsl(var(--border))] px-3 shadow-sm shrink-0">
+                                    <ShieldCheck size={14} className="text-[hsl(var(--muted-foreground))]" />
+                                    <span className="hidden sm:inline-block font-semibold">Access: {roleFilter === 'all' ? 'All Roles' : (roleFilter === 'manager' ? 'Managers' : 'Staff')}</span>
+                                    <span className="sm:hidden font-semibold">{roleFilter === 'all' ? 'Access' : (roleFilter === 'manager' ? 'Managers' : 'Staff')}</span>
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-48 rounded-xl shadow-xl">
+                                <DropdownMenuItem onClick={() => setRoleFilter("all")} className={cn("cursor-pointer rounded-lg py-2 font-medium transition-all", roleFilter === "all" && "bg-[hsl(var(--brand-light))]/50 text-[hsl(var(--brand))]")}>All Access Levels</DropdownMenuItem>
+                                <DropdownMenuSeparator className="my-1" />
+                                <DropdownMenuItem onClick={() => setRoleFilter("manager")} className={cn("flex items-center justify-between cursor-pointer rounded-lg py-2 font-medium transition-all", roleFilter === "manager" && "bg-[hsl(var(--brand-light))]/50 text-[hsl(var(--brand))]")}>
+                                    <span>Managers</span>
+                                    <span className="text-xs text-[hsl(var(--muted-foreground))]">{counts.manager}</span>
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => setRoleFilter("employee")} className={cn("flex items-center justify-between cursor-pointer rounded-lg py-2 font-medium transition-all", roleFilter === "employee" && "bg-[hsl(var(--brand-light))]/50 text-[hsl(var(--brand))]")}>
+                                    <span>Staff</span>
+                                    <span className="text-xs text-[hsl(var(--muted-foreground))]">{counts.employee}</span>
+                                </DropdownMenuItem>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+
+                        {roleFilter !== "all" && (
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => setRoleFilter("all")}
+                                className="h-9 w-9 text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] shrink-0 ml-[-8px]"
+                            >
+                                <X size={14} />
+                            </Button>
+                        )}
+                    </>
+                }
                 actions={
                     <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                            <Button className="h-9 gap-2 shadow-sm">
+                            <Button className="h-9 gap-2 shadow-md hover:shadow-lg transition-all lg:ml-2">
                                 <UserPlus size={16} />
                                 Add People
                             </Button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-56">
-                            <DropdownMenuItem onClick={() => setInviteOpen(true)} className="py-2.5">
-                                <User size={16} className="mr-2 text-[hsl(var(--muted-foreground))]" />
+                        <DropdownMenuContent align="end" className="w-56 rounded-xl shadow-xl p-1.5 border-[hsl(var(--border))]">
+                            <DropdownMenuItem onClick={() => setInviteOpen(true)} className="py-3 px-3 rounded-lg cursor-pointer hover:bg-[hsl(var(--muted))]/50">
+                                <User size={16} className="mr-3 text-[hsl(var(--brand))]" />
                                 <div className="flex flex-col">
-                                    <span className="font-medium">Single Invitation</span>
-                                    <span className="text-[10px] text-[hsl(var(--muted-foreground))]">Invite one person at a time</span>
+                                    <span className="font-bold text-sm">Single Invitation</span>
+                                    <span className="text-[11px] text-[hsl(var(--muted-foreground))]">Invite one person at a time</span>
                                 </div>
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => setBulkInviteOpen(true)} className="py-2.5">
-                                <Users size={16} className="mr-2 text-[hsl(var(--muted-foreground))]" />
+                            <DropdownMenuItem onClick={() => setBulkInviteOpen(true)} className="py-3 px-3 rounded-lg cursor-pointer hover:bg-[hsl(var(--muted))]/50">
+                                <Users size={16} className="mr-3 text-[hsl(var(--brand))]" />
                                 <div className="flex flex-col">
-                                    <span className="font-medium">Multiple Invitations</span>
-                                    <span className="text-[10px] text-[hsl(var(--muted-foreground))]">Add many people at once</span>
+                                    <span className="font-bold text-sm">Multiple Invitations</span>
+                                    <span className="text-[11px] text-[hsl(var(--muted-foreground))]">Add many people at once</span>
                                 </div>
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => setManualAddOpen(true)} className="py-2.5">
-                                <Briefcase size={16} className="mr-2 text-[hsl(var(--muted-foreground))]" />
+                            <DropdownMenuItem onClick={() => setManualAddOpen(true)} className="py-3 px-3 rounded-lg cursor-pointer hover:bg-[hsl(var(--muted))]/50">
+                                <Briefcase size={16} className="mr-3 text-[hsl(var(--brand))]" />
                                 <div className="flex flex-col">
-                                    <span className="font-medium">Add Employee Manually</span>
-                                    <span className="text-[10px] text-[hsl(var(--muted-foreground))]">Complete setup right now</span>
+                                    <span className="font-bold text-sm">Add Manually</span>
+                                    <span className="text-[11px] text-[hsl(var(--muted-foreground))]">Complete setup right now</span>
                                 </div>
                             </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem onClick={handleGenerateJoinCode} disabled={isGeneratingJoinCode} className="py-2.5">
-                                <ExternalLink size={16} className="mr-2 text-[hsl(var(--muted-foreground))]" />
+                            <DropdownMenuSeparator className="my-1.5" />
+                            <DropdownMenuItem onClick={handleGenerateJoinCode} disabled={isGeneratingJoinCode} className="py-3 px-3 rounded-lg cursor-pointer hover:bg-[hsl(var(--muted))]/50">
+                                <ExternalLink size={16} className="mr-3 text-[hsl(var(--brand))]" />
                                 <div className="flex flex-col">
-                                    <span className="font-medium">Business Join Link</span>
-                                    <span className="text-[10px] text-[hsl(var(--muted-foreground))]">Reusable link for your team</span>
+                                    <span className="font-bold text-sm">Business Join Link</span>
+                                    <span className="text-[11px] text-[hsl(var(--muted-foreground))]">Reusable link for your team</span>
                                 </div>
                             </DropdownMenuItem>
                         </DropdownMenuContent>
@@ -466,28 +634,14 @@ export default function OwnerEmployeesPage() {
                         {/* Access Level Selector */}
                         <div className="space-y-2">
                             <label className="text-[12px] font-bold text-[hsl(var(--muted-foreground))] uppercase tracking-wider">Access Level</label>
-                            <div className="flex gap-2 p-1 bg-[hsl(var(--muted))] rounded-xl border border-[hsl(var(--border))]">
-                                <button
-                                    onClick={() => setInvAs("employee")}
-                                    className={`flex-1 flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition-all ${invAs === "employee"
-                                        ? "bg-white text-[hsl(var(--brand))] shadow-sm"
-                                        : "text-[hsl(var(--muted-foreground))] hover:bg-white/50"
-                                        }`}
-                                >
-                                    <User size={16} />
-                                    Employee
-                                </button>
-                                <button
-                                    onClick={() => setInvAs("manager")}
-                                    className={`flex-1 flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition-all ${invAs === "manager"
-                                        ? "bg-white text-[hsl(var(--brand))] shadow-sm"
-                                        : "text-[hsl(var(--muted-foreground))] hover:bg-white/50"
-                                        }`}
-                                >
-                                    <ShieldCheck size={16} />
-                                    Manager
-                                </button>
-                            </div>
+                            <select
+                                value={invAs}
+                                onChange={(e) => setInvAs(e.target.value as any)}
+                                className="flex h-10 w-full rounded-lg border border-[hsl(var(--input))] bg-transparent px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[hsl(var(--brand))]/20"
+                            >
+                                <option value="employee">Standard Staff</option>
+                                <option value="manager">Business Manager</option>
+                            </select>
                         </div>
 
                         <div className="grid grid-cols-2 gap-3">
@@ -499,35 +653,40 @@ export default function OwnerEmployeesPage() {
                             <Input label="Mobile Number" type="tel" placeholder="0412 345 678" value={invPhone} onChange={(e) => setInvPhone(e.target.value)} />
                         </div>
 
-                        <div className="grid grid-cols-2 gap-3">
-                            <Input label="Role Title" placeholder="e.g. Barista" value={invRole} onChange={(e) => setInvRole(e.target.value)} />
-                            <div className="space-y-1.5">
-                                <label className="text-sm font-medium">
-                                    Employment Type <span className={cn(
-                                        "ml-0.5 transition-colors duration-200",
-                                        invEmploymentType ? "text-[hsl(var(--foreground))]" : "text-[#FF4A4A]"
-                                    )}>*</span>
-                                </label>
-                                <select
-                                    value={invEmploymentType}
-                                    onChange={(e) => setInvEmploymentType(e.target.value)}
-                                    className="flex h-10 w-full rounded-lg border border-[hsl(var(--input))] bg-transparent px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]/20"
-                                >
-                                    <option value="full_time">Full Time</option>
-                                    <option value="part_time">Part Time</option>
-                                    <option value="casual">Casual</option>
-                                    <option value="contract">Contract</option>
-                                </select>
-                            </div>
-                        </div>
+                        {invAs === "employee" && (
+                            <>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <Input label="Role Title" placeholder="e.g. Barista" value={invRole} onChange={(e) => setInvRole(e.target.value)} />
+                                    <div className="space-y-1.5">
+                                        <label className="text-sm font-medium">
+                                            Employment Type <span className={cn(
+                                                "ml-0.5 transition-colors duration-200",
+                                                invEmploymentType ? "text-[hsl(var(--foreground))]" : "text-[#FF4A4A]"
+                                            )}>*</span>
+                                        </label>
+                                        <select
+                                            value={invEmploymentType}
+                                            onChange={(e) => setInvEmploymentType(e.target.value)}
+                                            className="flex h-10 w-full rounded-lg border border-[hsl(var(--input))] bg-transparent px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]/20"
+                                        >
+                                            <option value="" disabled>Select</option>
+                                            <option value="full_time">Full Time</option>
+                                            <option value="part_time">Part Time</option>
+                                            <option value="casual">Casual</option>
+                                            <option value="contract">Contract</option>
+                                        </select>
+                                    </div>
+                                </div>
 
-                        <Input
-                            label="Base Hourly Rate ($) — optional, can be set later"
-                            type="number"
-                            placeholder="28.50"
-                            value={invRate}
-                            onChange={(e) => setInvRate(e.target.value)}
-                        />
+                                {/* <Input
+                                    label="Base Hourly Rate ($) — optional, can be set later"
+                                    type="number"
+                                    placeholder="28.50"
+                                    value={invRate}
+                                    onChange={(e) => setInvRate(e.target.value)}
+                                /> */}
+                            </>
+                        )}
                     </div>
 
                     <DialogFooter>
@@ -681,7 +840,7 @@ export default function OwnerEmployeesPage() {
                                                 <div className="pt-1">
                                                     <label className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter block mb-0.5">Employment Type</label>
                                                     <select
-                                                        value={row.employment_type || 'full_time'}
+                                                        value={row.employment_type || ''}
                                                         onChange={(e) => {
                                                             const newBulk = [...bulkData];
                                                             newBulk[idx].employment_type = e.target.value;
@@ -689,6 +848,7 @@ export default function OwnerEmployeesPage() {
                                                         }}
                                                         className="w-full h-7 bg-transparent border-0 text-[10px] font-medium text-slate-600 outline-none cursor-pointer hover:text-[#3724B3] -ml-0.5"
                                                     >
+                                                        <option value="" disabled>Select</option>
                                                         <option value="full_time">Full Time</option>
                                                         <option value="part_time">Part Time</option>
                                                         <option value="casual">Casual</option>
@@ -730,7 +890,7 @@ export default function OwnerEmployeesPage() {
                             <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={() => setBulkData([...bulkData, { first_name: '', last_name: '', email: '', role_title: '', phone: '', employment_type: 'full_time', invite_as: 'employee' }])}
+                                onClick={() => setBulkData([...bulkData, { first_name: '', last_name: '', email: '', role_title: '', phone: '', employment_type: '', role: 'employee' }])}
                                 className="h-9 border-dashed border-slate-300 text-slate-600 hover:border-[#3724B3] hover:text-[#3724B3] bg-white"
                             >
                                 <UserPlus size={14} className="mr-2" /> Add Another Team Member
@@ -800,137 +960,188 @@ export default function OwnerEmployeesPage() {
 
             {/* Manual Add Dialog */}
             <Dialog open={manualAddOpen} onOpenChange={setManualAddOpen}>
-                <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-                    <DialogHeader>
-                        <DialogTitle>Add Employee Manually</DialogTitle>
-                        <DialogDescription>
-                            Create a complete employee profile instantly.
-                        </DialogDescription>
-                    </DialogHeader>
+                <DialogContent className="max-w-3xl overflow-hidden p-0 border-0 rounded-2xl shadow-2xl [&>button]:text-white [&>button]:font-black [&>button]:z-50 [&>button]:right-6 [&>button]:top-6 [&>button]:scale-125">
+                    <div className="p-6 bg-[hsl(var(--brand))] text-white relative overflow-hidden shrink-0">
+                        <div className="relative z-10 flex items-center gap-3">
+                            <div className="h-12 w-12 rounded-xl bg-white/20 backdrop-blur-md flex items-center justify-center border border-white/30">
+                                <UserPlus size={24} />
+                            </div>
+                            <div>
+                                <DialogTitle className="text-xl font-bold">Add New Team Member</DialogTitle>
+                                <DialogDescription className="text-white/70 text-sm mt-1">
+                                    Create a complete profile and grant system access.
+                                </DialogDescription>
+                            </div>
+                        </div>
+                        {/* Decorative background elements */}
+                        <div className="absolute -right-8 -top-8 h-32 w-32 bg-white/10 rounded-full blur-3xl" />
+                        <div className="absolute right-20 bottom-0 h-16 w-16 bg-white/10 rounded-full blur-2xl" />
+                    </div>
 
-                    <div className="space-y-6 py-4">
+                    <div className="overflow-y-auto max-h-[calc(90vh-160px)] p-6 space-y-8 custom-scrollbar">
                         {/* Access Level Selector */}
-                        <div className="space-y-2">
-                            <label className="text-[12px] font-bold text-[hsl(var(--muted-foreground))] uppercase tracking-wider">Access Level</label>
-                            <div className="flex gap-2 p-1 bg-[hsl(var(--muted))] rounded-xl border border-[hsl(var(--border))]">
-                                <button
-                                    onClick={() => setManualData({ ...manualData, invite_as: "employee" })}
-                                    className={`flex-1 flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition-all ${manualData.invite_as === "employee"
-                                        ? "bg-white text-[hsl(var(--brand))] shadow-sm"
-                                        : "text-[hsl(var(--muted-foreground))] hover:bg-white/50"
-                                        }`}
-                                >
-                                    <User size={16} />
-                                    Employee
-                                </button>
-                                <button
-                                    onClick={() => setManualData({ ...manualData, invite_as: "manager" })}
-                                    className={`flex-1 flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition-all ${manualData.invite_as === "manager"
-                                        ? "bg-white text-[hsl(var(--brand))] shadow-sm"
-                                        : "text-[hsl(var(--muted-foreground))] hover:bg-white/50"
-                                        }`}
-                                >
-                                    <ShieldCheck size={16} />
-                                    Manager
-                                </button>
+                        <div className="bg-slate-50 border border-slate-100 p-5 rounded-2xl space-y-4">
+                            <div className="flex items-center gap-3 border-b border-slate-200/50 pb-3">
+                                <div className="h-8 w-8 rounded-lg bg-[hsl(var(--brand-light))]/20 flex items-center justify-center text-[hsl(var(--brand))]">
+                                    <Shield size={18} />
+                                </div>
+                                <h3 className="font-bold text-slate-800 tracking-tight">System Permissions</h3>
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1">Choose Access Level</label>
+                                <div className="relative group">
+                                    <select
+                                        value={manualData.role}
+                                        onChange={(e) => setManualData({ ...manualData, role: e.target.value })}
+                                        className="w-full h-12 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 outline-none transition-all focus:ring-4 focus:ring-[hsl(var(--brand))]/10 focus:border-[hsl(var(--brand))] hover:border-[hsl(var(--brand))]/30 appearance-none cursor-pointer pr-10"
+                                    >
+                                        <option value="employee">Standard Staff Member</option>
+                                        <option value="manager">Business Manager</option>
+                                    </select>
+                                    <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 group-hover:text-[hsl(var(--brand))] transition-colors">
+                                        <ChevronDown size={18} />
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-2 mt-2 px-1">
+                                    <div className="h-4 w-4 rounded-full bg-blue-50 flex items-center justify-center text-blue-500">
+                                        <Info size={10} />
+                                    </div>
+                                    <p className="text-[10px] text-slate-500 italic">Managers can edit rosters and manage other team members</p>
+                                </div>
                             </div>
                         </div>
 
-                        <section>
-                            <h3 className="text-sm font-bold border-b pb-2 mb-3">Identity & Account</h3>
-                            <div className="grid grid-cols-2 gap-3 mb-3">
-                                <Input label="First Name" showAsterisk value={manualData.first_name} onChange={(e) => setManualData({ ...manualData, first_name: e.target.value })} />
-                                <Input label="Last Name" showAsterisk value={manualData.last_name} onChange={(e) => setManualData({ ...manualData, last_name: e.target.value })} />
-                                <Input label="Email" showAsterisk type="email" value={manualData.email} onChange={(e) => setManualData({ ...manualData, email: e.target.value })} />
-                                <Input label="Temporary Password" showAsterisk type="password" value={manualData.password} onChange={(e) => setManualData({ ...manualData, password: e.target.value })} />
-                                <Input label="Phone" type="tel" value={manualData.phone} onChange={(e) => setManualData({ ...manualData, phone: e.target.value })} />
-                                <Input 
-                                    label="Date of Birth" 
-                                    type={manualData.dob ? "date" : "text"} 
-                                    placeholder="Not Set"
-                                    value={manualData.dob} 
-                                    onFocus={(e) => e.target.type = 'date'}
-                                    onBlur={(e) => { if (!e.target.value) e.target.type = 'text' }}
-                                    onChange={(e) => setManualData({ ...manualData, dob: e.target.value })} 
-                                />
-                            </div>
-                        </section>
-
-                        <section>
-                            <h3 className="text-sm font-bold border-b pb-2 mb-3">Employment Details</h3>
-                            <div className="grid grid-cols-2 gap-3 mb-3">
-                                <Input label="Role Title" value={manualData.role_title} onChange={(e) => setManualData({ ...manualData, role_title: e.target.value })} />
-                                <div className="space-y-1.5">
-                                    <label className="text-xs font-semibold ml-0.5">
-                                        Employment Type <span className={cn(
-                                            "ml-0.5 transition-colors duration-200",
-                                            manualData.employment_type ? "text-[hsl(var(--foreground))]" : "text-[#FF4A4A]"
-                                        )}>*</span>
-                                    </label>
-                                    <select value={manualData.employment_type} onChange={(e) => setManualData({ ...manualData, employment_type: e.target.value })} className="flex h-10 w-full rounded-md border border-[hsl(var(--input))] bg-transparent px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]/20">
-                                        <option value="full_time">Full Time</option>
-                                        <option value="part_time">Part Time</option>
-                                        <option value="casual">Casual</option>
-                                        <option value="contract">Contract</option>
-                                    </select>
+                        {/* Identity Section */}
+                        <section className="bg-white rounded-2xl border p-5 shadow-sm space-y-5">
+                            <div className="flex items-center gap-3 border-b border-slate-50 pb-3 mb-1">
+                                <div className="h-8 w-8 rounded-lg bg-orange-100 flex items-center justify-center text-orange-600">
+                                    <User size={18} />
                                 </div>
-                                <div className="space-y-1.5">
-                                    <label className="text-xs font-semibold ml-0.5">
-                                        Pay Cycle <span className={cn(
-                                            "ml-0.5 transition-colors duration-200",
-                                            manualData.pay_cycle ? "text-[hsl(var(--foreground))]" : "text-[#FF4A4A]"
-                                        )}>*</span>
-                                    </label>
-                                    <select value={manualData.pay_cycle} onChange={(e) => setManualData({ ...manualData, pay_cycle: e.target.value })} className="flex h-10 w-full rounded-md border border-[hsl(var(--input))] bg-transparent px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]/20">
-                                        <option value="weekly">weekly</option>
-                                        <option value="fortnightly">fortnightly</option>
-                                        <option value="monthly">monthly</option>
-                                    </select>
+                                <h3 className="font-bold text-slate-800 tracking-tight">Personal Identity</h3>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <Input label="First Name" showAsterisk placeholder="John" value={manualData.first_name} onChange={(e) => setManualData({ ...manualData, first_name: e.target.value })} />
+                                <Input label="Last Name" showAsterisk placeholder="Doe" value={manualData.last_name} onChange={(e) => setManualData({ ...manualData, last_name: e.target.value })} />
+                                <Input label="Email (Optional)" type="email" placeholder="john@example.com" value={manualData.email} onChange={(e) => setManualData({ ...manualData, email: e.target.value })} />
+                                <Input label="Phone Number" type="tel" placeholder="0400 000 000" value={manualData.phone} onChange={(e) => setManualData({ ...manualData, phone: e.target.value })} />
+                            </div>
+                        </section>
+
+                        <div className="grid grid-cols-2 gap-6">
+                            {/* Employment Section */}
+                            <section className="bg-white rounded-2xl border p-5 shadow-sm space-y-5 h-full">
+                                <div className="flex items-center gap-3 border-b border-slate-50 pb-3 mb-1">
+                                    <div className="h-8 w-8 rounded-lg bg-blue-100 flex items-center justify-center text-blue-600">
+                                        <Briefcase size={18} />
+                                    </div>
+                                    <h3 className="font-bold text-slate-800 tracking-tight">Employment</h3>
                                 </div>
-                                <Input label="Base Hourly Rate ($)" type="number" step="0.01" value={manualData.weekday_rate} onChange={(e) => setManualData({ ...manualData, weekday_rate: e.target.value })} />
-                                <Input label="Start Date" showAsterisk type="date" value={manualData.start_date} onChange={(e) => setManualData({ ...manualData, start_date: e.target.value })} />
-                            </div>
-                        </section>
+                                <div className="space-y-4">
+                                    {manualData.role === "employee" && (
+                                        <Input label="Job Title" placeholder="e.g. Senior Barista" value={manualData.role_title} onChange={(e) => setManualData({ ...manualData, role_title: e.target.value })} />
+                                    )}
+                                    <div className="space-y-1.5">
+                                        <label className="text-xs font-semibold ml-0.5 text-slate-600">
+                                            Employment Type <span className="text-red-500">*</span>
+                                        </label>
+                                        <select value={manualData.employment_type} onChange={(e) => setManualData({ ...manualData, employment_type: e.target.value })} className="flex h-10 w-full rounded-xl border border-slate-200 bg-slate-50/30 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--brand))]/20 transition-all font-medium">
+                                            <option value="" disabled>Select</option>
+                                            <option value="full_time">Full Time</option>
+                                            <option value="part_time">Part Time</option>
+                                            <option value="casual">Casual</option>
+                                            <option value="contract">Contract</option>
+                                        </select>
+                                    </div>
+                                    <Input label="Start Date" showAsterisk type="date" value={manualData.start_date} onChange={(e) => setManualData({ ...manualData, start_date: e.target.value })} />
+                                </div>
+                            </section>
 
-                        <section>
-                            <h3 className="text-sm font-bold border-b pb-2 mb-3">Emergency Contact</h3>
-                            <div className="grid grid-cols-2 gap-3">
-                                <Input label="Contact Name" value={manualData.emergency_contact_name} onChange={(e) => setManualData({ ...manualData, emergency_contact_name: e.target.value })} />
-                                <Input label="Contact Phone" type="tel" value={manualData.emergency_contact_phone} onChange={(e) => setManualData({ ...manualData, emergency_contact_phone: e.target.value })} />
-                            </div>
-                        </section>
+                            <div className="space-y-6">
+                                {/* Security Section */}
+                                <section className="bg-white rounded-2xl border p-5 shadow-sm space-y-5">
+                                    <div className="flex items-center gap-3 border-b border-slate-50 pb-3 mb-1">
+                                        <div className="h-8 w-8 rounded-lg bg-purple-100 flex items-center justify-center text-purple-600">
+                                            <Lock size={18} />
+                                        </div>
+                                        <h3 className="font-bold text-slate-800 tracking-tight">Access Security</h3>
+                                    </div>
+                                    <Input label="Temporary Password (Optional)" type="password" placeholder="Min. 8 characters" value={manualData.password} onChange={(e) => setManualData({ ...manualData, password: e.target.value })} />
+                                </section>
 
-                        <section>
-                            <h3 className="text-sm font-bold border-b pb-2 mb-3">Bank Details</h3>
-                            <div className="grid grid-cols-2 gap-3">
+                                {/* Emergency Section */}
+                                <section className="bg-white rounded-2xl border p-5 shadow-sm space-y-5">
+                                    <div className="flex items-center gap-3 border-b border-slate-50 pb-3 mb-1">
+                                        <div className="h-8 w-8 rounded-lg bg-red-100 flex items-center justify-center text-red-600">
+                                            <Shield size={18} />
+                                        </div>
+                                        <h3 className="font-bold text-slate-800 tracking-tight">Emergency</h3>
+                                    </div>
+                                    <div className="space-y-4">
+                                        <Input label="Contact Name" placeholder="Full name" value={manualData.emergency_contact_name} onChange={(e) => setManualData({ ...manualData, emergency_contact_name: e.target.value })} />
+                                        <Input label="Contact Phone" type="tel" placeholder="0400 000 000" value={manualData.emergency_contact_phone} onChange={(e) => setManualData({ ...manualData, emergency_contact_phone: e.target.value })} />
+                                    </div>
+                                </section>
+                            </div>
+                        </div>
+
+                        {/* Financial Details hidden for Rostering module Phase */}
+                        {/* 
+                        <section className="bg-white rounded-2xl border p-5 shadow-sm space-y-5">
+                            <div className="flex items-center gap-3 border-b border-slate-50 pb-3 mb-1">
+                                <div className="h-8 w-8 rounded-lg bg-green-100 flex items-center justify-center text-green-600">
+                                    <CreditCard size={18} />
+                                </div>
+                                <h3 className="font-bold text-slate-800 tracking-tight">Financial Details</h3>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
                                 <Input label="Account Name" value={manualData.bank_account_name} onChange={(e) => setManualData({ ...manualData, bank_account_name: e.target.value })} />
                                 <Input label="BSB Number" value={manualData.bank_bsb} onChange={(e) => setManualData({ ...manualData, bank_bsb: e.target.value })} />
                                 <Input label="Account Number" value={manualData.bank_account_number} onChange={(e) => setManualData({ ...manualData, bank_account_number: e.target.value })} />
                                 {manualData.employment_type === 'contract' ? (
-                                    <Input 
-                                        label="ABN" 
-                                        showAsterisk 
-                                        value={manualData.abn} 
-                                        onChange={(e) => setManualData({ ...manualData, abn: e.target.value })} 
-                                        placeholder="Format: 00 000 000 000"
-                                    />
+                                    <Input label="ABN" showAsterisk placeholder="00 000 000 000" ... />
                                 ) : (
-                                    <Input 
-                                        label="TFN" 
-                                        showAsterisk 
-                                        value={manualData.tfn} 
-                                        onChange={(e) => setManualData({ ...manualData, tfn: e.target.value })} 
-                                        placeholder="Format: 000 000 000"
-                                    />
+                                    <Input label="TFN" showAsterisk placeholder="000 000 000" ... />
                                 )}
                             </div>
                         </section>
+                        */}
+                    </div>
+
+                    <DialogFooter className="p-6 bg-slate-50 border-t z-20 shrink-0">
+                        <Button variant="outline" onClick={() => setManualAddOpen(false)} className="rounded-xl px-6">Cancel</Button>
+                        <Button onClick={handleManualAdd} loading={addManualMutation.isPending} className="rounded-xl px-8 shadow-lg shadow-[hsl(var(--brand))]/20">
+                            <UserPlus size={16} className="mr-2" /> Save Employee Profile
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Invite Existing Employee Dialog */}
+            <Dialog open={inviteExistingOpen} onOpenChange={setInviteExistingOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Invite Employee</DialogTitle>
+                        <DialogDescription>
+                            Send an invitation to {selectedEmployee?.first_name} {selectedEmployee?.last_name}. They will be able to set their own password and access the system.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="py-4">
+                        <Input
+                            label="Email Address"
+                            type="email"
+                            showAsterisk
+                            placeholder="jane@company.com"
+                            value={inviteExistingEmail}
+                            onChange={(e) => setInviteExistingEmail(e.target.value)}
+                        />
                     </div>
 
                     <DialogFooter>
-                        <Button variant="outline" onClick={() => setManualAddOpen(false)}>Cancel</Button>
-                        <Button onClick={handleManualAdd} loading={addManualMutation.isPending}>
-                            <UserPlus size={16} className="mr-2" /> Save Employee
+                        <Button variant="outline" onClick={() => { setInviteExistingOpen(false); setSelectedEmployee(null); setInviteExistingEmail(""); }}>Cancel</Button>
+                        <Button onClick={handleInviteExisting} loading={inviteMutation.isPending}>
+                            <Send size={16} />
+                            Send Invitation
                         </Button>
                     </DialogFooter>
                 </DialogContent>

@@ -3,7 +3,6 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 import { requireRole } from '@/lib/auth';
 import { successResponse, errorResponse } from '@/lib/api-helpers';
-import bcrypt from 'bcryptjs';
 import { logAudit } from '@/lib/audit';
 
 interface RouteParams {

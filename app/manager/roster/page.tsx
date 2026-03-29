@@ -12,18 +12,21 @@ import {
     DialogTitle
 } from "@/components/ui/dialog";
 import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/api-client";
+import { getShiftTypeFromTime } from "@/lib/shift-utils";
+import { EmployeeSearchPicker } from "@/components/roster/employee-search-picker";
 import { useEffect } from "react";
 import { toast } from "sonner";
-import { Plus, ChevronLeft, ChevronRight, Clock, Trash2, CheckCircle2, FileText, RefreshCcw, Copy, Bell, CalendarDays, Search, Filter, ChevronsLeft, ChevronsRight, GripVertical, MoreHorizontal, Users } from "lucide-react";
-import { Reorder, AnimatePresence } from "framer-motion";
+import { Plus, ChevronLeft, ChevronRight, Clock, Trash2, CheckCircle2, FileText, RefreshCcw, Copy, Bell, CalendarDays, Search, Filter, ChevronsLeft, ChevronsRight, GripVertical, MoreHorizontal, Users, ChevronDown, ArrowUpDown, Settings2, ChevronUp, Info } from "lucide-react";
+import { Reorder, AnimatePresence, motion } from "framer-motion";
 import { cn } from "@/lib/utils";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import {
     Popover, PopoverTrigger, PopoverContent
 } from "@/components/ui/popover";
 import {
-    DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem
+    DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator
 } from "@/components/ui/dropdown-menu";
 import {
     format, addMonths, subMonths, startOfMonth, endOfMonth,
@@ -111,6 +114,47 @@ export default function ManagerRosterPage() {
     const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
     const [selectedDate, setSelectedDate] = useState("");
     const [editingShiftId, setEditingShiftId] = useState<string | null>(null);
+    const [duplicateOpen, setDuplicateOpen] = useState(false);
+    const [targetDuplicateDate, setTargetDuplicateDate] = useState("");
+    const [sourceOffset, setSourceOffset] = useState(0);
+    const [targetOffset, setTargetOffset] = useState(1);
+
+    // Mobile specific state
+    const isMobile = useIsMobile();
+    const [selectedDayIndex, setSelectedDayIndex] = useState(0);
+    const [isCalendarExpanded, setIsCalendarExpanded] = useState(false);
+    const [viewDate, setViewDate] = useState(new Date());
+
+    const rosterDates = useMemo(() => getRosterDates(offset, rosterPeriod), [offset, rosterPeriod]);
+
+
+    const rangeStart = formatDate(rosterDates[0]);
+    const rangeEnd = formatDate(rosterDates[rosterDates.length - 1]);
+
+    // Scroll mobile day picker to selected day on mount
+    useEffect(() => {
+        if (isMobile) {
+            const index = rosterDates.findIndex(d => formatDate(d) === formatDate(new Date()));
+            if (index !== -1) {
+                setSelectedDayIndex(index);
+            }
+        }
+    }, [isMobile, rosterDates]);
+
+    // Shift form
+    const [shiftEmployee, setShiftEmployee] = useState("");
+    const [shiftStart, setShiftStart] = useState("09:00");
+    const [shiftEnd, setShiftEnd] = useState("17:00");
+    const [shiftType, setShiftType] = useState("morning");
+    const [initialFormState, setInitialFormState] = useState<any>(null);
+
+    // Auto-detect shift type when start time changes
+    useEffect(() => {
+        if (!editingShiftId && shiftStart) {
+            const detectedType = getShiftTypeFromTime(shiftStart);
+            setShiftType(detectedType);
+        }
+    }, [shiftStart, editingShiftId, shiftType]);
 
     // Reset form when dialog closes
     useEffect(() => {
@@ -124,23 +168,33 @@ export default function ManagerRosterPage() {
         }
     }, [addShiftOpen]);
 
-    // Shift form
-    const [shiftEmployee, setShiftEmployee] = useState("");
-    const [shiftStart, setShiftStart] = useState("09:00");
-    const [shiftEnd, setShiftEnd] = useState("17:00");
-    const [shiftType, setShiftType] = useState("morning");
-    const [initialFormState, setInitialFormState] = useState<any>(null);
-
     // Expansion confirmation state
     const [expansionOpen, setExpansionOpen] = useState(false);
     const [pendingShiftData, setPendingShiftData] = useState<any>(null);
 
-    const rosterDates = useMemo(() => getRosterDates(offset, rosterPeriod), [offset, rosterPeriod]);
-    const rangeStart = formatDate(rosterDates[0]);
-    const rangeEnd = formatDate(rosterDates[rosterDates.length - 1]);
-
     // Copy Shifts state
-    const [copyOption, setCopyOption] = useState<'next_week' | 'prev_week'>('next_week');
+
+    const [copyOption, setCopyOption] = useState<'next_week' | 'prev_week' | 'specific' | 'advanced'>('next_week');
+    const [selectedSourceRosterId, setSelectedSourceRosterId] = useState<string>("");
+    const [isAdvancedCopy, setIsAdvancedCopy] = useState(false);
+    const [advancedCopyConfig, setAdvancedCopyConfig] = useState({
+        source_from: "",
+        source_to: "",
+        target_start: ""
+    });
+
+    // Initialize advanced config when dialog opens
+    useEffect(() => {
+        if (duplicateOpen) {
+            setSourceOffset(offset);
+            setTargetOffset(offset + 1);
+            setAdvancedCopyConfig({
+                source_from: rangeStart,
+                source_to: rangeEnd,
+                target_start: formatDate(addDays(new Date(rangeEnd + 'T00:00:00Z'), 1))
+            });
+        }
+    }, [duplicateOpen, rangeStart, rangeEnd, offset]);
 
     // Copy Review & Undo state
     const [copyResult, setCopyResult] = useState<{
@@ -187,7 +241,7 @@ export default function ManagerRosterPage() {
 
         return sorted.filter((e: any) => {
             const matchesSearch = `${e.first_name} ${e.last_name}`.toLowerCase().includes(searchQuery.toLowerCase());
-            const matchesRole = roleFilter === "all" || e.role_title?.toLowerCase() === roleFilter;
+            const matchesRole = roleFilter === "all" || e.role?.toLowerCase() === roleFilter;
             return matchesSearch && matchesRole;
         });
     }, [employees, searchQuery, roleFilter, orderedEmployeeIds]);
@@ -201,7 +255,7 @@ export default function ManagerRosterPage() {
 
     // Get unique roles for filter
     const roles = useMemo(() => {
-        const allRoles = employees.map((e: any) => e.role_title).filter(Boolean);
+        const allRoles = employees.map((e: any) => e.role).filter(Boolean);
         return Array.from(new Set(allRoles));
     }, [employees]);
 
@@ -362,8 +416,6 @@ export default function ManagerRosterPage() {
         },
     });
 
-    const [duplicateOpen, setDuplicateOpen] = useState(false);
-    const [targetDuplicateDate, setTargetDuplicateDate] = useState("");
 
     const duplicateRosterMutation = useMutation({
         mutationFn: (data: { source_from: string; source_to: string; target_start: string }) =>
@@ -391,6 +443,7 @@ export default function ManagerRosterPage() {
         mutationFn: () => apiPost("/shift/delete-many", { ids: lastNewShiftIds }),
         onSuccess: () => {
             toast.success("Last copy operation undone successfully");
+            setLastNewShiftIds([]);
             queryClient.invalidateQueries({ queryKey: ["shifts"] });
             queryClient.invalidateQueries({ queryKey: ["rosters"] });
             setUndoConfirmOpen(false);
@@ -452,7 +505,7 @@ export default function ManagerRosterPage() {
         },
     });
 
-    const handleAddShift = () => {
+    const handleAddShift = (notify = false) => {
         if (!shiftEmployee || !selectedDate) {
             toast.error("Please select an employee and date");
             return;
@@ -473,6 +526,7 @@ export default function ManagerRosterPage() {
             shift_type: shiftType,
             roster_start: rangeStart,
             roster_end: rangeEnd,
+            notify,
         };
 
         // Check for expansion
@@ -651,7 +705,7 @@ export default function ManagerRosterPage() {
             pageDescription={`${rosterPeriod.charAt(0).toUpperCase() + rosterPeriod.slice(1)} Roster: ${rosterDates[0].toLocaleDateString("en-AU", { month: "short", day: "numeric" })} – ${rosterDates[rosterDates.length - 1].toLocaleDateString("en-AU", { month: "short", day: "numeric", year: "numeric" })}`}
             actions={
                 <div className="flex items-center gap-3">
-                    <div className="flex bg-[hsl(var(--muted))] p-1 rounded-lg border border-[hsl(var(--border))]">
+                    <div className="hidden lg:flex bg-[hsl(var(--muted))] p-1 rounded-lg border border-[hsl(var(--border))]">
                         {(["weekly", "fortnightly", "monthly"] as const).map((p) => (
                             <button
                                 key={p}
@@ -674,7 +728,7 @@ export default function ManagerRosterPage() {
                     <Button
                         onClick={() => openAddShift(formatDate(new Date()))}
                         disabled={isFetching || isFetchingRosters}
-                        className="shadow-lg shadow-[hsl(var(--brand))]/10"
+                        className="hidden lg:flex shadow-lg shadow-[hsl(var(--brand))]/10"
                     >
                         <Plus size={16} className="mr-2" /> Add Shift
                     </Button>
@@ -705,7 +759,7 @@ export default function ManagerRosterPage() {
                                 </span>
                             </button>
                         </PopoverTrigger>
-                        <PopoverContent className="w-80 p-0 overflow-hidden rounded-xl shadow-2xl border-[hsl(var(--border))]" align="start">
+                        <PopoverContent className="w-(--radix-popover-trigger-width) p-0 z-100 bg-white shadow-2xl border-[hsl(var(--border))] rounded-xl overflow-hidden" align="start">
                             <div className="p-4 bg-white">
                                 <div className="flex items-center justify-between mb-4 px-1">
                                     <h4 className="font-bold text-[hsl(var(--foreground))] text-base">
@@ -764,19 +818,6 @@ export default function ManagerRosterPage() {
                                         });
                                     })()}
                                 </div>
-                                <div className="mt-4 pt-4 border-t flex justify-center">
-                                    <Button
-                                        variant="outline"
-                                        className="w-full bg-[hsl(var(--brand))]/5 border-[hsl(var(--brand))]/20 text-[hsl(var(--brand))] font-bold hover:bg-[hsl(var(--brand))]/10 transition-colors py-5"
-                                        onClick={() => {
-                                            setOffset(0);
-                                            setCalendarMonth(new Date());
-                                            setIsCalendarOpen(false);
-                                        }}
-                                    >
-                                        Jump to Current Week
-                                    </Button>
-                                </div>
                             </div>
                         </PopoverContent>
                     </Popover>
@@ -784,26 +825,14 @@ export default function ManagerRosterPage() {
                     <Button variant="outline" size="icon" className="h-9 w-9 rounded-lg" onClick={() => setOffset(offset + 1)}>
                         <ChevronRight size={18} />
                     </Button>
-
-                    <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-9 px-3 text-xs font-bold text-[hsl(var(--brand))] hover:bg-[hsl(var(--brand))]/5"
-                        onClick={() => {
-                            setOffset(0);
-                            setCalendarMonth(new Date());
-                        }}
-                    >
-                        Today
-                    </Button>
                 </div>
 
-                <div className="flex items-center gap-3 flex-1 max-w-md mx-4">
-                    <div className="relative flex-1 group">
+                <div className="flex flex-wrap lg:flex-nowrap items-center gap-3 flex-1 w-full lg:max-w-xl mx-4">
+                    <div className="relative flex-1 group min-w-[150px]">
                         <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[hsl(var(--muted-foreground))] group-focus-within:text-[hsl(var(--brand))] transition-colors" />
                         <Input
                             placeholder="Search employee..."
-                            className="pl-9 h-10 bg-white border-[hsl(var(--border))] rounded-xl focus:ring-[hsl(var(--brand))]/10"
+                            className="pl-9 h-10 w-full bg-white border-[hsl(var(--border))] rounded-xl focus:ring-2 focus:ring-[hsl(var(--brand))]/10"
                             value={searchQuery}
                             onChange={(e) => {
                                 setSearchQuery(e.target.value);
@@ -811,23 +840,34 @@ export default function ManagerRosterPage() {
                             }}
                         />
                     </div>
-                    <div className="relative w-40">
-                        <Filter size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[hsl(var(--muted-foreground))]" />
-                        <select
-                            value={roleFilter}
-                            onChange={(e) => {
-                                setRoleFilter(e.target.value);
-                                setCurrentPage(1);
-                            }}
-                            className="w-full pl-9 h-10 rounded-xl border border-[hsl(var(--border))] bg-white text-xs font-medium focus:ring-2 focus:ring-[hsl(var(--brand))]/10 outline-none appearance-none cursor-pointer"
-                        >
-                            <option value="all">All Roles</option>
-                            {roles.map(r => (
-                                <option key={r} value={r.toLowerCase()}>
-                                    {r.split(' ').map((word: string) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join(' ')}
-                                </option>
-                            ))}
-                        </select>
+                    
+                    <div className="flex items-center gap-2 shrink-0">
+                        {/* Role Filter */}
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button variant="outline" className="h-10 rounded-xl gap-2 px-3 border-[hsl(var(--border))] bg-white hover:bg-[hsl(var(--muted))]/30 text-xs shadow-sm focus:ring-2 focus:ring-[hsl(var(--brand))]/10 focus:border-transparent">
+                                    <Filter size={14} className="text-[hsl(var(--muted-foreground))]" />
+                                    <span className="font-semibold">{roleFilter === 'all' ? 'All Roles' : (roleFilter === 'manager' ? 'Managers' : 'Staff')}</span>
+                                    <ChevronDown size={14} className="opacity-50" />
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-40 rounded-2xl shadow-xl p-1.5 border-[hsl(var(--border))] animate-in fade-in zoom-in-95 duration-200">
+                                <DropdownMenuItem onClick={() => { setRoleFilter("all"); setCurrentPage(1); }} className={cn("cursor-pointer font-medium text-xs rounded-lg py-2 transition-all", roleFilter === "all" && "bg-[hsl(var(--brand-light))]/50 text-[hsl(var(--brand))]")}>All Roles</DropdownMenuItem>
+                                <DropdownMenuSeparator className="my-1" />
+                                {roles.map(r => (
+                                    <DropdownMenuItem 
+                                        key={r} 
+                                        onClick={() => { setRoleFilter(r.toLowerCase()); setCurrentPage(1); }}
+                                        className={cn(
+                                            "cursor-pointer font-medium text-xs rounded-lg py-2 transition-all",
+                                            roleFilter === r.toLowerCase() && "bg-[hsl(var(--brand-light))]/50 text-[hsl(var(--brand))]"
+                                        )}
+                                    >
+                                        {r === 'manager' ? 'Managers' : r === 'employee' ? 'Staff' : r.split(' ').map((word: string) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join(' ')}
+                                    </DropdownMenuItem>
+                                ))}
+                            </DropdownMenuContent>
+                        </DropdownMenu>
                     </div>
                 </div>
 
@@ -857,7 +897,7 @@ export default function ManagerRosterPage() {
                                             ) : (
                                                 <div className="flex items-center gap-1">
                                                     <FileText size={12} />
-                                                    <span>Draft ({statusSummary.drafts} new{statusSummary.modified > 0 ? `, ${statusSummary.modified} mod` : ''})</span>
+                                                    <span>Draft ({statusSummary.total - statusSummary.published} shifts)</span>
                                                 </div>
                                             )}
                                         </Badge>
@@ -904,22 +944,328 @@ export default function ManagerRosterPage() {
                                 </div>
                             </div>
                         ) : (
-                            <div className="flex items-center gap-2">
-                                <Badge variant="outline" className="border-[hsl(var(--muted-foreground))] text-[hsl(var(--muted-foreground))] bg-[hsl(var(--muted))]/10">
-                                    No shifts
-                                </Badge>
-                                <span className="text-xs text-[hsl(var(--muted-foreground))] italic hidden sm:inline">Add a shift to start rostering</span>
-                            </div>
+                            currentRoster && (
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => setDeleteRosterConfirmOpen(true)}
+                                    className="h-7 px-3 text-xs text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 hover:border-red-300"
+                                >
+                                    <Trash2 size={12} className="mr-1" /> Delete Empty Roster
+                                </Button>
+                            )
                         )
                     )}
                 </div>
             </div>
 
             <div className="w-full max-w-full rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] overflow-hidden shadow-md relative">
-                <div className={cn(
-                    "overflow-y-auto w-full max-h-[calc(100vh-320px)] scrollbar-thin",
-                    (rosterPeriod === "monthly" || rosterPeriod === "fortnightly") ? "overflow-x-hidden" : "overflow-x-auto"
-                )}>
+                {isMobile ? (
+                    /* MOBILE DAY VIEW */
+                    <div className="flex flex-col h-[75vh] sm:h-[700px] relative">
+                        {/* Integrated Mobile Calendar Header */}
+                        <div className="bg-white px-3 pt-3 flex items-center justify-between border-b border-[hsl(var(--border))]">
+                            <button 
+                                onClick={() => setIsCalendarExpanded(!isCalendarExpanded)}
+                                className="flex items-center gap-2 py-2 px-1 active:opacity-60 transition-opacity"
+                            >
+                                <span className="text-xl font-black text-[hsl(var(--foreground))] tracking-tight">
+                                    {format(rosterDates[selectedDayIndex], "EEE, d MMM")}
+                                </span>
+                                <ChevronRight 
+                                    size={18} 
+                                    className={cn(
+                                        "text-[hsl(var(--muted-foreground))] transition-transform duration-300",
+                                        isCalendarExpanded ? "rotate-90" : "rotate-0"
+                                    )} 
+                                />
+                            </button>
+                            <div className="flex items-center gap-1">
+                                <Button 
+                                    variant="ghost" 
+                                    size="icon" 
+                                    className={cn("h-10 w-10 text-[hsl(var(--muted-foreground))]", isCalendarExpanded && "text-[hsl(var(--brand))] bg-[hsl(var(--brand-light))]/30")}
+                                    onClick={() => setIsCalendarExpanded(!isCalendarExpanded)}
+                                >
+                                    <CalendarDays size={20} />
+                                </Button>
+                                <Button variant="ghost" size="icon" className="h-10 w-10 text-[hsl(var(--muted-foreground))]">
+                                    <MoreHorizontal size={20} />
+                                </Button>
+                            </div>
+                        </div>
+
+                        {/* Expandable Month Calendar */}
+                        <AnimatePresence>
+                            {isCalendarExpanded && (
+                                <motion.div 
+                                    initial={{ height: 0, opacity: 0 }}
+                                    animate={{ height: "auto", opacity: 1 }}
+                                    exit={{ height: 0, opacity: 0 }}
+                                    transition={{ type: "spring", damping: 25, stiffness: 200 }}
+                                    className="overflow-hidden bg-white border-b border-[hsl(var(--border))]"
+                                    drag="y"
+                                    dragConstraints={{ top: 0, bottom: 0 }}
+                                    onDragEnd={(_e, info) => {
+                                        if (info.offset.y < -50) setIsCalendarExpanded(false);
+                                    }}
+                                >
+                                    <div className="p-4 pt-2">
+                                        <div className="flex items-center justify-between mb-4">
+                                            <span className="text-sm font-black uppercase tracking-widest text-[hsl(var(--muted-foreground))]">
+                                                {format(viewDate, "MMMM yyyy")}
+                                            </span>
+                                            <div className="flex items-center gap-2">
+                                                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setViewDate(subMonths(viewDate, 1))}>
+                                                    <ChevronLeft size={16} />
+                                                </Button>
+                                                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setViewDate(addMonths(viewDate, 1))}>
+                                                    <ChevronRight size={16} />
+                                                </Button>
+                                            </div>
+                                        </div>
+
+                                        {/* Day Names Grid */}
+                                        <div className="grid grid-cols-7 mb-2">
+                                            {["S", "M", "T", "W", "T", "F", "S"].map((d, i) => (
+                                                <div key={i} className="text-center text-[10px] font-black text-[hsl(var(--muted-foreground))]/60">
+                                                    {d}
+                                                </div>
+                                            ))}
+                                        </div>
+
+                                        {/* Days Grid */}
+                                        <div className="grid grid-cols-7 gap-1">
+                                            {(() => {
+                                                const monthStart = startOfMonth(viewDate);
+                                                const monthEnd = endOfMonth(monthStart);
+                                                const startDate = startOfWeek(monthStart);
+                                                const endDate = endOfWeek(monthEnd);
+                                                const days = eachDayOfInterval({ start: startDate, end: endDate });
+
+                                                return days.map((day, i) => {
+                                                    const isSelected = isSameDay(day, rosterDates[selectedDayIndex]);
+                                                    const isCurrentMonth = isSameMonth(day, monthStart);
+                                                    const isToday = isSameDay(day, new Date());
+                                                    
+                                                    // Find if this day exists in current roster range
+                                                    const rosterIndex = rosterDates.findIndex(rd => isSameDay(rd, day));
+
+                                                    return (
+                                                        <button
+                                                            key={i}
+                                                            onClick={() => {
+                                                                if (rosterIndex !== -1) {
+                                                                    setSelectedDayIndex(rosterIndex);
+                                                                    setIsCalendarExpanded(false);
+                                                                    // Scroll day picker
+                                                                    setTimeout(() => {
+                                                                        document.getElementById(`day-btn-${rosterIndex}`)?.scrollIntoView({ behavior: 'smooth', inline: 'center' });
+                                                                    }, 100);
+                                                                } else {
+                                                                    toast.info(`Selection jumps to ${format(day, "MMM d")}. Update roster period to view.`);
+                                                                }
+                                                            }}
+                                                            className={cn(
+                                                                "h-10 w-full flex items-center justify-center rounded-lg text-sm transition-all",
+                                                                isSelected 
+                                                                    ? "bg-[hsl(var(--brand))] text-white font-bold shadow-sm" 
+                                                                    : isToday 
+                                                                        ? "text-[hsl(var(--brand))] font-bold bg-[hsl(var(--brand-light))]/20" 
+                                                                        : isCurrentMonth ? "text-[hsl(var(--foreground))]" : "text-[hsl(var(--muted-foreground))]/40",
+                                                                rosterIndex === -1 && isCurrentMonth && "opacity-40"
+                                                            )}
+                                                        >
+                                                            {day.getDate()}
+                                                        </button>
+                                                    );
+                                                });
+                                            })()}
+                                        </div>
+
+                                        {/* Drag Handle */}
+                                        <div className="flex justify-center mt-4">
+                                            <div className="w-12 h-1 rounded-full bg-[hsl(var(--muted))]" />
+                                        </div>
+                                    </div>
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
+
+                        {/* Day Selector (Horizontal) */}
+                        {!isCalendarExpanded && (
+                            <div className="flex overflow-x-auto p-3 bg-[hsl(var(--muted))]/10 border-b border-[hsl(var(--border))] scrollbar-none gap-2 sticky top-0 z-10 backdrop-blur-sm">
+                                {rosterDates.map((d, i) => {
+                                    const isSelected = selectedDayIndex === i;
+                                    const isToday = formatDate(d) === formatDate(new Date());
+                                    const dayName = d.toLocaleDateString("en-AU", { weekday: "short" });
+                                    const dayNum = d.getDate();
+
+                                    return (
+                                        <button
+                                            key={i}
+                                            id={`day-btn-${i}`}
+                                            onClick={() => setSelectedDayIndex(i)}
+                                            className={cn(
+                                                "flex flex-col items-center justify-center min-w-[56px] h-14 rounded-xl transition-all border shrink-0",
+                                                isSelected 
+                                                    ? "bg-[hsl(var(--brand))] text-white border-[hsl(var(--brand))] shadow-md shadow-[hsl(var(--brand))]/20 scale-105" 
+                                                    : "bg-white text-[hsl(var(--muted-foreground))] border-[hsl(var(--border))] hover:border-[hsl(var(--brand))]/30",
+                                                isToday && !isSelected && "ring-2 ring-[hsl(var(--brand))]/30"
+                                            )}
+                                        >
+                                            <span className="text-[9px] uppercase font-black tracking-tighter opacity-70">{dayName}</span>
+                                            <span className="text-base font-black leading-tight">{dayNum}</span>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        )}
+
+                        {/* Shifts List for selected day */}
+                        <div className="flex-1 overflow-y-auto p-4 space-y-6 pb-24 scrollbar-thin">
+                            {(() => {
+                                const selectedDateStr = formatDate(rosterDates[selectedDayIndex]);
+                                const today = new Date();
+                                today.setHours(0,0,0,0);
+                                const selectedDateObj = new Date(rosterDates[selectedDayIndex]);
+                                selectedDateObj.setHours(0,0,0,0);
+                                const isPastDay = selectedDateObj < today;
+
+                                // Filter employees based on search/role (already handled by paginatedEmployees)
+                                const activeEmployees = paginatedEmployees;
+
+                                const dayDrafts = employees.reduce((acc: any, emp: any) => {
+                                    const shifts = shiftGrid[emp.employee_id]?.[selectedDateStr] || [];
+                                    return acc + shifts.filter((s: any) => !isShiftPublished(s)).length;
+                                }, 0);
+
+                                return (
+                                    <>
+                                        {/* Day Header/Actions */}
+                                        <div className="flex items-center justify-between mb-2">
+                                            <h3 className="text-sm font-black uppercase tracking-widest text-[hsl(var(--muted-foreground))]">
+                                                {activeEmployees.length} {activeEmployees.length === 1 ? 'Employee' : 'Employees'} in List
+                                            </h3>
+                                            {dayDrafts > 0 && !isPastDay && (
+                                                <Button 
+                                                    size="sm" 
+                                                    className="h-7 text-[10px] font-black uppercase tracking-wider px-2 bg-green-600 hover:bg-green-700 text-white"
+                                                    onClick={() => publishRosterMutation.mutate(currentRoster.roster_id)}
+                                                >
+                                                    Publish {dayDrafts} Shift{dayDrafts > 1 ? 's' : ''}
+                                                </Button>
+                                            )}
+                                        </div>
+
+                                        {activeEmployees.length === 0 ? (
+                                            <div className="flex flex-col items-center justify-center py-12 text-center">
+                                                <CalendarDays size={48} className="text-[hsl(var(--muted-foreground))]/20 mb-4" />
+                                                <p className="text-[hsl(var(--muted-foreground))] font-medium">No employees found</p>
+                                            </div>
+                                        ) : (
+                                            activeEmployees.map((emp: any) => {
+                                                const dayShifts = shiftGrid[emp.employee_id]?.[selectedDateStr] || [];
+
+                                                return (
+                                                    <div key={emp.employee_id} className="space-y-3 p-4 rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/10">
+                                                        <div className="flex items-center justify-between">
+                                                            <div className="flex items-center gap-3">
+                                                                <div className="h-9 w-9 rounded-full bg-[hsl(var(--brand-light))] text-[hsl(var(--brand))] font-black flex items-center justify-center text-xs shadow-sm shadow-[hsl(var(--brand))]/10 border border-[hsl(var(--brand))]/10">
+                                                                    {emp.first_name?.[0]}{emp.last_name?.[0]}
+                                                                </div>
+                                                                <div className="flex flex-col">
+                                                                    <span className="text-sm font-black text-[hsl(var(--foreground))]">{emp.first_name} {emp.last_name}</span>
+                                                                    <span className="text-[10px] uppercase font-bold tracking-widest text-[hsl(var(--muted-foreground))]">{emp.role_title}</span>
+                                                                </div>
+                                                            </div>
+                                                            <Button 
+                                                                variant="ghost" 
+                                                                size="icon" 
+                                                                className="h-8 w-8 rounded-full text-[hsl(var(--brand))] hover:bg-[hsl(var(--brand))]/10"
+                                                                onClick={() => openAddShift(selectedDateStr, emp.employee_id)}
+                                                            >
+                                                                <Plus size={18} />
+                                                            </Button>
+                                                        </div>
+
+                                                        <div className="grid grid-cols-1 gap-3">
+                                                            {dayShifts.length > 0 ? (
+                                                                dayShifts.map((s: any) => {
+                                                                    const isPublished = isShiftPublished(s);
+                                                                    return (
+                                                                        <div
+                                                                            key={s.shift_id}
+                                                                            onClick={() => openAddShift(selectedDateStr, emp.employee_id, s)}
+                                                                            className={cn(
+                                                                                "p-3 rounded-xl border transition-all active:scale-[0.98] relative overflow-hidden flex items-center justify-between shadow-sm",
+                                                                                isPublished 
+                                                                                    ? "bg-[#F1F8E9] border-[#C5E1A5] text-green-900" 
+                                                                                    : "bg-white border-[hsl(var(--border))] text-[hsl(var(--foreground))]",
+                                                                                isPastDay && "opacity-60 grayscale-[0.2]"
+                                                                            )}
+                                                                        >
+                                                                            <div className="flex flex-col gap-0.5">
+                                                                                <div className="flex items-center gap-2">
+                                                                                    <Clock size={12} className={cn("opacity-60", isPublished ? "text-green-700" : "text-[hsl(var(--brand))]")} />
+                                                                                    <span className="text-sm font-black tracking-tight tabular-nums">
+                                                                                        {new Date(s.start_time).toLocaleTimeString("en-AU", { hour: "numeric", minute: "2-digit", hour12: true })}
+                                                                                        {" – "}
+                                                                                        {new Date(s.end_time).toLocaleTimeString("en-AU", { hour: "numeric", minute: "2-digit", hour12: true })}
+                                                                                    </span>
+                                                                                </div>
+                                                                                <Badge variant="secondary" className={cn(
+                                                                                    "text-[8px] uppercase font-black tracking-widest h-4 w-min whitespace-nowrap",
+                                                                                    isPublished ? "bg-green-200 text-green-900" : "bg-orange-100 text-orange-900"
+                                                                                )}>
+                                                                                    {s.shift_type}
+                                                                                </Badge>
+                                                                            </div>
+                                                                            <div className={cn(
+                                                                                "flex h-7 w-7 items-center justify-center rounded-lg transition-colors shadow-sm",
+                                                                                isPublished ? "bg-green-500 text-white" : "bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))]"
+                                                                            )}>
+                                                                                {isPublished ? <CheckCircle2 size={14} /> : <FileText size={14} />}
+                                                                            </div>
+                                                                        </div>
+                                                                    );
+                                                                })
+                                                            ) : (
+                                                                <div 
+                                                                    onClick={() => openAddShift(selectedDateStr, emp.employee_id)}
+                                                                    className="p-3 rounded-xl border border-dashed border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))] text-[10px] font-bold italic flex items-center justify-center gap-2 hover:bg-[hsl(var(--brand))]/5 transition-colors cursor-pointer bg-white/50"
+                                                                >
+                                                                    <Plus size={12} />
+                                                                    Assign shift
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })
+                                        )}
+                                    </>
+                                );
+                            })()}
+                        </div>
+
+                        {/* Floating Action Button (FAB) for adding shifts */}
+                        <div className="absolute bottom-6 right-6">
+                            <Button 
+                                size="icon"
+                                onClick={() => openAddShift(formatDate(rosterDates[selectedDayIndex]), "")}
+                                className="h-14 w-14 rounded-2xl bg-[hsl(var(--brand))] text-white shadow-xl shadow-[hsl(var(--brand))]/30 hover:scale-105 transition-transform"
+                            >
+                                <Plus size={28} strokeWidth={3} />
+                            </Button>
+                        </div>
+                    </div>
+                ) : (
+                    /* DESKTOP GRID VIEW */
+                    <div className={cn(
+                        "overflow-y-auto w-full max-h-[calc(100vh-320px)] scrollbar-thin",
+                        (rosterPeriod === "monthly" || rosterPeriod === "fortnightly") ? "overflow-x-hidden" : "overflow-x-auto"
+                    )}>
                     <table className={cn(
                         "w-full text-sm border-separate border-spacing-0",
                         (rosterPeriod === "monthly" || rosterPeriod === "fortnightly") ? "table-fixed" : ""
@@ -1046,7 +1392,7 @@ export default function ManagerRosterPage() {
                                                     <span className={cn(
                                                         "font-black uppercase tracking-widest relative z-10",
                                                         rosterPeriod === "monthly" ? "text-[8px] text-[hsl(var(--brand))]" : "text-[10px] text-[hsl(var(--muted-foreground))]"
-                                                    )}>{emp.role_title}</span>
+                                                    )}>{emp.role === 'manager' ? 'Manager' : 'Staff'}</span>
                                                 </div>
 
                                                 {/* Actions Menu - Always on hover, kept compact within column */}
@@ -1179,76 +1525,82 @@ export default function ManagerRosterPage() {
                         </Reorder.Group>
                     </table>
                 </div>
-
+                )}
+                
                 {/* Pagination Controls */}
-                <div className="flex items-center justify-between px-6 py-4 bg-[hsl(var(--muted))]/20 border-t border-[hsl(var(--border))]">
-                    <div className="text-xs text-[hsl(var(--muted-foreground))] font-medium">
-                        Showing <span className="text-[hsl(var(--foreground))] font-bold">{Math.min(filteredEmployees.length, (currentPage - 1) * pageSize + 1)}</span> to <span className="text-[hsl(var(--foreground))] font-bold">{Math.min(filteredEmployees.length, currentPage * pageSize)}</span> of <span className="text-[hsl(var(--foreground))] font-bold">{filteredEmployees.length}</span> employees
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                        <Button
-                            variant="outline"
-                            size="icon"
-                            disabled={currentPage === 1}
-                            onClick={() => setCurrentPage(1)}
-                            className="h-8 w-8 rounded-lg border-[hsl(var(--border))]"
-                        >
-                            <ChevronsLeft size={14} />
-                        </Button>
-                        <Button
-                            variant="outline"
-                            size="icon"
-                            disabled={currentPage === 1}
-                            onClick={() => setCurrentPage(currentPage - 1)}
-                            className="h-8 w-8 rounded-lg border-[hsl(var(--border))]"
-                        >
-                            <ChevronLeft size={14} />
-                        </Button>
-
-                        <div className="flex items-center gap-1 mx-2">
-                            {Array.from({ length: totalPages }, (_, i) => i + 1)
-                                .filter(p => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 1)
-                                .map((p, i, arr) => {
-                                    if (i > 0 && p !== arr[i - 1] + 1) {
-                                        return <span key={`dots-${p}`} className="text-[hsl(var(--muted-foreground))]">...</span>;
-                                    }
-                                    return (
-                                        <button
-                                            key={p}
-                                            onClick={() => setCurrentPage(p)}
-                                            className={cn(
-                                                "h-8 w-8 text-xs font-bold rounded-lg transition-all",
-                                                currentPage === p
-                                                    ? "bg-[hsl(var(--brand))] text-white shadow-md shadow-[hsl(var(--brand))]/20"
-                                                    : "hover:bg-[hsl(var(--muted))] text-[hsl(var(--foreground))]"
-                                            )}
-                                        >
-                                            {p}
-                                        </button>
-                                    );
-                                })}
+                {totalPages > 1 && (
+                    <div className="flex flex-col sm:flex-row items-center justify-between px-6 py-4 bg-[hsl(var(--muted))]/20 border-t border-[hsl(var(--border))] gap-4 sm:gap-0">
+                        <div className="text-xs text-[hsl(var(--muted-foreground))] font-medium">
+                            Showing <span className="text-[hsl(var(--foreground))] font-bold">{Math.min(filteredEmployees.length, (currentPage - 1) * pageSize + 1)}</span> to <span className="text-[hsl(var(--foreground))] font-bold">{Math.min(filteredEmployees.length, currentPage * pageSize)}</span> of <span className="text-[hsl(var(--foreground))] font-bold">{filteredEmployees.length}</span> employees
                         </div>
+                        <div className="flex items-center gap-1.5 overflow-x-auto max-w-full pb-2 sm:pb-0 scrollbar-none">
+                            <Button
+                                variant="outline"
+                                size="icon"
+                                disabled={currentPage === 1}
+                                onClick={() => setCurrentPage(1)}
+                                className="h-8 w-8 rounded-lg border-[hsl(var(--border))] shrink-0"
+                            >
+                                <ChevronsLeft size={14} />
+                            </Button>
+                            <Button
+                                variant="outline"
+                                size="icon"
+                                disabled={currentPage === 1}
+                                onClick={() => setCurrentPage(currentPage - 1)}
+                                className="h-8 w-8 rounded-lg border-[hsl(var(--border))] shrink-0"
+                            >
+                                <ChevronLeft size={14} />
+                            </Button>
 
-                        <Button
-                            variant="outline"
-                            size="icon"
-                            disabled={currentPage >= totalPages}
-                            onClick={() => setCurrentPage(currentPage + 1)}
-                            className="h-8 w-8 rounded-lg border-[hsl(var(--border))]"
-                        >
-                            <ChevronRight size={14} />
-                        </Button>
-                        <Button
-                            variant="outline"
-                            size="icon"
-                            disabled={currentPage >= totalPages}
-                            onClick={() => setCurrentPage(totalPages)}
-                            className="h-8 w-8 rounded-lg border-[hsl(var(--border))]"
-                        >
-                            <ChevronsRight size={14} />
-                        </Button>
+                            <div className="flex items-center gap-1 mx-1 shrink-0">
+                                {Array.from({ length: totalPages }, (_, i) => i + 1)
+                                    .filter(p => {
+                                        if (isMobile) return Math.abs(p - currentPage) <= 0; // Only show current page on mobile
+                                        return p === 1 || p === totalPages || Math.abs(p - currentPage) <= 1;
+                                    })
+                                    .map((p, i, arr) => {
+                                        if (i > 0 && p !== arr[i - 1] + 1) {
+                                            return <span key={`dots-${p}`} className="text-[hsl(var(--muted-foreground))]">...</span>;
+                                        }
+                                        return (
+                                            <button
+                                                key={p}
+                                                onClick={() => setCurrentPage(p)}
+                                                className={cn(
+                                                    "h-8 w-8 text-xs font-bold rounded-lg transition-all",
+                                                    currentPage === p
+                                                        ? "bg-[hsl(var(--brand))] text-white"
+                                                        : "hover:bg-[hsl(var(--muted))] text-[hsl(var(--foreground))]"
+                                                )}
+                                            >
+                                                {isMobile ? `Page ${p}` : p}
+                                            </button>
+                                        );
+                                    })}
+                            </div>
+
+                            <Button
+                                variant="outline"
+                                size="icon"
+                                disabled={currentPage >= totalPages}
+                                onClick={() => setCurrentPage(currentPage + 1)}
+                                className="h-8 w-8 rounded-lg border-[hsl(var(--border))] shrink-0"
+                            >
+                                <ChevronRight size={14} />
+                            </Button>
+                            <Button
+                                variant="outline"
+                                size="icon"
+                                disabled={currentPage >= totalPages}
+                                onClick={() => setCurrentPage(totalPages)}
+                                className="h-8 w-8 rounded-lg border-[hsl(var(--border))] shrink-0"
+                            >
+                                <ChevronsRight size={14} />
+                            </Button>
+                        </div>
                     </div>
-                </div>
+                )}
             </div>
 
             <Dialog open={addShiftOpen} onOpenChange={setAddShiftOpen}>
@@ -1271,38 +1623,24 @@ export default function ManagerRosterPage() {
                             onChange={(e) => setSelectedDate(e.target.value)}
                             disabled={editingShiftId ? new Date() >= (new Date((shifts.find((s: any) => s.shift_id === editingShiftId) || {}).start_time)) : false}
                         />
-                        <div className="space-y-1.5">
-                            <label className="text-sm font-medium">Employee</label>
-                            <select
-                                value={shiftEmployee}
-                                onChange={(e) => setShiftEmployee(e.target.value)}
-                                className="flex h-10 w-full rounded-lg border border-[hsl(var(--input))] bg-transparent px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]/20 focus:border-[hsl(var(--brand))]"
-                            >
-                                <option value="">Select employee</option>
-                                {activeEmployees.map((emp: any) => (
-                                    <option key={emp.employee_id} value={emp.employee_id}>
-                                        {emp.first_name} {emp.last_name}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
+                        <EmployeeSearchPicker
+                            employees={activeEmployees}
+                            value={shiftEmployee}
+                            onChange={(id) => setShiftEmployee(id)}
+                            disabled={editingShiftId ? new Date() >= (new Date((shifts.find((s: any) => s.shift_id === editingShiftId) || {}).start_time)) : false}
+                        />
 
                         <div className="grid grid-cols-2 gap-3">
                             <Input label="Start Time" type="time" value={shiftStart} onChange={(e) => setShiftStart(e.target.value)} />
                             <Input label="End Time" type="time" value={shiftEnd} onChange={(e) => setShiftEnd(e.target.value)} />
                         </div>
 
-                        <div className="space-y-1.5">
-                            <label className="text-sm font-medium">Shift Type</label>
-                            <select
-                                value={shiftType}
-                                onChange={(e) => setShiftType(e.target.value)}
-                                className="flex h-10 w-full rounded-lg border border-[hsl(var(--input))] bg-transparent px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]/20 focus:border-[hsl(var(--brand))]"
-                            >
-                                <option value="morning">Morning</option>
-                                <option value="afternoon">Afternoon</option>
-                                <option value="evening">Evening</option>
-                            </select>
+                        <div className="space-y-1.5 bg-[hsl(var(--brand-light))]/10 p-3 rounded-xl border border-[hsl(var(--brand))]/10">
+                            <label className="text-[10px] font-black uppercase text-[hsl(var(--muted-foreground))] tracking-widest block mb-1">Shift Type</label>
+                            <div className="flex items-center gap-2">
+                                <Clock size={14} className="text-[hsl(var(--brand))]" />
+                                <span className="text-sm font-bold capitalize text-[hsl(var(--foreground))]">{shiftType}</span>
+                            </div>
                         </div>
                     </div>
 
@@ -1322,17 +1660,34 @@ export default function ManagerRosterPage() {
                         </div>
                         <div className="flex items-center gap-2">
                             <Button variant="outline" onClick={() => setAddShiftOpen(false)}>Cancel</Button>
-                            <Button
-                                onClick={handleAddShift}
-                                loading={createShiftMutation.isPending || updateShiftMutation.isPending}
-                                disabled={editingShiftId ? (!isDirty || (new Date() >= (new Date((shifts.find((s: any) => s.shift_id === editingShiftId) || {}).start_time)))) : false}
-                            >
-                                {editingShiftId ? 'Update Shift' : (
-                                    <>
-                                        <Plus size={16} className="mr-2" /> Create Shift
-                                    </>
-                                )}
-                            </Button>
+                            
+                            {!editingShiftId ? (
+                                <>
+                                    <Button
+                                        variant="outline"
+                                        className="border-[hsl(var(--brand))]/30 text-[hsl(var(--brand))] hover:bg-[hsl(var(--brand))]/10"
+                                        onClick={() => handleAddShift(false)}
+                                        loading={createShiftMutation.isPending}
+                                    >
+                                        Save Draft
+                                    </Button>
+                                    <Button
+                                        onClick={() => handleAddShift(true)}
+                                        loading={createShiftMutation.isPending}
+                                        className="bg-[hsl(var(--brand))] text-white hover:bg-[hsl(var(--brand-hover))]"
+                                    >
+                                        <Bell size={14} className="mr-2" /> Save & Notify
+                                    </Button>
+                                </>
+                            ) : (
+                                <Button
+                                    onClick={() => handleAddShift(false)}
+                                    loading={updateShiftMutation.isPending}
+                                    disabled={!isDirty || (new Date() >= (new Date((shifts.find((s: any) => s.shift_id === editingShiftId) || {}).start_time)))}
+                                >
+                                    Update Shift
+                                </Button>
+                            )}
                         </div>
                     </DialogFooter>
                 </DialogContent>
@@ -1416,58 +1771,111 @@ export default function ManagerRosterPage() {
                         </DialogHeader>
 
                         <div className="space-y-6">
-                            <div>
-                                <h3 className="text-sm font-bold text-[hsl(var(--muted-foreground))] uppercase tracking-wider mb-4">Dates</h3>
-                                <div className="space-y-3">
+                            <div className="flex items-center justify-between pl-1">
+                                <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Quick Copy</h3>
+                                <button
+                                    onClick={() => setIsAdvancedCopy(!isAdvancedCopy)}
+                                    className="text-[10px] font-black text-[hsl(var(--brand))] uppercase tracking-widest flex items-center gap-1 hover:underline"
+                                >
+                                    {isAdvancedCopy ? <ChevronUp size={12} /> : <Settings2 size={12} />}
+                                    {isAdvancedCopy ? "Simplified" : "Advanced"}
+                                </button>
+                            </div>
+
+                            {!isAdvancedCopy ? (
+                                <div className="grid grid-cols-2 gap-3">
                                     {[
-                                        {
-                                            id: 'next_week',
-                                            label: `Copy to next ${rosterPeriod === 'weekly' ? 'week' : rosterPeriod === 'fortnightly' ? 'fortnight' : 'month'}`
-                                        },
-                                        {
-                                            id: 'prev_week',
-                                            label: `Copy from previous ${rosterPeriod === 'weekly' ? 'week' : rosterPeriod === 'fortnightly' ? 'fortnight' : 'month'}`
-                                        }
+                                        { id: 'next_week', label: `Next ${rosterPeriod === 'monthly' ? 'Month' : 'Week'}`, icon: ChevronRight },
+                                        { id: 'prev_week', label: `Prev ${rosterPeriod === 'monthly' ? 'Month' : 'Week'}`, icon: ChevronLeft }
                                     ].map((opt) => (
-                                        <label
+                                        <button
                                             key={opt.id}
+                                            onClick={() => setCopyOption(opt.id as any)}
                                             className={cn(
-                                                "flex items-center gap-3 p-3 rounded-xl border-2 transition-all cursor-pointer",
+                                                "flex flex-col items-center justify-center gap-3 p-4 rounded-xl border-2 transition-all group",
                                                 copyOption === opt.id
-                                                    ? "border-[hsl(var(--brand))] bg-[hsl(var(--brand))]/5"
-                                                    : "border-[hsl(var(--border))] hover:border-[hsl(var(--brand))]/30"
+                                                    ? "bg-[hsl(var(--brand))]/5 border-[hsl(var(--brand))] text-[hsl(var(--brand))]"
+                                                    : "bg-white border-slate-100 text-slate-500 hover:border-slate-200"
                                             )}
                                         >
                                             <div className={cn(
-                                                "w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all",
-                                                copyOption === opt.id ? "border-[hsl(var(--brand))]" : "border-[hsl(var(--border))]"
+                                                "w-10 h-10 rounded-full flex items-center justify-center transition-all",
+                                                copyOption === opt.id ? "bg-[hsl(var(--brand))] text-white shadow-lg shadow-[hsl(var(--brand))]/20" : "bg-slate-50 text-slate-400"
                                             )}>
-                                                {copyOption === opt.id && <div className="w-2.5 h-2.5 rounded-full bg-[hsl(var(--brand))]" />}
+                                                <opt.icon size={18} />
                                             </div>
-                                            <input
-                                                type="radio"
-                                                className="hidden"
-                                                name="copyOption"
-                                                value={opt.id}
-                                                checked={copyOption === opt.id}
-                                                onChange={() => setCopyOption(opt.id as any)}
-                                            />
-                                            <span className="font-semibold text-sm">{opt.label}</span>
-                                        </label>
+                                            <span className="text-xs font-black uppercase tracking-wider">{opt.label}</span>
+                                        </button>
                                     ))}
                                 </div>
-                            </div>
+                            ) : (
+                                <div className="space-y-4 p-4 bg-slate-50 rounded-2xl border border-slate-100 animate-in slide-in-from-top-2 duration-300">
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Copy Shifts From</label>
+                                        <div className="relative group">
+                                            <select
+                                                value={sourceOffset}
+                                                onChange={(e) => setSourceOffset(parseInt(e.target.value))}
+                                                className="w-full h-11 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 outline-none transition-all focus:ring-4 focus:ring-[hsl(var(--brand))]/10 focus:border-[hsl(var(--brand))] appearance-none cursor-pointer pr-10"
+                                            >
+                                                {periodOptions.map((opt) => (
+                                                    <option key={opt.offset} value={opt.offset}>
+                                                        {opt.label} {opt.offset === offset ? "(Current View)" : ""}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                            <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                                                <ChevronDown size={16} />
+                                            </div>
+                                        </div>
+                                    </div>
 
-                            {/* Advanced removed by request */}
+                                    <div className="flex justify-center -my-2 relative z-10">
+                                        <div className="bg-white p-2 rounded-full border border-slate-100 shadow-sm text-[hsl(var(--brand))]">
+                                            <ArrowUpDown size={14} strokeWidth={3} />
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Copy Shifts To</label>
+                                        <div className="relative group">
+                                            <select
+                                                value={targetOffset}
+                                                onChange={(e) => setTargetOffset(parseInt(e.target.value))}
+                                                className="w-full h-11 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 outline-none transition-all focus:ring-4 focus:ring-[hsl(var(--brand))]/10 focus:border-[hsl(var(--brand))] appearance-none cursor-pointer pr-10"
+                                            >
+                                                {periodOptions.map((opt) => (
+                                                    <option key={opt.offset} value={opt.offset}>
+                                                        {opt.label} {opt.offset === offset ? "(Current View)" : ""}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                            <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                                                <ChevronDown size={16} />
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
                         </div>
 
                         <div className="flex justify-end mt-8">
                             <Button
                                 className="px-8 py-6 rounded-xl bg-[hsl(var(--brand))] text-white hover:bg-[hsl(var(--brand-hover))] font-bold text-lg shadow-lg shadow-[hsl(var(--brand))]/20"
                                 onClick={() => {
-                                    let payload: any = { source_from: "", source_to: "", target_start: "" };
+                                    let payload: any = null;
 
-                                    if (copyOption === 'next_week') {
+                                    if (isAdvancedCopy) {
+                                        const sourceOpt = periodOptions.find(o => o.offset === sourceOffset);
+                                        const targetOpt = periodOptions.find(o => o.offset === targetOffset);
+                                        if (sourceOpt && targetOpt) {
+                                            payload = {
+                                                source_from: sourceOpt.start,
+                                                source_to: sourceOpt.end,
+                                                target_start: targetOpt.start
+                                            };
+                                        }
+                                    } else if (copyOption === 'next_week') {
                                         let daysToAdd = 7;
                                         if (rosterPeriod === 'fortnightly') daysToAdd = 14;
 
@@ -1488,7 +1896,7 @@ export default function ManagerRosterPage() {
                                                 target_start: formatDate(addDays(new Date(rangeStart + 'T00:00:00Z'), daysToAdd))
                                             };
                                         }
-                                    } else {
+                                    } else if (copyOption === 'prev_week') {
                                         let daysToSub = 7;
                                         if (rosterPeriod === 'fortnightly') daysToSub = 14;
 
@@ -1515,7 +1923,9 @@ export default function ManagerRosterPage() {
                                         }
                                     }
 
-                                    duplicateRosterMutation.mutate(payload);
+                                    if (payload) {
+                                        duplicateRosterMutation.mutate(payload);
+                                    }
                                 }}
                                 loading={duplicateRosterMutation.isPending}
                             >

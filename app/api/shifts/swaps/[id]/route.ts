@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { requireRole, getAuthUser } from '@/lib/auth';
 import { successResponse, errorResponse } from '@/lib/api-helpers';
+import { createNotification } from '@/lib/notifications';
 
 interface RouteParams {
     params: Promise<{ id: string }>;
@@ -117,6 +118,34 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
                 .eq('request_id', id);
 
             if (error) return errorResponse(error.message, 400);
+
+            // Notify Manager that a swap/transfer is now ready for approval
+            if (action === 'accept') {
+                try {
+                    const { data: managers } = await supabase
+                        .from('User')
+                        .select('user_id')
+                        .eq('business_id', authUser.business_id)
+                        .in('role', ['manager', 'owner']);
+                    
+                    const managerUserIds = (managers || []).map(m => m.user_id);
+                    if (managerUserIds.length > 0) {
+                        await createNotification({
+                            business_id: authUser.business_id,
+                            user_ids: managerUserIds,
+                            actor_id: authUser.user_id,
+                            type: 'SHIFT_SWAP_REQUESTED',
+                            title: 'Swap Ready for Approval',
+                            message: `A shift ${swapRequest.target_shift_id ? 'swap' : 'transfer'} was accepted and needs your approval.`,
+                            entity_id: id,
+                            entity_type: 'shift_swap_request'
+                        });
+                    }
+                } catch (notifyErr) {
+                    console.error('Failed to notify managers:', notifyErr);
+                }
+            }
+
             return successResponse(null, action === 'accept' ? 'Shift claimed / accepted. Awaiting manager approval.' : 'Invitation declined.');
         }
 

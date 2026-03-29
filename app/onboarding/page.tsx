@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { Loader2, Store, Fan, Eye, EyeOff } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { apiGet, apiPost } from "@/lib/api-client";
 
 export default function OnboardingPage() {
     const router = useRouter();
@@ -52,43 +53,37 @@ export default function OnboardingPage() {
             hasChecked = true;
 
             try {
-                const res = await fetch("/api/onboarding/status");
-                if (res.status === 401) {
-                    setAccessDenied(true);
-                    setCheckingStatus(false);
+                const data: any = await apiGet("/onboarding/status");
+
+                if (data.is_owner) {
+                    router.push("/owner/dashboard");
                     return;
-                }
-
-                const data = await res.json();
-
-                if (!data.success) {
-                    if (data.data?.is_owner) {
-                        router.push("/owner/dashboard");
-                    } else if (data.data && !data.data.needs_onboarding) {
-                        router.push("/employee/dashboard");
-                    }
-                    return;
-                }
-
-                if (!data.data?.needs_onboarding) {
+                } 
+                
+                if (!data.needs_onboarding) {
                     router.push("/employee/dashboard");
                     return;
                 }
 
-                setEmployeeName(`${data.data.employee.first_name || ""} ${data.data.employee.last_name || ""}`.trim());
-                setBusinessName(data.data.business_name);
+                setEmployeeName(`${data.employee.first_name || ""} ${data.employee.last_name || ""}`.trim());
+                setBusinessName(data.business_name);
 
-                if (data.data.employee.employment_type) {
-                    setEmploymentType(data.data.employee.employment_type);
+                if (data.employee.employment_type) {
+                    setEmploymentType(data.employee.employment_type);
                 }
 
-                if (data.data?.is_existing_user) {
+                if (data.is_existing_user) {
                     setIsExistingUser(true);
                 }
                 setCheckingStatus(false);
-            } catch (err) {
+            } catch (err: any) {
                 console.error("checkStatus error:", err);
-                toast.error("Failed to load onboarding status");
+                // Handle 401 or invitation errors here
+                if (err.message.toLowerCase().includes("unauthorized") || err.message.toLowerCase().includes("not found")) {
+                    setAccessDenied(true);
+                } else {
+                    toast.error(err.message || "Failed to load onboarding status");
+                }
                 setCheckingStatus(false);
             }
         }
@@ -178,11 +173,8 @@ export default function OnboardingPage() {
                     setCheckingStatus(false);
 
                     try {
-                        const bRes = await fetch(`/api/business/preview?code=${bCode}`);
-                        const bData = await bRes.json();
-                        if (bData.success) {
-                            setBusinessName(bData.data.business_name);
-                        }
+                        const bData: any = await apiGet("/business/preview", { code: bCode });
+                        setBusinessName(bData.business_name);
                     } catch (e) {
                         console.error("Failed to fetch business preview", e);
                     }
@@ -216,25 +208,19 @@ export default function OnboardingPage() {
 
         setLoading(true);
         try {
-            const res = await fetch("/api/employees/join", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    email,
-                    password,
-                    first_name: firstName,
-                    last_name: lastName,
-                    join_code: businessCode,
-                    bank_account_name: bankAccountName,
-                    bank_bsb: bankBsb,
-                    bank_account_number: bankAccountNumber,
-                    abn: abn,
-                    tfn: tfn,
-                    dob: dob,
-                }),
+            await apiPost("/employees/join", {
+                email,
+                password,
+                first_name: firstName,
+                last_name: lastName,
+                join_code: businessCode,
+                bank_account_name: null,
+                bank_bsb: null,
+                bank_account_number: null,
+                abn: null,
+                tfn: null,
+                dob: null,
             });
-            const data = await res.json();
-            if (!data.success) return toast.error(data.error || "Join failed");
 
             // Now log in
             const supabase = createClient();
@@ -246,8 +232,8 @@ export default function OnboardingPage() {
                 toast.success("Welcome aboard! 🎉");
                 router.push("/employee/dashboard");
             }
-        } catch {
-            toast.error("Something went wrong");
+        } catch (err: any) {
+            toast.error(err.message || "Join failed");
         } finally {
             setLoading(false);
         }
@@ -263,30 +249,20 @@ export default function OnboardingPage() {
 
         setLoading(true);
         try {
-            const res = await fetch("/api/onboarding/complete", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    password,
-                    bank_account_name: bankAccountName,
-                    bank_bsb: bankBsb,
-                    bank_account_number: bankAccountNumber,
-                    abn: abn,
-                    tfn: tfn,
-                    dob: dob,
-                }),
+            await apiPost("/onboarding/complete", {
+                password,
+                bank_account_name: null,
+                bank_bsb: null,
+                bank_account_number: null,
+                abn: null,
+                tfn: null,
+                dob: null,
             });
-
-            const data = await res.json();
-            if (!data.success) {
-                toast.error(data.error || "Onboarding failed");
-                return;
-            }
 
             toast.success("Welcome aboard! 🎉");
             router.push("/employee/dashboard");
-        } catch {
-            toast.error("Something went wrong");
+        } catch (err: any) {
+            toast.error(err.message || "Onboarding failed");
         } finally {
             setLoading(false);
         }
@@ -399,7 +375,7 @@ export default function OnboardingPage() {
                                 />
                             </div>
 
-                            <hr className="my-4 border-slate-100" />
+                            {/* <hr className="my-4 border-slate-100" />
                             <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Payroll Details</p>
 
                             <div className="space-y-[14px]">
@@ -433,7 +409,18 @@ export default function OnboardingPage() {
                                         className="h-10 text-sm" 
                                     />
                                 </div>
+                            </div> */}
+                            {/* ABN/TFN hidden for Rostering module phase
+                            <div className="space-y-[14px]">
+                                 <div className="space-y-[6px]">
+                                    {employmentType === 'contract' ? (
+                                        <Input label="ABN" showAsterisk placeholder="Format: 00 000 000 000" value={abn} onChange={(e) => setAbn(e.target.value)} required className="h-10 text-sm" />
+                                    ) : (
+                                        <Input label="TFN" showAsterisk placeholder="Format: 000 000 000" value={tfn} onChange={(e) => setTfn(e.target.value)} required className="h-10 text-sm" />
+                                    )}
+                                </div>
                             </div>
+                            */}
 
                             <Button type="submit" className="w-full h-11 text-[14px] font-medium bg-[#3724B3] hover:bg-[#261C7F] rounded-[8px] mt-4" loading={loading}>
                                 Join & Complete Onboarding
@@ -442,7 +429,7 @@ export default function OnboardingPage() {
                     ) : (
                         <form onSubmit={handleComplete} className="space-y-[18px] text-left">
                             <div className="space-y-[14px]">
-                                <div className="space-y-[6px]">
+                                {/* <div className="space-y-[6px]">
                                     <Input label="Bank Account Name" showAsterisk placeholder="John Doe" value={bankAccountName} onChange={(e) => setBankAccountName(e.target.value)} required className="h-10 text-sm" />
                                 </div>
                                 <div className="grid grid-cols-2 gap-3">
@@ -452,7 +439,7 @@ export default function OnboardingPage() {
                                     <div className="space-y-[6px]">
                                         <Input label="Account Number" showAsterisk placeholder="00000000" value={bankAccountNumber} onChange={(e) => setBankAccountNumber(e.target.value)} required className="h-10 text-sm" />
                                     </div>
-                                </div>
+                                </div> */}
                                 <div className="space-y-[6px]">
                                     {employmentType === 'contract' ? (
                                         <Input label="ABN" showAsterisk placeholder="Format: 00 000 000 000" value={abn} onChange={(e) => setAbn(e.target.value)} required className="h-10 text-sm" />
@@ -460,7 +447,7 @@ export default function OnboardingPage() {
                                         <Input label="TFN" showAsterisk placeholder="Format: 000 000 000" value={tfn} onChange={(e) => setTfn(e.target.value)} required className="h-10 text-sm" />
                                     )}
                                 </div>
-                                <div className="space-y-[6px]">
+                                {/* <div className="space-y-[6px]">
                                     <Input 
                                         label="Date of Birth" 
                                         type={dob ? "date" : "text"} 
@@ -471,7 +458,7 @@ export default function OnboardingPage() {
                                         onChange={(e) => setDob(e.target.value)} 
                                         className="h-10 text-sm" 
                                     />
-                                </div>
+                                </div> */}
                             </div>
 
                             {!isExistingUser && (

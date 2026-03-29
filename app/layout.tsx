@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import { Toaster } from "sonner";
 import { QueryProvider } from "@/components/providers/query-provider";
+import { PushNotificationManager } from "@/components/push-notification-manager";
 import "./globals.css";
 
 const inter = Inter({
@@ -13,6 +14,10 @@ export const metadata: Metadata = {
   title: "AU Payroll | Workforce Management",
   description: "Modern Australian payroll & workforce management platform. Manage rosters, timesheets, leave, and payroll — all in one place.",
   keywords: ["payroll", "workforce management", "rostering", "timesheets", "employee management", "australia"],
+  icons: {
+    icon: "/favicon.ico",
+    apple: "/icons/icon-192x192.png",
+  },
   manifest: "/manifest.json",
   themeColor: "#3724B3",
   appleWebApp: {
@@ -32,6 +37,7 @@ export default function RootLayout({
       <body className={`${inter.variable} font-sans antialiased`}>
         <QueryProvider>
           {children}
+          <PushNotificationManager />
         </QueryProvider>
         <script
           dangerouslySetInnerHTML={{

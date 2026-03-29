@@ -3,7 +3,6 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 import { requireRole } from '@/lib/auth';
 import { successResponse, errorResponse, validateRequiredFields } from '@/lib/api-helpers';
-import bcrypt from 'bcryptjs';
 
 /**
  * GET /api/managers

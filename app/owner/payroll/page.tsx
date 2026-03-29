@@ -12,9 +12,12 @@ import {
 } from "@/components/ui/dialog";
 import { apiGet, apiPut, apiPost, apiDelete } from "@/lib/api-client";
 import { toast } from "sonner";
-import { DollarSign, CheckCircle, Send, FileText, Plus, Trash2, CreditCard } from "lucide-react";
+import { DollarSign, CheckCircle, Send, FileText, Plus, Trash2, CreditCard, ChevronRight } from "lucide-react";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { cn } from "@/lib/utils";
 
 export default function OwnerPayrollPage() {
+    const isMobile = useIsMobile();
     const queryClient = useQueryClient();
     const [generateOpen, setGenerateOpen] = useState(false);
     const [periodStart, setPeriodStart] = useState("");
@@ -226,9 +229,35 @@ export default function OwnerPayrollPage() {
                             <p className="text-sm text-[hsl(var(--muted-foreground))]/70 mt-1">Generate payroll from approved timesheets to get started</p>
                         </CardContent>
                     </Card>
+                ) : isMobile ? (
+                    <div className="space-y-3">
+                        {paid.map((p: any) => (
+                            <Card key={p.payroll_id} className="animate-slide-up">
+                                <CardContent className="p-4 flex items-center justify-between">
+                                    <div className="flex flex-col gap-1">
+                                        <p className="font-bold text-[hsl(var(--foreground))]">
+                                            {new Date(p.period_start).toLocaleDateString("en-AU", { day: 'numeric', month: 'short' })} – {new Date(p.period_end).toLocaleDateString("en-AU", { day: 'numeric', month: 'short', year: 'numeric' })}
+                                        </p>
+                                        <div className="flex items-center gap-3 text-xs">
+                                            <span className="text-[hsl(var(--brand))] font-black">${p.total_net?.toLocaleString()} Net</span>
+                                            <span className="text-[hsl(var(--muted-foreground))]">${p.total_gross?.toLocaleString()} Gross</span>
+                                        </div>
+                                        <div className="flex items-center gap-2 mt-1">
+                                            <StatusBadge status={p.status} className="scale-75 origin-left" />
+                                            {p.approved_at && (
+                                                <span className="text-[10px] text-[hsl(var(--muted-foreground))]">Paid {new Date(p.approved_at).toLocaleDateString("en-AU")}</span>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <ChevronRight size={16} className="text-[hsl(var(--muted-foreground))]/40" />
+                                </CardContent>
+                            </Card>
+                        ))}
+                    </div>
                 ) : (
                     <div className="rounded-xl border border-[hsl(var(--border))] overflow-hidden">
                         <table className="w-full text-sm">
+                            {/* ... existing table code ... */}
                             <thead>
                                 <tr className="border-b border-[hsl(var(--border))] bg-[hsl(var(--muted))]">
                                     <th className="px-4 py-3 text-left font-medium text-[hsl(var(--muted-foreground))]">Period</th>
