@@ -6,11 +6,11 @@ import { DashboardLayout } from "@/components/layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { apiGet, apiPut } from "@/lib/api-client";
+import { apiGet, apiPut, apiPost } from "@/lib/api-client";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { toast } from "sonner";
-import { Save, User, Phone, Shield, Lock, KeyRound, Building2 } from "lucide-react";
+import { Save, User, Phone, Shield, Lock, KeyRound, Building2, Bell, RefreshCw, Send } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export default function ProfilePage() {
@@ -80,6 +80,46 @@ export default function ProfilePage() {
             setNewPwd("");
             setConfirmPwd("");
         }
+    };
+
+    // Push Notification Testing
+    const [pushStatus, setPushStatus] = useState<'granted' | 'denied' | 'default' | 'loading'>('loading');
+    const [hasSubscription, setHasSubscription] = useState<boolean | null>(null);
+
+    React.useEffect(() => {
+        if (typeof window !== "undefined" && "Notification" in window) {
+            setPushStatus(Notification.permission);
+            
+            const checkSub = async () => {
+                const reg = await navigator.serviceWorker.ready;
+                const sub = await reg.pushManager.getSubscription();
+                setHasSubscription(!!sub);
+            };
+            checkSub();
+        }
+    }, []);
+
+    const testPushMutation = useMutation({
+        mutationFn: () => apiPost(`/notifications/test-push`),
+        onSuccess: () => {
+            toast.success("Test signal sent!", {
+                description: "Wait 2-3 seconds. If you don't see a notification, check your device settings."
+            });
+        },
+        onError: (err: Error) => {
+            toast.error(`Test failed: ${err.message}`);
+        }
+    });
+
+    const triggerReRegister = () => {
+        window.dispatchEvent(new CustomEvent('trigger-push-subscribe'));
+        // Refresh status after a delay
+        setTimeout(async () => {
+            setPushStatus(Notification.permission);
+            const reg = await navigator.serviceWorker.ready;
+            const sub = await reg.pushManager.getSubscription();
+            setHasSubscription(!!sub);
+        }, 5000);
     };
 
     const updateField = (field: string, value: any) => {
@@ -224,7 +264,7 @@ export default function ProfilePage() {
                             <CardContent>
                                 {!pwdOpen ? (
                                     <Button variant="outline" className="w-full" onClick={() => setPwdOpen(true)}>
-                                        Change Password
+                                         Change Password
                                     </Button>
                                 ) : (
                                     <div className="space-y-3 p-4 border border-[hsl(var(--border))] rounded-lg bg-[hsl(var(--muted))]/30">
@@ -246,6 +286,58 @@ export default function ProfilePage() {
                                         </div>
                                     </div>
                                 )}
+                            </CardContent>
+                        </Card>
+
+                        <Card>
+                            <CardHeader>
+                                <CardTitle className="text-base flex items-center gap-2">
+                                    <Bell size={18} /> Push Notifications
+                                </CardTitle>
+                            </CardHeader>
+                            <CardContent className="space-y-4">
+                                <div className="flex items-center justify-between p-3 border rounded-lg bg-[hsl(var(--muted))]/10">
+                                    <div className="space-y-0.5">
+                                        <p className="text-sm font-medium">Device Registration</p>
+                                        <div className="flex items-center gap-2">
+                                            <div className={`h-2 w-2 rounded-full ${hasSubscription ? 'bg-[hsl(var(--success))]' : 'bg-[hsl(var(--destructive))]'}`} />
+                                            <p className="text-xs text-[hsl(var(--muted-foreground))] uppercase tracking-wider font-semibold">
+                                                {hasSubscription ? 'Registered' : 'Not Linked'}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <Button size="sm" variant="outline" onClick={triggerReRegister}>
+                                        <RefreshCw size={14} className="mr-2" /> 
+                                        {hasSubscription ? 'Re-sync' : 'Fix Registration'}
+                                    </Button>
+                                </div>
+
+                                <div className="flex items-center justify-between p-3 border rounded-lg bg-[hsl(var(--muted))]/10">
+                                    <div className="space-y-0.5">
+                                        <p className="text-sm font-medium">System Permissions</p>
+                                        <p className="text-xs text-[hsl(var(--muted-foreground))] uppercase tracking-wider font-semibold">
+                                            {pushStatus === 'granted' ? 'Allowed' : pushStatus === 'denied' ? 'Blocked' : 'Unknown'}
+                                        </p>
+                                    </div>
+                                    <span className={`text-xs px-2 py-0.5 rounded ${pushStatus === 'granted' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>
+                                        {pushStatus === 'granted' ? 'All good' : 'Check settings'}
+                                    </span>
+                                </div>
+
+                                <div className="pt-2">
+                                    <p className="text-[10px] text-[hsl(var(--muted-foreground))] mb-3 bg-[hsl(var(--muted))]/30 p-2 rounded leading-relaxed">
+                                        If notifications are not arriving, click <strong>Re-sync</strong>, then click <strong>Send Test signal</strong> and lock your phone immediately.
+                                    </p>
+                                    <Button 
+                                        className="w-full" 
+                                        variant="secondary"
+                                        disabled={!hasSubscription}
+                                        onClick={() => testPushMutation.mutate()}
+                                        loading={testPushMutation.isPending}
+                                    >
+                                        <Send size={14} className="mr-2" /> Send Test Signal to Device
+                                    </Button>
+                                </div>
                             </CardContent>
                         </Card>
                     </TabsContent>

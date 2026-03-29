@@ -43,26 +43,29 @@ export async function sendPushNotification(userId: string, title: string, body: 
   }
 
   if (!subscriptions || subscriptions.length === 0) {
+    console.warn(`[Push Service] No active subscriptions found for user ${userId}. Push skipped.`);
     return; // User has no subscriptions
   }
 
   const payload = JSON.stringify({ title, body, url });
+  console.log(`[Push Service] Sending to ${subscriptions.length} device(s) for user ${userId}...`);
 
   const notifications = subscriptions.map((sub: any) => 
     webpush.sendNotification(sub.subscription, payload)
+      .then(() => console.log(`[Push Service] Success: Signal delivered to endpoint.`))
       .catch((err: any) => {
          // Auto-delete expired/invalid subscriptions
          if (err.statusCode === 404 || err.statusCode === 410) {
-            console.log('Subscription expired. Deleting from database...', sub.subscription.endpoint);
+            console.log('[Push Service] Subscription expired/revoked. Deleting from database...', sub.subscription.endpoint);
             supabase.from('push_subscriptions')
                 .delete()
                 .eq('user_id', userId)
                 .contains('subscription', { endpoint: sub.subscription.endpoint })
                 .then(({ error }) => {
-                   if (error) console.error('Failed to cleanup expired subscription', error);
+                   if (error) console.error('[Push Service] Failed to cleanup expired subscription', error);
                 });
          } else {
-            console.error('Failed to send push notification to one endpoint:', err);
+            console.error('[Push Service] Error delivering signal to one endpoint:', err);
          }
       })
   );

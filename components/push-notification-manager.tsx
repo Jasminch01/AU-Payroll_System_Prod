@@ -29,24 +29,24 @@ export function PushNotificationManager() {
             const reg = await navigator.serviceWorker.ready;
             const sub = await reg.pushManager.getSubscription();
             if (sub) {
-               await fetch('/api/notifications/subscribe', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ subscription: sub }),
-               });
+              await fetch('/api/notifications/subscribe', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ subscription: sub }),
+              });
             }
           } catch (e) {
-             console.error('Silent push subscription sync failed:', e);
+            console.error('Silent push subscription sync failed:', e);
           }
         }
       };
-      
+
       syncSubscription();
-      
+
       const checkPermission = async () => {
         // Only show prompt on mobile devices
         const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-        
+
         if (isMobile && Notification.permission === 'default' && !localStorage.getItem('push_prompt_dismissed')) {
           // Show a toast to prompt the user
           toast("Enable Push Notifications", {
@@ -63,7 +63,7 @@ export function PushNotificationManager() {
           });
         }
       };
-      
+
       // Delay the check slightly to let the app load cleanly without immediate interruptions
       const timer = setTimeout(checkPermission, 3000);
 
@@ -71,10 +71,19 @@ export function PushNotificationManager() {
       window.addEventListener('appinstalled', checkPermission);
 
       return () => {
-          clearTimeout(timer);
-          window.removeEventListener('appinstalled', checkPermission);
+        clearTimeout(timer);
+        window.removeEventListener('appinstalled', checkPermission);
       };
     }
+  }, []);
+
+  // Expose the subscribe function to the window so it can be triggered from other components
+  useEffect(() => {
+    const handleTrigger = () => {
+      subscribeToPush();
+    };
+    window.addEventListener('trigger-push-subscribe', handleTrigger);
+    return () => window.removeEventListener('trigger-push-subscribe', handleTrigger);
   }, []);
 
   const subscribeToPush = async () => {
@@ -82,53 +91,65 @@ export function PushNotificationManager() {
     try {
       const permission = await Notification.requestPermission();
       if (permission !== 'granted') {
-         toast.error("Notifications were not allowed.", {
-             description: "You can enable them in your browser/device settings."
-         });
-         return;
+        toast.error("Notifications were not allowed.", {
+          description: "You can enable them in your browser/device settings."
+        });
+        return;
       }
 
       const registration = await navigator.serviceWorker.ready;
       if (!registration) {
-         toast.error("Service worker not active yet.");
-         return;
+        toast.error("Service worker not active yet.");
+        return;
       }
 
       const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
       if (!vapidPublicKey) {
-         console.error('VAPID public key not found in env');
-         return;
+        toast.error("Missing configuration", { description: "VAPID public key not found in env" });
+        console.error('VAPID public key not found in env');
+        return;
       }
-      
+
       const convertedVapidKey = urlBase64ToUint8Array(vapidPublicKey);
-      
+
+      toast.loading("Communicating with push service...", { id: 'push-sub' });
+
+      // Unsubscribe first to ensure a clean slate if we're re-registering
+      const existingSub = await registration.pushManager.getSubscription();
+      if (existingSub) {
+        await existingSub.unsubscribe();
+      }
+
       const subscription = await registration.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: convertedVapidKey
+        userVisibleOnly: true,
+        applicationServerKey: convertedVapidKey
       });
 
       // Send the subscription to the backend using the existing route
       const response = await fetch('/api/notifications/subscribe', {
-          method: 'POST',
-          headers: {
-              'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ subscription }),
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ subscription }),
       });
 
+      toast.dismiss('push-sub');
+
       if (!response.ok) {
-          throw new Error('Failed to save subscription');
+        throw new Error('Failed to save subscription');
       }
 
       toast.success("Push notifications enabled!", {
-          description: "You're all set to receive realtime shift updates."
+        description: "This device is now registered to receive realtime updates."
       });
-      
-    } catch (error) {
-       console.error('Error subscribing to push:', error);
-       toast.error("Failed to enable push notifications.", {
-           description: "Ensure your browser supports web push and try again."
-       });
+
+    } catch (error: any) {
+      toast.dismiss('push-sub');
+      console.error('Error subscribing to push:', error);
+      toast.error("Failed to enable push notifications.", {
+        description: error.message || "Ensure your browser supports web push and try again."
+      });
     }
   };
 
