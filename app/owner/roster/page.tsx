@@ -15,7 +15,7 @@ import { getShiftTypeFromTime } from "@/lib/shift-utils";
 import { EmployeeSearchPicker } from "@/components/roster/employee-search-picker";
 import { useEffect } from "react";
 import { toast } from "sonner";
-import { Plus, ChevronLeft, ChevronRight, Clock, Trash2, CheckCircle2, FileText, RefreshCcw, Copy, Bell, CalendarDays, Search, Filter, ChevronsLeft, ChevronsRight, GripVertical, MoreHorizontal, Users, ChevronDown, ArrowUpDown, ArrowDownAZ, ArrowDownZA } from "lucide-react";
+import { Plus, ChevronLeft, ChevronRight, Clock, Trash2, CheckCircle2, FileText, RefreshCcw, Copy, Bell, CalendarDays, Search, Filter, ChevronsLeft, ChevronsRight, GripVertical, MoreHorizontal, Users, ChevronDown, ArrowUpDown, ArrowDownAZ, ArrowDownZA, Settings2, ChevronUp, Info } from "lucide-react";
 import { Reorder, AnimatePresence, motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -119,6 +119,10 @@ export default function OwnerRosterPage() {
     const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
     const [selectedDate, setSelectedDate] = useState("");
     const [editingShiftId, setEditingShiftId] = useState<string | null>(null);
+    const [duplicateOpen, setDuplicateOpen] = useState(false);
+    const [targetDuplicateDate, setTargetDuplicateDate] = useState("");
+    const [sourceOffset, setSourceOffset] = useState(0);
+    const [targetOffset, setTargetOffset] = useState(1);
 
     // Mobile specific state
     const isMobile = useIsMobile();
@@ -130,17 +134,12 @@ export default function OwnerRosterPage() {
     const rangeStart = formatDate(rosterDates[0]);
     const rangeEnd = formatDate(rosterDates[rosterDates.length - 1]);
 
-    // Scroll mobile day picker to today on mount
+    // Scroll mobile day picker to selected day on mount
     useEffect(() => {
         if (isMobile) {
-            const today = new Date();
-            const index = rosterDates.findIndex(d => formatDate(d) === formatDate(today));
+            const index = rosterDates.findIndex(d => formatDate(d) === formatDate(new Date()));
             if (index !== -1) {
                 setSelectedDayIndex(index);
-                // Wait for the button to render then scroll it into view
-                setTimeout(() => {
-                    document.getElementById("today-button")?.scrollIntoView({ behavior: 'smooth', inline: 'center' });
-                }, 300);
             }
         }
     }, [isMobile, rosterDates]);
@@ -177,7 +176,27 @@ export default function OwnerRosterPage() {
     const [pendingShiftData, setPendingShiftData] = useState<any>(null);
 
     // Copy Shifts state
-    const [copyOption, setCopyOption] = useState<'next_week' | 'prev_week'>('next_week');
+    const [copyOption, setCopyOption] = useState<'next_week' | 'prev_week' | 'specific' | 'advanced'>('next_week');
+    const [selectedSourceRosterId, setSelectedSourceRosterId] = useState<string>("");
+    const [isAdvancedCopy, setIsAdvancedCopy] = useState(false);
+    const [advancedCopyConfig, setAdvancedCopyConfig] = useState({
+        source_from: "",
+        source_to: "",
+        target_start: ""
+    });
+
+    // Initialize advanced config when dialog opens
+    useEffect(() => {
+        if (duplicateOpen) {
+            setSourceOffset(offset);
+            setTargetOffset(offset + 1);
+            setAdvancedCopyConfig({
+                source_from: rangeStart,
+                source_to: rangeEnd,
+                target_start: formatDate(addDays(new Date(rangeEnd + 'T00:00:00Z'), 1))
+            });
+        }
+    }, [duplicateOpen, rangeStart, rangeEnd, offset]);
 
     // Copy Review & Undo state
     const [copyResult, setCopyResult] = useState<{
@@ -424,8 +443,7 @@ export default function OwnerRosterPage() {
         },
     });
 
-    const [duplicateOpen, setDuplicateOpen] = useState(false);
-    const [targetDuplicateDate, setTargetDuplicateDate] = useState("");
+
     const duplicateRosterMutation = useMutation({
         mutationFn: (data: { source_from: string; source_to: string; target_start: string }) =>
             apiPost(`/rosters/copy-shifts`, data),
@@ -452,6 +470,7 @@ export default function OwnerRosterPage() {
         mutationFn: () => apiPost("/shift/delete-many", { ids: lastNewShiftIds }),
         onSuccess: () => {
             toast.success("Last copy operation undone successfully");
+            setLastNewShiftIds([]);
             queryClient.invalidateQueries({ queryKey: ["shifts"] });
             queryClient.invalidateQueries({ queryKey: ["rosters"] });
             setUndoConfirmOpen(false);
@@ -779,19 +798,6 @@ export default function OwnerRosterPage() {
                                             );
                                         });
                                     })()}
-                                </div>
-                                <div className="mt-4 pt-4 border-t flex justify-center">
-                                    <Button
-                                        variant="outline"
-                                        className="w-full bg-[hsl(var(--brand))]/5 border-[hsl(var(--brand))]/20 text-[hsl(var(--brand))] font-bold hover:bg-[hsl(var(--brand))]/10 transition-colors py-5"
-                                        onClick={() => {
-                                            setOffset(0);
-                                            setCalendarMonth(new Date());
-                                            setIsCalendarOpen(false);
-                                        }}
-                                    >
-                                        Jump to Current Week
-                                    </Button>
                                 </div>
                             </div>
                         </PopoverContent>
@@ -1550,7 +1556,7 @@ export default function OwnerRosterPage() {
                                                 className={cn(
                                                     "h-8 w-8 text-xs font-bold rounded-lg transition-all",
                                                     currentPage === p
-                                                        ? "bg-[hsl(var(--brand))] text-white shadow-md shadow-[hsl(var(--brand))]/20"
+                                                        ? "bg-[hsl(var(--brand))] text-white"
                                                         : "hover:bg-[hsl(var(--muted))] text-[hsl(var(--foreground))]"
                                                 )}
                                             >
@@ -1757,58 +1763,111 @@ export default function OwnerRosterPage() {
                         </DialogHeader>
 
                         <div className="space-y-6">
-                            <div>
-                                <h3 className="text-sm font-bold text-[hsl(var(--muted-foreground))] uppercase tracking-wider mb-4">Dates</h3>
-                                <div className="space-y-3">
+                            <div className="flex items-center justify-between pl-1">
+                                <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Quick Copy</h3>
+                                <button
+                                    onClick={() => setIsAdvancedCopy(!isAdvancedCopy)}
+                                    className="text-[10px] font-black text-[hsl(var(--brand))] uppercase tracking-widest flex items-center gap-1 hover:underline"
+                                >
+                                    {isAdvancedCopy ? <ChevronUp size={12} /> : <Settings2 size={12} />}
+                                    {isAdvancedCopy ? "Simplified" : "Advanced"}
+                                </button>
+                            </div>
+
+                            {!isAdvancedCopy ? (
+                                <div className="grid grid-cols-2 gap-3">
                                     {[
-                                        {
-                                            id: 'next_week',
-                                            label: `Copy to next ${rosterPeriod === 'weekly' ? 'week' : rosterPeriod === 'fortnightly' ? 'fortnight' : 'month'}`
-                                        },
-                                        {
-                                            id: 'prev_week',
-                                            label: `Copy from previous ${rosterPeriod === 'weekly' ? 'week' : rosterPeriod === 'fortnightly' ? 'fortnight' : 'month'}`
-                                        }
+                                        { id: 'next_week', label: `Next ${rosterPeriod === 'monthly' ? 'Month' : 'Week'}`, icon: ChevronRight },
+                                        { id: 'prev_week', label: `Prev ${rosterPeriod === 'monthly' ? 'Month' : 'Week'}`, icon: ChevronLeft }
                                     ].map((opt) => (
-                                        <label
+                                        <button
                                             key={opt.id}
+                                            onClick={() => setCopyOption(opt.id as any)}
                                             className={cn(
-                                                "flex items-center gap-3 p-3 rounded-xl border-2 transition-all cursor-pointer",
+                                                "flex flex-col items-center justify-center gap-3 p-4 rounded-xl border-2 transition-all group",
                                                 copyOption === opt.id
-                                                    ? "border-[hsl(var(--brand))] bg-[hsl(var(--brand))]/5"
-                                                    : "border-[hsl(var(--border))] hover:border-[hsl(var(--brand))]/30"
+                                                    ? "bg-[hsl(var(--brand))]/5 border-[hsl(var(--brand))] text-[hsl(var(--brand))]"
+                                                    : "bg-white border-slate-100 text-slate-500 hover:border-slate-200"
                                             )}
                                         >
                                             <div className={cn(
-                                                "w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all",
-                                                copyOption === opt.id ? "border-[hsl(var(--brand))]" : "border-[hsl(var(--border))]"
+                                                "w-10 h-10 rounded-full flex items-center justify-center transition-all",
+                                                copyOption === opt.id ? "bg-[hsl(var(--brand))] text-white shadow-lg shadow-[hsl(var(--brand))]/20" : "bg-slate-50 text-slate-400"
                                             )}>
-                                                {copyOption === opt.id && <div className="w-2.5 h-2.5 rounded-full bg-[hsl(var(--brand))]" />}
+                                                <opt.icon size={18} />
                                             </div>
-                                            <input
-                                                type="radio"
-                                                className="hidden"
-                                                name="copyOption"
-                                                value={opt.id}
-                                                checked={copyOption === opt.id}
-                                                onChange={() => setCopyOption(opt.id as any)}
-                                            />
-                                            <span className="font-semibold text-sm">{opt.label}</span>
-                                        </label>
+                                            <span className="text-xs font-black uppercase tracking-wider">{opt.label}</span>
+                                        </button>
                                     ))}
                                 </div>
-                            </div>
+                            ) : (
+                                <div className="space-y-4 p-4 bg-slate-50 rounded-2xl border border-slate-100 animate-in slide-in-from-top-2 duration-300">
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Copy Shifts From</label>
+                                        <div className="relative group">
+                                            <select
+                                                value={sourceOffset}
+                                                onChange={(e) => setSourceOffset(parseInt(e.target.value))}
+                                                className="w-full h-11 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 outline-none transition-all focus:ring-4 focus:ring-[hsl(var(--brand))]/10 focus:border-[hsl(var(--brand))] appearance-none cursor-pointer pr-10"
+                                            >
+                                                {periodOptions.map((opt) => (
+                                                    <option key={opt.offset} value={opt.offset}>
+                                                        {opt.label} {opt.offset === offset ? "(Current View)" : ""}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                            <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                                                <ChevronDown size={16} />
+                                            </div>
+                                        </div>
+                                    </div>
 
-                            {/* Advanced removed by request */}
+                                    <div className="flex justify-center -my-2 relative z-10">
+                                        <div className="bg-white p-2 rounded-full border border-slate-100 shadow-sm text-[hsl(var(--brand))]">
+                                            <ArrowUpDown size={14} strokeWidth={3} />
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Copy Shifts To</label>
+                                        <div className="relative group">
+                                            <select
+                                                value={targetOffset}
+                                                onChange={(e) => setTargetOffset(parseInt(e.target.value))}
+                                                className="w-full h-11 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 outline-none transition-all focus:ring-4 focus:ring-[hsl(var(--brand))]/10 focus:border-[hsl(var(--brand))] appearance-none cursor-pointer pr-10"
+                                            >
+                                                {periodOptions.map((opt) => (
+                                                    <option key={opt.offset} value={opt.offset}>
+                                                        {opt.label} {opt.offset === offset ? "(Current View)" : ""}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                            <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                                                <ChevronDown size={16} />
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
                         </div>
 
                         <div className="flex justify-end mt-8">
                             <Button
                                 className="px-8 py-6 rounded-xl bg-[hsl(var(--brand))] text-white hover:bg-[hsl(var(--brand-hover))] font-bold text-lg shadow-lg shadow-[hsl(var(--brand))]/20"
                                 onClick={() => {
-                                    let payload: any = { source_from: "", source_to: "", target_start: "" };
+                                    let payload: any = null;
 
-                                    if (copyOption === 'next_week') {
+                                    if (isAdvancedCopy) {
+                                        const sourceOpt = periodOptions.find(o => o.offset === sourceOffset);
+                                        const targetOpt = periodOptions.find(o => o.offset === targetOffset);
+                                        if (sourceOpt && targetOpt) {
+                                            payload = {
+                                                source_from: sourceOpt.start,
+                                                source_to: sourceOpt.end,
+                                                target_start: targetOpt.start
+                                            };
+                                        }
+                                    } else if (copyOption === 'next_week') {
                                         let daysToAdd = 7;
                                         if (rosterPeriod === 'fortnightly') daysToAdd = 14;
 
@@ -1829,7 +1888,7 @@ export default function OwnerRosterPage() {
                                                 target_start: formatDate(addDays(new Date(rangeStart + 'T00:00:00Z'), daysToAdd))
                                             };
                                         }
-                                    } else {
+                                    } else if (copyOption === 'prev_week') {
                                         let daysToSub = 7;
                                         if (rosterPeriod === 'fortnightly') daysToSub = 14;
 
@@ -1856,7 +1915,9 @@ export default function OwnerRosterPage() {
                                         }
                                     }
 
-                                    duplicateRosterMutation.mutate(payload);
+                                    if (payload) {
+                                        duplicateRosterMutation.mutate(payload);
+                                    }
                                 }}
                                 loading={duplicateRosterMutation.isPending}
                             >
