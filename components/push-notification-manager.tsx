@@ -17,6 +17,96 @@ function urlBase64ToUint8Array(base64String: string) {
 export function PushNotificationManager() {
   const [isSupported, setIsSupported] = useState(false);
 
+  const subscribeToPush = async (isSilent: boolean = false) => {
+    if (!isSilent) console.log('[PushManager] Starting subscribeToPush process...');
+    if (!isSilent) toast.dismiss();
+    try {
+      if (!('serviceWorker' in navigator)) {
+        throw new Error('Service workers are not supported by this browser.');
+      }
+      if (!('PushManager' in window)) {
+        throw new Error('Push notifications are not supported by this browser.');
+      }
+
+      if (!isSilent) console.log('[PushManager] Requesting permission...');
+      const permission = await Notification.requestPermission();
+      if (!isSilent) console.log('[PushManager] Permission status:', permission);
+      
+      if (permission !== 'granted') {
+        if (!isSilent) {
+          toast.error("Notifications were not allowed.", {
+            description: "You can enable them in your browser/device settings."
+          });
+        }
+        return;
+      }
+
+      if (!isSilent) console.log('[PushManager] Waiting for service worker to be ready...');
+      const registration = await navigator.serviceWorker.ready;
+      
+      if (!registration) {
+        if (!isSilent) toast.error("Service worker not active yet.");
+        return;
+      }
+
+      const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+      if (!vapidPublicKey) {
+        if (!isSilent) toast.error("Missing configuration", { description: "VAPID public key not found in env" });
+        console.error('VAPID public key not found in env');
+        return;
+      }
+
+      const convertedVapidKey = urlBase64ToUint8Array(vapidPublicKey);
+
+      if (!isSilent) toast.loading("Communicating with push service...", { id: 'push-sub' });
+
+      // Unsubscribe first to ensure a clean slate if we're re-registering
+      const existingSub = await registration.pushManager.getSubscription();
+      if (existingSub) {
+        await existingSub.unsubscribe();
+      }
+
+      const subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: convertedVapidKey
+      });
+
+      // Send the subscription to the backend using the existing route
+      const response = await fetch('/api/notifications/subscribe', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ subscription }),
+      });
+
+      if (!isSilent) toast.dismiss('push-sub');
+
+      if (!response.ok) {
+        throw new Error('Failed to save subscription');
+      }
+
+      if (!isSilent) {
+        toast.success("Push notifications enabled!", {
+          description: "This device is now registered to receive realtime updates."
+        });
+      } else {
+        console.log('[PushManager] Silent subscription successful');
+      }
+
+    } catch (error: any) {
+      if (!isSilent) {
+        toast.dismiss('push-sub');
+        console.error('Error subscribing to push:', error);
+        toast.error("Failed to enable push notifications.", {
+          description: error.message || "Ensure your browser supports web push and try again."
+        });
+      } else {
+        console.error('[PushManager] Silent subscription error:', error);
+      }
+    }
+  };
+
   useEffect(() => {
     if ('serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window) {
       setIsSupported(true);
@@ -34,6 +124,11 @@ export function PushNotificationManager() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ subscription: sub }),
               });
+            } else {
+              // We have permission, but no subscription exists (e.g., SW was re-registered or sub lost)
+              // We can silently subscribe without a prompt!
+              console.log('[PushManager] Permission granted but no active subscription found. Silently subscribing...');
+              await subscribeToPush(true);
             }
           } catch (e) {
             console.error('Silent push subscription sync failed:', e);
@@ -44,17 +139,18 @@ export function PushNotificationManager() {
       syncSubscription();
 
       const checkPermission = async () => {
-        // Only show prompt on mobile devices
+        // Check for mobile or PWA standalone mode
         const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        const isPWA = window.matchMedia('(display-mode: standalone)').matches || (navigator as any).standalone;
 
-        if (isMobile && Notification.permission === 'default' && !localStorage.getItem('push_prompt_dismissed')) {
+        if ((isMobile || isPWA) && Notification.permission === 'default' && !localStorage.getItem('push_prompt_dismissed')) {
           // Show a toast to prompt the user
           toast("Enable Push Notifications", {
             description: "Get notified immediately about your latest shifts, updates, and more.",
             duration: Infinity, // Keep it visible until action is taken
             action: {
               label: "Enable",
-              onClick: subscribeToPush
+              onClick: () => subscribeToPush(false)
             },
             cancel: {
               label: "Later",
@@ -82,92 +178,11 @@ export function PushNotificationManager() {
     console.log('[PushManager] Mounted and listening for trigger-push-subscribe event');
     const handleTrigger = () => {
       console.log('[PushManager] Received trigger-push-subscribe event');
-      subscribeToPush();
+      subscribeToPush(false);
     };
     window.addEventListener('trigger-push-subscribe', handleTrigger);
     return () => window.removeEventListener('trigger-push-subscribe', handleTrigger);
   }, []);
-
-  const subscribeToPush = async () => {
-    console.log('[PushManager] Starting subscribeToPush process...');
-    toast.dismiss();
-    try {
-      if (!('serviceWorker' in navigator)) {
-        throw new Error('Service workers are not supported by this browser.');
-      }
-      if (!('PushManager' in window)) {
-        throw new Error('Push notifications are not supported by this browser.');
-      }
-
-      console.log('[PushManager] Requesting permission...');
-      const permission = await Notification.requestPermission();
-      console.log('[PushManager] Permission status:', permission);
-      
-      if (permission !== 'granted') {
-        toast.error("Notifications were not allowed.", {
-          description: "You can enable them in your browser/device settings."
-        });
-        return;
-      }
-
-      console.log('[PushManager] Waiting for service worker to be ready...');
-      const registration = await navigator.serviceWorker.ready;
-      console.log('[PushManager] Service worker ready:', registration.scope);
-      
-      if (!registration) {
-        toast.error("Service worker not active yet.");
-        return;
-      }
-
-      const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
-      if (!vapidPublicKey) {
-        toast.error("Missing configuration", { description: "VAPID public key not found in env" });
-        console.error('VAPID public key not found in env');
-        return;
-      }
-
-      const convertedVapidKey = urlBase64ToUint8Array(vapidPublicKey);
-
-      toast.loading("Communicating with push service...", { id: 'push-sub' });
-
-      // Unsubscribe first to ensure a clean slate if we're re-registering
-      const existingSub = await registration.pushManager.getSubscription();
-      if (existingSub) {
-        await existingSub.unsubscribe();
-      }
-
-      const subscription = await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: convertedVapidKey
-      });
-
-      // Send the subscription to the backend using the existing route
-      const response = await fetch('/api/notifications/subscribe', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ subscription }),
-      });
-
-      toast.dismiss('push-sub');
-
-      if (!response.ok) {
-        throw new Error('Failed to save subscription');
-      }
-
-      toast.success("Push notifications enabled!", {
-        description: "This device is now registered to receive realtime updates."
-      });
-
-    } catch (error: any) {
-      toast.dismiss('push-sub');
-      console.error('Error subscribing to push:', error);
-      toast.error("Failed to enable push notifications.", {
-        description: error.message || "Ensure your browser supports web push and try again."
-      });
-    }
-  };
 
   // We do not render any UI inline; we only use toasts.
   return null;

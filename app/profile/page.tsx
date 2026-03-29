@@ -10,7 +10,7 @@ import { apiGet, apiPut, apiPost } from "@/lib/api-client";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { toast } from "sonner";
-import { Save, User, Phone, Shield, Lock, KeyRound, Building2, Bell, RefreshCw, Send } from "lucide-react";
+import { Save, User, Phone, Shield, Lock, KeyRound, Building2 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export default function ProfilePage() {
@@ -82,49 +82,7 @@ export default function ProfilePage() {
         }
     };
 
-    // Push Notification Testing
-    const [pushStatus, setPushStatus] = useState<'granted' | 'denied' | 'default' | 'loading'>('loading');
-    const [hasSubscription, setHasSubscription] = useState<boolean | null>(null);
 
-    React.useEffect(() => {
-        if (typeof window !== "undefined" && "Notification" in window) {
-            setPushStatus(Notification.permission);
-            
-            const checkSub = async () => {
-                const reg = await navigator.serviceWorker.ready;
-                const sub = await reg.pushManager.getSubscription();
-                setHasSubscription(!!sub);
-            };
-            checkSub();
-        }
-    }, []);
-
-    const testPushMutation = useMutation({
-        mutationFn: () => apiPost(`/notifications/test-push`),
-        onSuccess: () => {
-            toast.success("Test signal sent!", {
-                description: "Wait 2-3 seconds. If you don't see a notification, check your device settings."
-            });
-        },
-        onError: (err: Error) => {
-            toast.error(`Test failed: ${err.message}`);
-        }
-    });
-
-    const triggerReRegister = () => {
-        console.log('[Profile] dispatching trigger-push-subscribe event from button click');
-        window.dispatchEvent(new CustomEvent('trigger-push-subscribe'));
-        // Refresh status after a delay
-        setTimeout(async () => {
-            console.log('[Profile] refreshing status after re-registration attempt');
-            if (typeof window !== "undefined" && "Notification" in window) {
-                setPushStatus(Notification.permission);
-                const reg = await navigator.serviceWorker.ready;
-                const sub = await reg.pushManager.getSubscription();
-                setHasSubscription(!!sub);
-            }
-        }, 5000);
-    };
 
     const updateField = (field: string, value: any) => {
         setFormData((prev: any) => ({ ...prev, [field]: value }));
@@ -142,24 +100,7 @@ export default function ProfilePage() {
 
     const data = formData || profile || {};
 
-    // Diagnostic State
-    const [diagnostics, setDiagnostics] = useState<any>({
-        isSecure: false,
-        swSupport: false,
-        pushSupport: false,
-        notificationSupport: false,
-        vapidKeyFound: false,
-    });
 
-    React.useEffect(() => {
-        setDiagnostics({
-            isSecure: typeof window !== 'undefined' && window.isSecureContext,
-            swSupport: typeof navigator !== 'undefined' && 'serviceWorker' in navigator,
-            pushSupport: typeof window !== 'undefined' && 'PushManager' in window,
-            notificationSupport: typeof window !== 'undefined' && 'Notification' in window,
-            vapidKeyFound: !!process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY,
-        });
-    }, []);
 
     return (
         <DashboardLayout
@@ -302,86 +243,7 @@ export default function ProfilePage() {
                             </CardContent>
                         </Card>
 
-                        <Card>
-                            <CardHeader>
-                                <CardTitle className="text-base flex items-center gap-2">
-                                    <Bell size={18} /> Push Notifications
-                                </CardTitle>
-                            </CardHeader>
-                            <CardContent className="space-y-4">
-                                <div className="flex items-center justify-between p-3 border rounded-lg bg-[hsl(var(--muted))]/10">
-                                    <div className="space-y-0.5">
-                                        <p className="text-sm font-medium">Device Registration</p>
-                                        <div className="flex items-center gap-2">
-                                            <div className={`h-2 w-2 rounded-full ${hasSubscription ? 'bg-[hsl(var(--success))]' : 'bg-[hsl(var(--destructive))]'}`} />
-                                            <p className="text-xs text-[hsl(var(--muted-foreground))] uppercase tracking-wider font-semibold">
-                                                {hasSubscription ? 'Registered' : 'Not Linked'}
-                                            </p>
-                                        </div>
-                                    </div>
-                                    <Button size="sm" variant="outline" onClick={triggerReRegister}>
-                                        <RefreshCw size={14} className="mr-2" /> 
-                                        {hasSubscription ? 'Re-sync' : 'Fix Registration'}
-                                    </Button>
-                                </div>
 
-                                <div className="flex items-center justify-between p-3 border rounded-lg bg-[hsl(var(--muted))]/10">
-                                    <div className="space-y-0.5">
-                                        <p className="text-sm font-medium">System Permissions</p>
-                                        <p className="text-xs text-[hsl(var(--muted-foreground))] uppercase tracking-wider font-semibold">
-                                            {pushStatus === 'granted' ? 'Allowed' : pushStatus === 'denied' ? 'Blocked' : 'Unknown'}
-                                        </p>
-                                    </div>
-                                    <span className={`text-xs px-2 py-0.5 rounded ${pushStatus === 'granted' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>
-                                        {pushStatus === 'granted' ? 'All good' : 'Check settings'}
-                                    </span>
-                                </div>
-
-                                <div className="pt-2">
-                                    <p className="text-[10px] text-[hsl(var(--muted-foreground))] mb-3 bg-[hsl(var(--muted))]/30 p-2 rounded leading-relaxed">
-                                        If notifications are not arriving, click <strong>Re-sync</strong>, then click <strong>Send Test signal</strong> and lock your phone immediately.
-                                    </p>
-                                    <Button 
-                                        className="w-full" 
-                                        variant="secondary"
-                                        disabled={!hasSubscription}
-                                        onClick={() => testPushMutation.mutate()}
-                                        loading={testPushMutation.isPending}
-                                    >
-                                        <Send size={14} className="mr-2" /> Send Test Signal to Device
-                                    </Button>
-                                </div>
-
-                                <div className="mt-4 pt-4 border-t border-[hsl(var(--border))]">
-                                    <h4 className="text-xs font-semibold mb-2 flex items-center gap-2">
-                                        <Shield size={12} /> Diagnostic Info
-                                    </h4>
-                                    <div className="grid grid-cols-2 gap-2 text-[10px] font-mono">
-                                        <div className="flex items-center gap-1.5 p-1.5 border rounded bg-[hsl(var(--muted))]/10">
-                                            <div className={`h-1.5 w-1.5 rounded-full ${diagnostics.isSecure ? 'bg-[hsl(var(--success))]' : 'bg-[hsl(var(--destructive))]'}`} />
-                                            <span>Secure Context: {diagnostics.isSecure ? 'YES' : 'NO'}</span>
-                                        </div>
-                                        <div className="flex items-center gap-1.5 p-1.5 border rounded bg-[hsl(var(--muted))]/10">
-                                            <div className={`h-1.5 w-1.5 rounded-full ${diagnostics.swSupport ? 'bg-[hsl(var(--success))]' : 'bg-[hsl(var(--destructive))]'}`} />
-                                            <span>SW Support: {diagnostics.swSupport ? 'YES' : 'NO'}</span>
-                                        </div>
-                                        <div className="flex items-center gap-1.5 p-1.5 border rounded bg-[hsl(var(--muted))]/10">
-                                            <div className={`h-1.5 w-1.5 rounded-full ${diagnostics.pushSupport ? 'bg-[hsl(var(--success))]' : 'bg-[hsl(var(--destructive))]'}`} />
-                                            <span>Push Support: {diagnostics.pushSupport ? 'YES' : 'NO'}</span>
-                                        </div>
-                                        <div className="flex items-center gap-1.5 p-1.5 border rounded bg-[hsl(var(--muted))]/10">
-                                            <div className={`h-1.5 w-1.5 rounded-full ${diagnostics.vapidKeyFound ? 'bg-[hsl(var(--success))]' : 'bg-[hsl(var(--destructive))]'}`} />
-                                            <span>VAPID Key: {diagnostics.vapidKeyFound ? 'FOUND' : 'MISSING'}</span>
-                                        </div>
-                                    </div>
-                                    {!diagnostics.isSecure && (
-                                        <p className="text-[10px] text-[hsl(var(--destructive))] mt-2 bg-[hsl(var(--destructive))]/5 p-2 rounded">
-                                            IMPORTANT: Your site is currently not running on HTTPS. Push notifications will NOT work.
-                                        </p>
-                                    )}
-                                </div>
-                            </CardContent>
-                        </Card>
                     </TabsContent>
 
                     {role !== 'owner' && (
