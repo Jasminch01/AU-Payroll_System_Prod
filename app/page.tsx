@@ -83,10 +83,12 @@ export default function LandingPage() {
   }, [isInstallable]);
 
   const handleInstallClick = async () => {
-    const result = await installPWA();
-    if (isIOS && result) {
+    if (isIOS) {
+      // iOS Safari cannot programmatically install a PWA — show manual instructions instead
       setShowIosPrompt(true);
+      return;
     }
+    const result = await installPWA();
     setShowBanner(false);
   };
   return (
@@ -109,8 +111,8 @@ export default function LandingPage() {
                 Get Started <ArrowRight size={16} />
               </Button>
             </Link>
-            {isInstallable && (
-              <Button variant="outline" size="icon" onClick={handleInstallClick} title="Download App" className="flex md:hidden">
+            {(isInstallable || isIOS) && (
+              <Button variant="outline" size="icon" onClick={handleInstallClick} title="Install App" className="flex md:hidden">
                 <Download size={18} />
               </Button>
             )}

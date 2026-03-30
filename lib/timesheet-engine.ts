@@ -169,8 +169,16 @@ function processDay(
     const firstIn = segments.length > 0 ? segments[0].in : null;
     const lastOut = segments.length > 0 ? segments[segments.length - 1].out : null;
 
-    let rosterStart: Date | null = shift ? new Date(shift.start_time) : null;
-    let rosterEnd: Date | null = shift ? new Date(shift.end_time) : null;
+    const parseFullDate = (dateStr: string, timeStr: string | null) => {
+        if (!timeStr) return null;
+        // If it's already a full ISO string, use it.
+        if (timeStr.includes('T')) return new Date(timeStr);
+        // If it's just a time string HH:mm:ss, combine it with the date.
+        return new Date(`${dateStr}T${timeStr}`);
+    };
+
+    let rosterStart: Date | null = shift ? parseFullDate(date, shift.start_time) : null;
+    let rosterEnd: Date | null = shift ? parseFullDate(date, shift.end_time) : null;
 
     let flags: string[] = [];
     let status: TimesheetStatus = 'pending';
@@ -247,8 +255,8 @@ function processDay(
             rate_type: null,
             actual_start: null,
             actual_end: null,
-            roster_start: rosterStart ? rosterStart.toISOString().split('T')[0] : null,
-            roster_end: rosterEnd ? rosterEnd.toISOString().split('T')[0] : null
+            roster_start: rosterStart && !isNaN(rosterStart.getTime()) ? rosterStart.toISOString().split('T')[0] : null,
+            roster_end: rosterEnd && !isNaN(rosterEnd.getTime()) ? rosterEnd.toISOString().split('T')[0] : null
         } as TimeSheetInsert;
     }
 

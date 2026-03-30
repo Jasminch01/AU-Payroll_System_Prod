@@ -574,14 +574,27 @@ export default function ManagerRosterPage() {
 
         if (shift) {
             setEditingShiftId(shift.shift_id);
-            setShiftStart(new Date(shift.start_time).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }));
-            setShiftEnd(new Date(shift.end_time).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }));
+            const parseTime = (timeStr: string) => {
+                if (!timeStr) return "09:00";
+                if (timeStr.includes("T")) {
+                    return new Date(timeStr).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+                }
+                // If it's already HH:mm or HH:mm:ss, return first 5 chars
+                return timeStr.substring(0, 5);
+            };
+
+            const startTime = parseTime(shift.start_time);
+            const endTime = parseTime(shift.end_time);
+
+            setShiftStart(startTime);
+            setShiftEnd(endTime);
             setShiftType(shift.shift_type);
+
             setInitialFormState({
                 employee_id: empId,
                 shift_date: date,
-                start_time: new Date(shift.start_time).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }),
-                end_time: new Date(shift.end_time).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }),
+                start_time: startTime,
+                end_time: endTime,
                 shift_type: shift.shift_type
             });
         } else {
