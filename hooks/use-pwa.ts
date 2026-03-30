@@ -9,59 +9,65 @@ export function usePWA() {
   const [isStandalone, setIsStandalone] = useState(false);
 
   useEffect(() => {
-    // Detect iOS
-    const userAgent = window.navigator.userAgent.toLowerCase();
-    const isIOSDevice = /iphone|ipad|ipod/.test(userAgent) || 
-                       (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); // iPad Pro
+    // Detect iOS (iPhone, iPad, iPod — including iPad Pro which reports MacIntel)
+    const ua = window.navigator.userAgent.toLowerCase();
+    const isIOSDevice =
+      /iphone|ipad|ipod/.test(ua) ||
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
     setIsIOS(isIOSDevice);
 
-    // Check if already installed
-    const isStandaloneMode = window.matchMedia('(display-mode: standalone)').matches || 
-                            (window.navigator as any).standalone === true;
+    // Check if already running as installed PWA
+    const isStandaloneMode =
+      window.matchMedia('(display-mode: standalone)').matches ||
+      (window.navigator as any).standalone === true;
     setIsStandalone(isStandaloneMode);
 
-    // If it's iOS and not already installed, it's "installable" via our custom prompt
+    // iOS: show install option if not already installed
+    // (iOS never fires beforeinstallprompt — we handle iOS separately via the modal)
     if (isIOSDevice && !isStandaloneMode) {
       setIsInstallable(true);
     }
 
+    // Android / Chrome: listen for the native install prompt
     const handler = (e: any) => {
-      // Prevent the mini-infobar from appearing on mobile
-      e.preventDefault();
-      // Stash the event so it can be triggered later.
+      e.preventDefault(); // prevent mini-infobar
       setDeferredPrompt(e);
       setIsInstallable(true);
     };
 
     window.addEventListener('beforeinstallprompt', handler);
 
-    return () => window.removeEventListener('beforeinstallprompt', handler);
+    // Hide install button once the app is actually installed
+    const handleInstalled = () => {
+      setIsInstallable(false);
+      setDeferredPrompt(null);
+      setIsStandalone(true);
+    };
+    window.addEventListener('appinstalled', handleInstalled);
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handler);
+      window.removeEventListener('appinstalled', handleInstalled);
+    };
   }, []);
 
-  const installPWA = async () => {
-    if (isIOS) {
-      // For iOS, we'll handle this in the UI by showing a prompt
-      return true;
-    }
+  const installPWA = async (): Promise<boolean> => {
+    // iOS: caller is responsible for showing the manual instructions modal
+    if (isIOS) return false;
 
     if (!deferredPrompt) return false;
-    
-    // Show the install prompt
+
+    // Show the native Android/Chrome install prompt
     deferredPrompt.prompt();
-    
-    // Wait for the user to respond to the prompt
     const { outcome } = await deferredPrompt.userChoice;
-    
-    if (outcome === 'accepted') {
-      console.log('User accepted the PWA install');
-    } else {
-      console.log('User dismissed the PWA install');
-    }
-    
-    // We've used the prompt, and can't use it again
+
     setDeferredPrompt(null);
-    setIsInstallable(false);
-    return outcome === 'accepted';
+
+    if (outcome === 'accepted') {
+      setIsInstallable(false);
+      return true;
+    }
+    return false;
   };
 
   return { isInstallable, installPWA, isIOS, isStandalone };
