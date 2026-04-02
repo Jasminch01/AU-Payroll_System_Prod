@@ -19,9 +19,11 @@ import {
     Timer,
     ChevronRight,
     Plus,
+    Edit2,
 } from "lucide-react";
 import type { AttendanceLog } from "@/types/database";
 import { cn } from "@/lib/utils";
+import { EditAttendanceModal } from "@/components/attendance/edit-attendance-modal";
 
 /* ===== Types ===== */
 
@@ -95,6 +97,8 @@ export default function OwnerAttendancePage() {
     const [toDate, setToDate] = useState<string>(today);
     const [detailRow, setDetailRow] = useState<GroupedAttendance | null>(null);
     const [isManualEntryModalOpen, setIsManualEntryModalOpen] = useState(false);
+    const [editingLog, setEditingLog] = useState<any | null>(null);
+    const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
     const { data: employees = [] } = useQuery({
         queryKey: ["employees-active"],
@@ -163,7 +167,11 @@ export default function OwnerAttendancePage() {
                     } as GroupedAttendance;
                 })
             )
-            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+            .sort((a, b) => {
+                const dateA = new Date(a.first_in || a.date).getTime();
+                const dateB = new Date(b.first_in || b.date).getTime();
+                return dateB - dateA;
+            });
     }, [records]);
 
     // Extract unique employees for manual entry modal
@@ -489,6 +497,8 @@ export default function OwnerAttendancePage() {
                 emptyIcon={<Clock size={40} />}
                 loading={isLoading}
                 onRowClick={handleRowClick}
+                pageSize={10}
+                maxHeight="calc(100vh - 430px)"
                 mobileCardRender={(row) => (
                     <div className="p-4 flex flex-col gap-3 border-b border-[hsl(var(--border))] last:border-0 active:bg-[hsl(var(--muted))]/30 transition-colors">
                         <div className="flex items-center justify-between">
@@ -632,13 +642,25 @@ export default function OwnerAttendancePage() {
                                                 </div>
                                             </div>
 
-                                            {/* Badges */}
-                                            <div className="flex flex-col items-end gap-1 shrink-0">
-                                                {s.is_manual && (
-                                                    <StatusBadge status="manual" label="Manual" />
-                                                )}
+                                            {/* Badges & Actions */}
+                                            <div className="flex flex-col items-end gap-2 shrink-0">
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        const rawLog = detailRow.raw_logs.find(rx => rx.timestamp === s.clock_in || rx.timestamp === s.clock_out);
+                                                        if (rawLog) {
+                                                            setEditingLog({ ...rawLog, Employee: detailRow.Employee });
+                                                            setIsEditModalOpen(true);
+                                                        }
+                                                    }}
+                                                    className="p-1.5 rounded-lg text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--brand))] hover:bg-[hsl(var(--brand-light))] transition-colors"
+                                                    title="Edit Record"
+                                                >
+                                                    <Edit2 size={14} />
+                                                </button>
+                                                {s.is_manual && <StatusBadge status="manual" label="Manual" />}
                                                 {isIncomplete && (
-                                                    <span className="text-[10px] font-medium text-[hsl(var(--warning))]">
+                                                    <span className="text-[10px] font-medium text-[hsl(var(--warning))] uppercase tracking-tighter">
                                                         Incomplete
                                                     </span>
                                                 )}
@@ -675,6 +697,20 @@ export default function OwnerAttendancePage() {
                 onClose={() => setIsManualEntryModalOpen(false)}
                 employees={employees}
             />
+
+            {/* ── Edit Entry Modal ── */}
+            {editingLog && (
+                <EditAttendanceModal
+                    isOpen={isEditModalOpen}
+                    onClose={() => {
+                        setIsEditModalOpen(false);
+                        setEditingLog(null);
+                        // Also close detail row to refresh the view
+                        setDetailRow(null);
+                    }}
+                    log={editingLog}
+                />
+            )}
         </DashboardLayout>
     );
 }
