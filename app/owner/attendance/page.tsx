@@ -6,6 +6,8 @@ import { DashboardLayout } from "@/components/layout";
 import { DataTable, Column } from "@/components/ui/data-table";
 import { StatusBadge } from "@/components/ui/badge";
 import { apiGet } from "@/lib/api-client";
+import { groupAttendanceIntoSessions } from "@/lib/attendance-grouper";
+import { ManualEntryModal } from "@/components/attendance/manual-entry-modal";
 import {
     Clock,
     ArrowDownCircle,
@@ -16,6 +18,7 @@ import {
     Layers,
     Timer,
     ChevronRight,
+    Plus,
 } from "lucide-react";
 import type { AttendanceLog } from "@/types/database";
 import { cn } from "@/lib/utils";
@@ -74,9 +77,13 @@ function formatDuration(totalMinutes: number): string {
 
 function formatTime(iso: string | null) {
     if (!iso) return "--:--";
-    return new Date(iso).toLocaleTimeString("en-AU", {
+    const date = new Date(iso);
+    if (isNaN(date.getTime())) return "--:--";
+
+    return date.toLocaleTimeString("en-AU", {
         hour: "2-digit",
         minute: "2-digit",
+        hour12: true,
     });
 }
 
@@ -87,6 +94,12 @@ export default function OwnerAttendancePage() {
     const [fromDate, setFromDate] = useState<string>(today);
     const [toDate, setToDate] = useState<string>(today);
     const [detailRow, setDetailRow] = useState<GroupedAttendance | null>(null);
+    const [isManualEntryModalOpen, setIsManualEntryModalOpen] = useState(false);
+
+    const { data: employees = [] } = useQuery({
+        queryKey: ["employees-active"],
+        queryFn: () => apiGet<any[]>("/employees?status=active"),
+    });
 
     const queryParams: Record<string, string> = {};
     if (fromDate) queryParams.from = fromDate;
@@ -100,125 +113,75 @@ export default function OwnerAttendancePage() {
 
     /* ── Session-aware grouping ── */
     const groupedRecords = useMemo(() => {
-        const groups: Record<string, {
-            id: string;
-            employee_id: string;
-            Employee: AttendanceRecord["Employee"];
-            date: string;
-            logs: AttendanceRecord[];
-            is_manual: boolean;
-            device_info: Set<string>;
-            override_reasons: Set<string>;
-        }> = {};
+        // Use the new cross-midnight aware grouping function
+        const groupedSessions = groupAttendanceIntoSessions(records);
 
-        records.forEach((rec) => {
-            const dateObj = new Date(rec.timestamp);
-            const dateKey = `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, "0")}-${String(dateObj.getDate()).padStart(2, "0")}`;
-            const key = `${rec.employee_id}_${dateKey}`;
+        return groupedSessions
+            .flatMap((group) =>
+                group.sessions.map((session) => {
+                    // Build a Session object for each work session
+                    const sessionObj: Session = {
+                        clock_in: session.clock_in?.timestamp ?? null,
+                        clock_out: session.clock_out?.timestamp ?? null,
+                        duration_minutes: session.duration_minutes,
+                        is_manual: !!session.clock_in?.override_by || !!session.clock_out?.override_by,
+                        device_info: [
+                            session.clock_in?.device_info,
+                            session.clock_out?.device_info,
+                        ]
+                            .filter(Boolean)
+                            .join(", "),
+                    };
 
-            if (!groups[key]) {
-                groups[key] = {
-                    id: key,
-                    employee_id: rec.employee_id ?? "",
-                    Employee: rec.Employee,
-                    date: dateKey,
-                    logs: [],
-                    is_manual: false,
-                    device_info: new Set<string>(),
-                    override_reasons: new Set<string>(),
-                };
-            }
+                    const totalMinutes = session.duration_minutes ?? 0;
 
-            groups[key].logs.push(rec);
-            if (rec.override_by) groups[key].is_manual = true;
-            if (rec.device_info) groups[key].device_info.add(rec.device_info);
-            if (rec.override_reason) groups[key].override_reasons.add(rec.override_reason);
-        });
-
-        return Object.values(groups)
-            .map((group) => {
-                const sorted = [...group.logs].sort(
-                    (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-                );
-
-                // Pair clock-ins with nearest following clock-out
-                const sessions: Session[] = [];
-                let pendingIn: AttendanceRecord | null = null;
-
-                for (const log of sorted) {
-                    if (log.event_type === "CLOCK_IN") {
-                        // If there was a previous unpaired clock-in, record it as an incomplete session
-                        if (pendingIn) {
-                            sessions.push({
-                                clock_in: pendingIn.timestamp,
-                                clock_out: null,
-                                duration_minutes: null,
-                                is_manual: !!pendingIn.override_by,
-                                device_info: pendingIn.device_info || "",
-                            });
-                        }
-                        pendingIn = log;
-                    } else if (log.event_type === "CLOCK_OUT") {
-                        if (pendingIn) {
-                            const inMs = new Date(pendingIn.timestamp).getTime();
-                            const outMs = new Date(log.timestamp).getTime();
-                            sessions.push({
-                                clock_in: pendingIn.timestamp,
-                                clock_out: log.timestamp,
-                                duration_minutes: (outMs - inMs) / 60000,
-                                is_manual: !!pendingIn.override_by || !!log.override_by,
-                                device_info: [pendingIn.device_info, log.device_info].filter(Boolean).join(", "),
-                            });
-                            pendingIn = null;
-                        } else {
-                            // Orphan clock-out (no matching clock-in)
-                            sessions.push({
-                                clock_in: null,
-                                clock_out: log.timestamp,
-                                duration_minutes: null,
-                                is_manual: !!log.override_by,
-                                device_info: log.device_info || "",
-                            });
-                        }
-                    }
-                }
-
-                // Flush any remaining unpaired clock-in
-                if (pendingIn) {
-                    sessions.push({
-                        clock_in: pendingIn.timestamp,
-                        clock_out: null,
-                        duration_minutes: null,
-                        is_manual: !!pendingIn.override_by,
-                        device_info: pendingIn.device_info || "",
-                    });
-                }
-
-                const totalMinutes = sessions.reduce(
-                    (sum, s) => sum + (s.duration_minutes ?? 0),
-                    0
-                );
-
-                const firstIn = sessions.find((s) => s.clock_in)?.clock_in ?? null;
-                const lastOut = [...sessions].reverse().find((s) => s.clock_out)?.clock_out ?? null;
-
-                return {
-                    id: group.id,
-                    employee_id: group.employee_id,
-                    Employee: group.Employee,
-                    date: group.date,
-                    first_in: firstIn,
-                    last_out: lastOut,
-                    sessions,
-                    total_hours: totalMinutes,
-                    is_manual: group.is_manual,
-                    device_info: Array.from(group.device_info).join(", "),
-                    override_reason: Array.from(group.override_reasons).join("; "),
-                    raw_logs: sorted,
-                } as GroupedAttendance;
-            })
+                    return {
+                        id: `${group.employee_id}_${group.clock_in_date}_${session.clock_in?.timestamp}`,
+                        employee_id: group.employee_id,
+                        Employee: group.Employee,
+                        date: group.clock_in_date,
+                        first_in: session.clock_in?.timestamp ?? null,
+                        last_out: session.clock_out?.timestamp ?? null,
+                        sessions: [sessionObj],
+                        total_hours: totalMinutes,
+                        is_manual:
+                            !!session.clock_in?.override_by ||
+                            !!session.clock_out?.override_by,
+                        device_info: [
+                            session.clock_in?.device_info,
+                            session.clock_out?.device_info,
+                        ]
+                            .filter(Boolean)
+                            .join(", "),
+                        override_reason: [
+                            session.clock_in?.override_reason,
+                            session.clock_out?.override_reason,
+                        ]
+                            .filter(Boolean)
+                            .join("; "),
+                        raw_logs: session.all_logs as AttendanceRecord[],
+                    } as GroupedAttendance;
+                })
+            )
             .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     }, [records]);
+
+    // Extract unique employees for manual entry modal
+    const uniqueEmployees = useMemo(() => {
+        const employees = new Map<string, { employee_id: string; first_name: string; last_name: string }>();
+        for (const record of groupedRecords) {
+            if (record.Employee && !employees.has(record.employee_id)) {
+                employees.set(record.employee_id, {
+                    employee_id: record.employee_id,
+                    first_name: record.Employee.first_name,
+                    last_name: record.Employee.last_name,
+                });
+            }
+        }
+        return Array.from(employees.values()).sort((a, b) =>
+            `${a.first_name} ${a.last_name}`.localeCompare(`${b.first_name} ${b.last_name}`)
+        );
+    }, [groupedRecords]);
 
     /* ── Table columns ── */
     const columns: Column<GroupedAttendance>[] = [
@@ -368,7 +331,7 @@ export default function OwnerAttendancePage() {
                         <StatusBadge status="manual" label="Manual" />
                         {row.override_reason && (
                             <p
-                                className="text-[10px] text-[hsl(var(--muted-foreground))] italic truncate max-w-[120px]"
+                                className="text-[10px] text-[hsl(var(--muted-foreground))] italic truncate max-w-30"
                                 title={row.override_reason}
                             >
                                 {row.override_reason}
@@ -505,6 +468,14 @@ export default function OwnerAttendancePage() {
                         </button>
                     )}
                 </div>
+
+                <button
+                    onClick={() => setIsManualEntryModalOpen(true)}
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[hsl(var(--brand))] text-white text-sm font-medium hover:bg-[hsl(var(--brand))]/90 transition-colors shadow-sm"
+                >
+                    <Plus size={16} />
+                    Manual Entry
+                </button>
             </div>
 
             {/* Table */}
@@ -697,6 +668,13 @@ export default function OwnerAttendancePage() {
                     </div>
                 </div>
             )}
+
+            {/* ── Manual Entry Modal ── */}
+            <ManualEntryModal
+                isOpen={isManualEntryModalOpen}
+                onClose={() => setIsManualEntryModalOpen(false)}
+                employees={employees}
+            />
         </DashboardLayout>
     );
 }

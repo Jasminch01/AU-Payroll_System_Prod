@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { successResponse, errorResponse, validateRequiredFields } from '@/lib/api-helpers';
 import { EventType } from '@/types/database';
 import { getNextAttendanceEvent, validateAttendanceTransition } from '@/lib/attendance-logic';
+import { notifyAttendanceEvent } from '@/lib/attendance-notifications';
 import { cookies } from 'next/headers';
 import { verifyKioskToken } from '@/lib/kiosk-auth';
 import { generateBusinessPrefix } from '@/lib/utils/employee-id';
@@ -123,6 +124,15 @@ export async function POST(request: NextRequest) {
             .single();
 
         if (logError) return errorResponse(logError.message, 400);
+
+        // Notify owner and managers of attendance event (async, no await)
+        notifyAttendanceEvent(
+            employee.employee_id,
+            event_type as EventType,
+            body.timestamp || localTimestamp,
+            employee.business_id,
+            device_info || 'Kiosk'
+        ).catch(err => console.error('Failed to send attendance notification:', err));
 
         return successResponse({
             log,

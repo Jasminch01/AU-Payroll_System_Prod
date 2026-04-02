@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
         );
 
         if (timesheets.length === 0) {
-            return successResponse([], 'No logs or rostered shifts found for the selected range.');
+            return successResponse([], 'No attendance logs or rostered shifts were found for this period to generate timesheets.');
         }
 
         const supabase = await createClient();

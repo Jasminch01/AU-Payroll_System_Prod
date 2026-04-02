@@ -47,6 +47,10 @@ export default function KioskPage() {
         setIsLoading(true);
         try {
             const res: any = await apiGet(`/attendance/kiosk/status?employee_id=${idToSubmit}`);
+            console.log('[Kiosk Page] Status response:', res);
+            console.log('[Kiosk Page] available_actions:', res.available_actions);
+            console.log('[Kiosk Page] available_actions length:', res.available_actions?.length);
+            
             setEmployeeData({
                 name: res.employee_name,
                 available_actions: res.available_actions

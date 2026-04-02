@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
 import { createClient } from "@/lib/supabase/client";
+import { getNotificationRoute } from "@/lib/notification-routes";
 
 interface NotificationData {
     id: string;
@@ -101,13 +102,17 @@ export function NotificationBell() {
         }
         setOpen(false);
 
-        // Targeted Navigation
-        if (n.type.startsWith('SHIFT_SWAP') || n.type.startsWith('SHIFT_TRANSFER')) {
-            router.push('/employee/shifts?tab=swaps');
-        } else if (n.type === 'SHIFT_PUBLISHED' || n.type === 'SHIFT_UPDATED') {
-            router.push('/employee/shifts');
-        } else if (n.type === 'TIMESHEET_SUBMITTED' || n.type === 'TIMESHEET_APPROVED') {
-            router.push('/employee/timesheets');
+        // Use centralized routing utility
+        if (user?.role) {
+            const route = getNotificationRoute(
+                n.type as any,
+                n.entity_id,
+                user.role as 'owner' | 'manager' | 'employee'
+            );
+            
+            if (route) {
+                router.push(route);
+            }
         }
     };
 
