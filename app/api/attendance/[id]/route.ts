@@ -11,13 +11,13 @@ import { successResponse, errorResponse } from '@/lib/api-helpers';
  */
 export async function PATCH(
     request: NextRequest,
-    { params }: { params: { id: string } }
+    { params }: { params: Promise<{ id: string }> }
 ) {
     try {
         const authUser = await requireRole('owner', 'manager');
         if (!authUser) return errorResponse('Unauthorized', 401);
 
-        const log_id = params.id;
+        const { id: log_id } = await params;
         const body = await request.json();
         const { timestamp, event_type, override_reason } = body;
 
