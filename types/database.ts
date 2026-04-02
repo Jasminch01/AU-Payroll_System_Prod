@@ -151,6 +151,7 @@ export interface AttendanceLog {
   override_reason: string | null;
   created_at: string;
   timestamp: string;
+  updated_at: string | null;
 }
 
 export interface TimeSheet {
