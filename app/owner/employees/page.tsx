@@ -363,6 +363,25 @@ export default function OwnerEmployeesPage() {
             ),
         },
         {
+            key: "employee_id",
+            label: "ID",
+            sortable: true,
+            render: (row) => (
+                <button
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        navigator.clipboard.writeText(row.employee_id);
+                        toast.success(`ID ${row.employee_id} copied!`);
+                    }}
+                    className="group flex items-center gap-1.5 font-mono text-[11px] font-bold text-slate-500 bg-slate-100 hover:bg-slate-200 px-1.5 py-0.5 rounded transition-all active:scale-95"
+                    title="Click to copy ID"
+                >
+                    {row.employee_id}
+                    <Copy size={10} className="opacity-0 group-hover:opacity-100 transition-opacity" />
+                </button>
+            )
+        },
+        {
             key: "role",
             label: "Access",
             sortable: true,
