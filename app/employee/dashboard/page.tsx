@@ -12,6 +12,7 @@ import { useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
+import { formatDecimalHours } from "@/lib/utils";
 
 export default function EmployeeDashboardPage() {
     const queryClient = useQueryClient();
@@ -130,12 +131,12 @@ export default function EmployeeDashboardPage() {
                 />
                 <MetricCard
                     title="Leave Balance"
-                    value={`${totalLeaveHours}h`}
+                    value={formatDecimalHours(totalLeaveHours)}
                     icon={<Palmtree size={24} />}
                 />
                 <MetricCard
                     title="This Week Hours"
-                    value={timesheets.length > 0 ? `${timesheets.reduce((s: number, t: any) => s + (t.actual_hours || 0), 0).toFixed(1)}h` : "0h"}
+                    value={formatDecimalHours(timesheets.reduce((s: number, t: any) => s + (t.actual_hours || 0), 0))}
                     icon={<Clock size={24} />}
                 />
                 <MetricCard
@@ -182,7 +183,7 @@ export default function EmployeeDashboardPage() {
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                             {leaveBalances.map((lb: any) => (
                                 <div key={lb.balance_id} className="rounded-xl bg-[hsl(var(--muted))] p-4 text-center">
-                                    <p className="text-2xl font-bold">{lb.balance_hours}h</p>
+                                    <p className="text-2xl font-bold">{formatDecimalHours(lb.balance_hours)}</p>
                                     <p className="text-xs text-[hsl(var(--muted-foreground))] mt-1">{lb.leave_type || "Leave"}</p>
                                 </div>
                             ))}

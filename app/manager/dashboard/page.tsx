@@ -15,6 +15,7 @@ import {
 import Link from "next/link";
 import { toast } from "sonner";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
+import { formatDecimalHours } from "@/lib/utils";
 
 export default function ManagerDashboardPage() {
     const queryClient = useQueryClient();
@@ -280,7 +281,7 @@ export default function ManagerDashboardPage() {
                                             <div>
                                                 <p className="text-sm font-bold">{ts.Employee?.first_name} {ts.Employee?.last_name}</p>
                                                 <p className="text-[10px] text-[hsl(var(--muted-foreground))]">
-                                                    {new Date(ts.date).toLocaleDateString()} · {ts.actual_hours?.toFixed(1)}h
+                                                    {new Date(ts.date).toLocaleDateString()} · {formatDecimalHours(ts.actual_hours)}
                                                 </p>
                                             </div>
                                         </div>
