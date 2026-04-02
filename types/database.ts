@@ -166,14 +166,16 @@ export interface TimeSheet {
   notes: string | null;
   updated_at: string | null;
   rate_type: RateType | null;
-  roster_start: string | null;
-  roster_end: string | null;
+  rostered_start: string | null;
+  rostered_end: string | null;
   rostered_hours: number | null;
   actual_start: string | null;
   actual_end: string | null;
   actual_hours: number | null;
   hourly_rate: number;
   date: string;
+  overtime_hours: number | null;
+  break_hours: number | null;
 }
 
 export interface Payroll {

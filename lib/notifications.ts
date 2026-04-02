@@ -5,6 +5,7 @@ import { sendPushNotification } from './push-notifications';
 
 // --- NEW APP NOTIFICATION TYPES ---
 export type NotificationType = 
+    | 'ATTENDANCE_CLOCK_EVENT'
     | 'SHIFT_SWAP_REQUESTED'
     | 'SHIFT_SWAP_ACCEPTED'
     | 'SHIFT_SWAP_REJECTED'
@@ -108,11 +109,12 @@ export async function notifyRosterPublished(rosterId: string, businessId: string
     // FIX: Using 'since' directly to identify changes relative to the previous state.
     // If 'since' is null/missing, it's a first-time publish, so all shifts are 'new'.
     const lastPublish = since;
-    const userChanges: Record<string, { 
-        employee: any, 
-        newShifts: any[], 
-        updatedShifts: any[] 
-    }> = {};
+    interface UserChangeGroup {
+        employee: { email: string; first_name: string; user_id: string };
+        newShifts: Record<string, unknown>[];
+        updatedShifts: Record<string, unknown>[];
+    }
+    const userChanges: Record<string, UserChangeGroup> = {};
 
     for (const shift of shifts) {
         if (!shift.Employee) continue;
@@ -206,10 +208,13 @@ export async function notifyRosterPublished(rosterId: string, businessId: string
 
         // Send ONE email
         const shiftListHtml = [...newShifts, ...updatedShifts].map(s => {
-            const time = `${new Date(s.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })} - ${new Date(s.end_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })}`;
+            const startTime = String(s.start_time);
+            const endTime = String(s.end_time);
+            const shiftDate = String(s.shift_date);
+            const time = `${new Date(startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })} - ${new Date(endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })}`;
             const statusLabel = newShifts.includes(s) ? '<span style="color: #059669; font-weight: bold;">(New)</span>' : '<span style="color: #d97706; font-weight: bold;">(Updated)</span>';
             return `<div style="padding: 10px; background: #f9fafb; border-radius: 6px; margin-bottom: 8px; border-left: 4px solid ${newShifts.includes(s) ? '#059669' : '#d97706'};">
-                <p style="margin: 0;"><strong>Date:</strong> ${s.shift_date} ${statusLabel}</p>
+                <p style="margin: 0;"><strong>Date:</strong> ${shiftDate} ${statusLabel}</p>
                 <p style="margin: 3px 0 0 0;"><strong>Time:</strong> ${time}</p>
             </div>`;
         }).join('');

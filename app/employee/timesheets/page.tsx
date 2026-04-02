@@ -141,9 +141,14 @@ export default function EmployeeTimesheetsPage() {
                                             <p className="font-medium">
                                                 {new Date(ts.date).toLocaleDateString("en-AU", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
                                             </p>
-                                            <p className="text-sm text-[hsl(var(--muted-foreground))]">
-                                                {ts.actual_hours?.toFixed(1) ?? "—"}h worked
-                                                {ts.rate_type && <span className="mx-1.5">·</span>}
+                                            <p className="text-sm text-[hsl(var(--muted-foreground))] flex items-center gap-2">
+                                                <span>{ts.actual_hours?.toFixed(2) ?? "—"}h worked</span>
+                                                {ts.overtime_hours && ts.overtime_hours > 0 && (
+                                                    <span className="text-[10px] font-bold text-orange-600 bg-orange-50 px-1 rounded border border-orange-100">
+                                                        +{ts.overtime_hours.toFixed(2)}h OT
+                                                    </span>
+                                                )}
+                                                {ts.rate_type && <span className="mx-1">·</span>}
                                                 {ts.rate_type && <span className="capitalize">{ts.rate_type.replace("_", " ")} rate</span>}
                                             </p>
                                         </div>
@@ -175,13 +180,13 @@ export default function EmployeeTimesheetsPage() {
                                             <div>
                                                 <p className="text-xs text-[hsl(var(--muted-foreground))] mb-0.5">Rostered Start</p>
                                                 <p className="text-sm font-medium">
-                                                    {formatTimeDisplay(ts.date, ts.roster_start)}
+                                                    {formatTimeDisplay(ts.date, ts.rostered_start)}
                                                 </p>
                                             </div>
                                             <div>
                                                 <p className="text-xs text-[hsl(var(--muted-foreground))] mb-0.5">Rostered End</p>
                                                 <p className="text-sm font-medium">
-                                                    {formatTimeDisplay(ts.date, ts.roster_end)}
+                                                    {formatTimeDisplay(ts.date, ts.rostered_end)}
                                                 </p>
                                             </div>
                                             <div>
@@ -198,7 +203,17 @@ export default function EmployeeTimesheetsPage() {
                                             </div>
                                             <div>
                                                 <p className="text-xs text-[hsl(var(--muted-foreground))] mb-0.5">Rostered Hours</p>
-                                                <p className="text-sm font-medium">{ts.rostered_hours?.toFixed(1) ?? "—"}h</p>
+                                                <p className="text-sm font-medium">{ts.rostered_hours?.toFixed(2) ?? "—"}h</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-xs text-[hsl(var(--muted-foreground))] mb-0.5">Break Hours</p>
+                                                <p className="text-sm font-medium text-slate-500">{ts.break_hours?.toFixed(2) ?? "0.00"}h</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-xs text-[hsl(var(--muted-foreground))] mb-0.5">Overtime Hours</p>
+                                                <p className={cn("text-sm font-bold", (ts.overtime_hours ?? 0) > 0 ? "text-orange-600" : "text-slate-500")}>
+                                                    {ts.overtime_hours?.toFixed(2) ?? "0.00"}h
+                                                </p>
                                             </div>
                                             <div>
                                                 <p className="text-xs text-[hsl(var(--muted-foreground))] mb-0.5">Rate Type</p>

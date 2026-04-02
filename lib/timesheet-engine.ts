@@ -2,7 +2,6 @@ import { createClient } from '@/lib/supabase/server';
 import {
     AttendanceLog,
     Shift,
-    EmployeeRateHistory,
     TimeSheetInsert,
     RateType,
     TimesheetStatus
@@ -30,12 +29,20 @@ export async function generateTimesheets(
         .eq('status', 'active')
         .filter('employee_id', targetEmployeeId ? 'eq' : 'neq', targetEmployeeId || 'null');
 
+    const extendedStart = new Date(startDate);
+    extendedStart.setDate(extendedStart.getDate() - 1);
+    const extendedStartDate = extendedStart.toISOString().split('T')[0];
+
+    const extendedEnd = new Date(endDate);
+    extendedEnd.setDate(extendedEnd.getDate() + 1);
+    const extendedEndDate = extendedEnd.toISOString().split('T')[0];
+
     const { data: logs } = await supabase
         .from('AttendanceLog')
         .select('*')
         .eq('business_id', businessId)
-        .gte('timestamp', `${startDate}T00:00:00Z`)
-        .lte('timestamp', `${endDate}T23:59:59Z`)
+        .gte('timestamp', `${extendedStartDate}T00:00:00Z`)
+        .lte('timestamp', `${extendedEndDate}T23:59:59Z`)
         .order('timestamp', { ascending: true });
 
     const { data: rosterShifts } = await supabase
@@ -47,12 +54,6 @@ export async function generateTimesheets(
 
     // 2. Fetch Public Holidays
     // We match by date and state
-    const { data: business } = await supabase
-        .from('Business')
-        .select('state')
-        .eq('business_id', businessId)
-        .single();
-
     const { data: holidays } = await supabase
         .from('PublicHoliday')
         .select('date')
@@ -81,19 +82,34 @@ export async function generateTimesheets(
 
     for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
         const dateStr = d.toISOString().split('T')[0];
+        const nextDateStr = getNextDate(dateStr);
 
         for (const employee of employees) {
             const empId = employee.employee_id;
 
-            // Get data for this day/employee
-            const dayLogs = (logs || []).filter(l =>
-                l.employee_id === empId &&
-                l.timestamp.startsWith(dateStr)
-            );
+            // --- IMPROVED CROSS-MIDNIGHT & STRAY EVENT FILTERING ---
+            const empLogs = (logs || []).filter(l => l.employee_id === empId);
+            const dayLogs: AttendanceLog[] = [];
+
+            // Primary logs for today
+            const primaryLogs = empLogs.filter(l => l.timestamp.split('T')[0] === dateStr);
+            dayLogs.push(...primaryLogs);
+
+            // If the last log today is a CLOCK_IN or BREAK_START, we need to collect 
+            // the 'trailing' logs from tomorrow to complete the session.
+            const lastLog = dayLogs[dayLogs.length - 1];
+            if (lastLog && (lastLog.event_type === 'CLOCK_IN' || lastLog.event_type === 'BREAK_START' || lastLog.event_type === 'BREAK_END')) {
+                // Find all logs for this employee tomorrow up until and including the first CLOCK_OUT
+                const tomorrowLogs = empLogs.filter(l => l.timestamp.split('T')[0] === nextDateStr);
+                for (const tl of tomorrowLogs) {
+                    dayLogs.push(tl);
+                    if (tl.event_type === 'CLOCK_OUT') break; 
+                }
+            }
 
             const dayShift = (rosterShifts || []).find(s =>
                 s.employee_id === empId &&
-                s.shift_date === dateStr
+                (s.shift_date.split('T')[0]) === dateStr
             );
 
             // Check if employee is on leave this day
@@ -103,12 +119,7 @@ export async function generateTimesheets(
                 dateStr <= l.end_date
             );
 
-            // If on leave, we might still generate a timesheet if we want to pay them for leave hours?
-            // Usually, leave generates its own timesheet line. 
-            // For now, if on leave AND no logs, skip generating a 'work' timesheet.
-            if (onLeave && dayLogs.length === 0) continue;
-
-            // Skip if no logs AND no rostered shift
+            // Skip if no logs AND no rostered shift AND not on leave
             if (dayLogs.length === 0 && !dayShift && !onLeave) continue;
 
             const timesheet = processDay(employee, dateStr, dayLogs, dayShift, publicHolidays);
@@ -120,7 +131,7 @@ export async function generateTimesheets(
 }
 
 function processDay(
-    employee: any,
+    employee: { employee_id: string; business_id: string; EmployeeRateHistory?: Array<{ weekday_rate: number; saturday_multiplier?: number; sunday_multiplier?: number; public_holiday_multiplier?: number; evening_rate?: number; evening_start_time?: number | null; evening_end_time?: number | null }> },
     date: string,
     logs: AttendanceLog[],
     shift: Shift | undefined,
@@ -130,12 +141,11 @@ function processDay(
     const empId = employee.employee_id;
 
     // --- 1. Identify and Pair All Logs ---
-    // Sort logs by timestamp just in case
     const sortedLogs = [...logs].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
     const segments: { in: Date; out: Date }[] = [];
     const breaks: { start: Date; end: Date }[] = [];
-    
+
     let currentIn: Date | null = null;
     let currentBreakStart: Date | null = null;
 
@@ -144,7 +154,7 @@ function processDay(
             currentIn = new Date(log.timestamp);
         } else if (log.event_type === 'CLOCK_OUT' && currentIn) {
             segments.push({ in: currentIn, out: new Date(log.timestamp) });
-            currentIn = null; // Reset
+            currentIn = null;
         } else if (log.event_type === 'BREAK_START') {
             currentBreakStart = new Date(log.timestamp);
         } else if (log.event_type === 'BREAK_END' && currentBreakStart) {
@@ -153,12 +163,78 @@ function processDay(
         }
     }
 
-    // Calculate total hours
-    let workTimeHours = 0;
-    for (const seg of segments) {
-        workTimeHours += calculateHours(seg.in, seg.out);
+    const firstIn = segments.length > 0 ? segments[0].in : null;
+    const lastOut = segments.length > 0 ? segments[segments.length - 1].out : null;
+
+    const parseFullTime = (dateStr: string, timeStr: string | null) => {
+        if (!timeStr) return null;
+        // If it's a full ISO string already, parse it directly
+        if (timeStr.includes('T')) return new Date(timeStr);
+        // If it's just HH:mm or HH:mm:ss, combine with the date
+        // Use 'T' separator to ensure ISO-like parsing
+        return new Date(`${dateStr}T${timeStr.split('+')[0].split('Z')[0]}`);
+    };
+
+    const rosterStart: Date | null = shift ? parseFullTime(date, shift.start_time) : null;
+    const rosterEnd: Date | null = shift ? parseFullTime(date, shift.end_time) : null;
+
+    // --- 2. GRACE PERIOD (5m Snap to Roster) ---
+    let finalStart: Date | null = firstIn;
+    let finalEnd: Date | null = lastOut;
+    let flags: string[] = [];
+    let status: TimesheetStatus = 'pending';
+
+    if (firstIn && rosterStart) {
+        const diffMins = (firstIn.getTime() - rosterStart.getTime()) / (1000 * 60);
+        // Snap to roster if within 5 mins early or late
+        if (Math.abs(diffMins) <= 5) {
+            finalStart = rosterStart;
+            // No flag for successful snap (Positive case)
+        } else if (diffMins < -5) {
+            flags.push('Early Clock-in');
+        } else {
+            flags.push('Late Clock-in');
+        }
     }
 
+    if (lastOut && rosterEnd) {
+        const diffMins = (lastOut.getTime() - rosterEnd.getTime()) / (1000 * 60);
+        // Snap to roster if within 5 mins early or late
+        if (Math.abs(diffMins) <= 5) {
+            finalEnd = rosterEnd;
+            // No flag for successful snap (Positive case)
+        } else if (diffMins > 5) {
+            flags.push('Late Clock-out');
+        } else {
+            flags.push('Early Clock-out');
+        }
+    }
+
+    if (!finalEnd && rosterEnd && finalStart) {
+        finalEnd = rosterEnd;
+        flags.push('Auto-filled Clock-out');
+    }
+
+    if (!shift && finalStart) {
+        flags.push('Unscheduled Work');
+    }
+
+    if (finalStart && !finalEnd) {
+        flags.push('Forgot Clock-out');
+        finalEnd = finalStart; // Prevents crash, but zero hours
+    }
+
+    /* 
+    const snapped = flags.some(f => f.includes('Snapped'));
+    if (finalStart && shift && !snapped) {
+        flags.push('Not Exact Timing');
+    }
+    */
+
+    // Calculate total hours
+    let workTimeHours = (finalStart && finalEnd) ? calculateHours(finalStart, finalEnd) : 0;
+
+    // Deduct manual breaks
     let breakTimeHours = 0;
     for (const brk of breaks) {
         breakTimeHours += calculateHours(brk.start, brk.end);
@@ -166,168 +242,100 @@ function processDay(
 
     let actualHours = Math.max(0, workTimeHours - breakTimeHours);
 
-    const firstIn = segments.length > 0 ? segments[0].in : null;
-    const lastOut = segments.length > 0 ? segments[segments.length - 1].out : null;
+    // --- 4. AUTO-BREAK DEDUCTION (REMOVED) ---
+    // User requested to rely only on manual BREAK_START/END logs.
+    /*
+    if (actualHours > 5.5 && breaks.length === 0) {
+        actualHours -= 0.5;
+        flags.push('30m Auto-break deducted');
+    }
+    */
 
-    const parseFullDate = (dateStr: string, timeStr: string | null) => {
-        if (!timeStr) return null;
-        // If it's already a full ISO string, use it.
-        if (timeStr.includes('T')) return new Date(timeStr);
-        // If it's just a time string HH:mm:ss, combine it with the date.
-        return new Date(`${dateStr}T${timeStr}`);
+    // --- 5. OVERTIME & VARIANCE ---
+    const rosteredHours = rosterStart && rosterEnd ? calculateHours(rosterStart, rosterEnd) : 0;
+    const overtimeHours = Math.max(0, actualHours - rosteredHours);
+
+    if (overtimeHours > 0) {
+        flags.push('Did Overtime');
+        if (shift) flags.push(`${overtimeHours.toFixed(2)}h Overtime`);
+    }
+
+    if (overtimeHours > 0 && !shift) {
+        flags.push('Unscheduled Work (Pay All)');
+    }
+
+    // --- 6. RATE TYPE & MIDNIGHT SPLITTING ---
+    // For now, we calculate based on the START date for the segment
+    const getRateType = (dt: Date) => {
+        const dateStr = dt.toISOString().split('T')[0];
+        const dayOfWeek = dt.getUTCDay(); // 0 = Sunday
+        if (publicHolidays.includes(dateStr)) return 'public_holiday';
+        if (dayOfWeek === 0) return 'sunday';
+        if (dayOfWeek === 6) return 'saturday';
+        return 'weekday' as RateType;
     };
 
-    let rosterStart: Date | null = shift ? parseFullDate(date, shift.start_time) : null;
-    let rosterEnd: Date | null = shift ? parseFullDate(date, shift.end_time) : null;
+    const rateType = getRateType(finalStart || new Date(date));
 
-    let flags: string[] = [];
-    let status: TimesheetStatus = 'pending';
-
-    if (segments.length > 1) {
-        flags.push(`${segments.length} Segments Detected`);
-    }
-
-    // --- 2. Conflict Resolution & Grace Periods (Mapped to first/last logs) ---
-    let finalStart: Date | null = firstIn;
-    let finalEnd: Date | null = lastOut;
-
-    // Grace Period logic (5m) applied to the boundaries
-    if (firstIn && rosterStart) {
-        const diffInSeconds = (firstIn.getTime() - rosterStart.getTime()) / 1000;
-        const diffInMinutes = diffInSeconds / 60;
-
-        if (Math.abs(diffInMinutes) <= 5) {
-            // Adjust only the calculation of the FIRST pair if needed?
-            // Actually, for simplicity, we adjust the total actualHours if it's within grace
-            const adjustment = diffInMinutes; // in minutes
-            actualHours -= (adjustment / 60);
-            finalStart = rosterStart; // Snap for visual
-        } else if (diffInMinutes < -5) {
-            flags.push('Early Clock-in (OT)');
-        } else {
-            flags.push('Late Clock-in');
-        }
-    }
-
-    if (lastOut && rosterEnd) {
-        const diffInSeconds = (lastOut.getTime() - rosterEnd.getTime()) / 1000;
-        const diffInMinutes = diffInSeconds / 60;
-
-        if (Math.abs(diffInMinutes) <= 5) {
-            const adjustment = diffInMinutes; // in minutes
-            actualHours -= (adjustment / 60);
-            finalEnd = rosterEnd; // Snap for visual
-        } else if (diffInMinutes > 5) {
-            flags.push('Late Clock-out (OT)');
-        } else {
-            flags.push('Early Clock-out');
-        }
-    }
-
-    // Handle "No Show" or "Missing Logs"
-    if (!firstIn && rosterStart) {
-        flags.push('No Show / Missing Clock-in');
-    }
-
-    if (!lastOut && rosterEnd && firstIn) {
-        flags.push('Missing Clock-out');
-        // Fallback to roster end if desired
-        const rosterHours = rosterStart && rosterEnd ? calculateHours(rosterStart, rosterEnd) : 0;
-        actualHours = rosterHours;
-        finalEnd = rosterEnd;
-    }
-
-    if (!firstIn && !lastOut && shift) {
-        // No Show Case
-        return {
-            business_id: businessId,
-            employee_id: empId,
-            date,
-            gross_pay: 0,
-            hourly_rate: 0,
-            actual_hours: 0,
-            rostered_hours: shift ? calculateHours(new Date(shift.start_time), new Date(shift.end_time)) : 0,
-            status: 'pending',
-            flags: 'No Show',
-            notes: 'Generated from Roster',
-            approved_by: null,
-            approved_at: null,
-            rate_type: null,
-            actual_start: null,
-            actual_end: null,
-            roster_start: rosterStart && !isNaN(rosterStart.getTime()) ? rosterStart.toISOString().split('T')[0] : null,
-            roster_end: rosterEnd && !isNaN(rosterEnd.getTime()) ? rosterEnd.toISOString().split('T')[0] : null
-        } as TimeSheetInsert;
-    }
-
-    if (!finalStart || !finalEnd) return null;
-
-    if (breaks.length > 0) {
-        flags.push(`${breaks.length} Breaks recorded (${breakTimeHours.toFixed(2)}h)`);
-    } else {
-        // Automatic Break Deduction (only if no manual breaks)
-        if (actualHours > 10) {
-            actualHours -= 1.0; // 60 mins
-            flags.push('Auto-deduct 60m break');
-        } else if (actualHours > 5) {
-            actualHours -= 0.5; // 30 mins
-            flags.push('Auto-deduct 30m break');
-        }
-    }
-
-    // --- 4. Rate Type Determination ---
-    const dayOfWeek = finalStart.getUTCDay(); // 0 = Sunday, 1 = Monday...
-    let rateType: RateType = 'weekday';
-
-    if (publicHolidays.includes(date)) {
-        rateType = 'public_holiday';
-    } else if (dayOfWeek === 0) {
-        rateType = 'sunday';
-    } else if (dayOfWeek === 6) {
-        rateType = 'saturday';
-    }
-
-    // --- 5. Gross Pay Calculation ---
-    // Get effective rate
-    const rates = employee.EmployeeRateHistory?.[0]; // Assuming most recent
-    let hourlyRate = rates?.weekday_rate || 0;
+    // --- 7. GROSS PAY CALCULATION ---
+    const rates = employee.EmployeeRateHistory?.[0];
+    const hourlyRate = rates?.weekday_rate || 0;
     let multiplier = 1.0;
 
     if (rateType === 'saturday') multiplier = rates?.saturday_multiplier || 1.25;
     if (rateType === 'sunday') multiplier = rates?.sunday_multiplier || 1.5;
     if (rateType === 'public_holiday') multiplier = rates?.public_holiday_multiplier || 2.5;
 
-    let baseGrossPay = actualHours * hourlyRate * multiplier;
+    const baseGrossPay = actualHours * hourlyRate * multiplier;
     let finalGrossPay = baseGrossPay;
 
-    // --- EVENING RATE OVERLAY ---
+    // Evening rate overlay (if applicable)
     if (rates?.evening_rate && rates.evening_start_time !== null && rates.evening_end_time !== null) {
-        const eveningStartHour = rates.evening_start_time;
-        const eveningEndHour = rates.evening_end_time;
+        // Simple evening overlap logic (hours between evening_start and evening_end)
+        const evStart = rates.evening_start_time;
+        const evEnd = rates.evening_end_time;
 
-        let totalEveningHours = 0;
+        if (finalStart && finalEnd) {
+            const startHour = finalStart.getHours() + finalStart.getMinutes() / 60;
+            const endHour = finalEnd.getHours() + finalEnd.getMinutes() / 60;
 
-        for (const seg of segments) {
-            const startHour = seg.in.getHours() + seg.in.getMinutes() / 60;
-            const endHour = seg.out.getHours() + seg.out.getMinutes() / 60;
+            const overlapStart = Math.max(startHour, evStart as number);
+            const overlapEnd = Math.min(endHour, evEnd as number);
+            const evHours = Math.max(0, overlapEnd - overlapStart);
 
-            // Calculate overlap with evening window for THIS segment
-            const overlapStart = Math.max(startHour, eveningStartHour);
-            const overlapEnd = Math.min(endHour, eveningEndHour);
-            const segmentEveningHours = Math.max(0, overlapEnd - overlapStart);
-
-            totalEveningHours += segmentEveningHours;
-        }
-
-        if (totalEveningHours > 0) {
-            // Subtract base pay for these hours and add evening pay
-            const baseForEvening = totalEveningHours * hourlyRate * multiplier;
-            const eveningTotal = totalEveningHours * rates.evening_rate;
-
-            finalGrossPay = (baseGrossPay - baseForEvening) + eveningTotal;
-            flags.push(`${totalEveningHours.toFixed(2)}h Evening Rate applied`);
+            if (evHours > 0) {
+                const baseForEv = evHours * hourlyRate * multiplier;
+                const evTotal = evHours * rates.evening_rate;
+                finalGrossPay = (finalGrossPay - baseForEv) + evTotal;
+                flags.push(`${evHours.toFixed(2)}h Evening Rate`);
+            }
         }
     }
+
+    // If it's a "No Show" (Shift exists but no logs)
+    if (!firstIn && shift) {
+        return {
+            business_id: businessId,
+            employee_id: empId,
+            date,
+            gross_pay: 0,
+            hourly_rate: hourlyRate,
+            actual_hours: 0,
+            rostered_hours: Number(rosteredHours.toFixed(2)),
+            status: 'pending',
+            flags: 'Absent',
+            notes: 'System: Scheduled shift but no attendance logs found.',
+            actual_start: null,
+            actual_end: null,
+            rostered_start: rosterStart ? rosterStart.toTimeString().split(' ')[0] : null,
+            rostered_end: rosterEnd ? rosterEnd.toTimeString().split(' ')[0] : null,
+            rate_type: rateType,
+            overtime_hours: 0,
+            break_hours: 0
+        } as TimeSheetInsert;
+    }
+
+    if (!finalStart || !finalEnd) return null;
 
     return {
         business_id: businessId,
@@ -336,15 +344,17 @@ function processDay(
         gross_pay: Number(finalGrossPay.toFixed(2)),
         hourly_rate: hourlyRate,
         rate_type: rateType,
-        actual_start: finalStart.toTimeString().split(' ')[0], // HH:mm:ss (TIME type)
-        actual_end: finalEnd.toTimeString().split(' ')[0],     // HH:mm:ss (TIME type)
+        actual_start: finalStart.toTimeString().split(' ')[0],
+        actual_end: finalEnd.toTimeString().split(' ')[0],
         actual_hours: Number(actualHours.toFixed(2)),
-        roster_start: rosterStart ? rosterStart.toTimeString().split(' ')[0] : null, // HH:mm:ss (TIME type)
-        roster_end: rosterEnd ? rosterEnd.toTimeString().split(' ')[0] : null,       // HH:mm:ss (TIME type)
-        rostered_hours: rosterStart && rosterEnd ? Number(calculateHours(rosterStart, rosterEnd).toFixed(2)) : 0,
+        rostered_start: rosterStart ? rosterStart.toTimeString().split(' ')[0] : null,
+        rostered_end: rosterEnd ? rosterEnd.toTimeString().split(' ')[0] : null,
+        rostered_hours: Number(rosteredHours.toFixed(2)),
+        overtime_hours: Number(overtimeHours.toFixed(2)),
+        break_hours: Number(breakTimeHours.toFixed(2)),
         status,
-        flags: flags.join(', '),
-        notes: 'Generated automatically',
+        flags: [...new Set(flags)].join(', '), // Dedupe flags
+        notes: shift ? 'System: Auto-generated from Roster' : 'System: Unscheduled work session detected',
         approved_by: null,
         approved_at: null
     };
@@ -353,4 +363,24 @@ function processDay(
 function calculateHours(start: Date, end: Date): number {
     const diff = end.getTime() - start.getTime();
     return Math.max(0, diff / (1000 * 60 * 60));
+}
+
+/**
+ * Helper: Get next date string (YYYY-MM-DD)
+ * Used for cross-midnight work session logic
+ */
+function getNextDate(dateStr: string): string {
+    const d = new Date(dateStr);
+    d.setDate(d.getDate() + 1);
+    return d.toISOString().split('T')[0];
+}
+
+/**
+ * Helper: Calculate regular vs overtime hours
+ * Compares actual work hours against rostered hours
+ */
+function calculateOvertimeHours(actualHours: number, rosteredHours: number): { regular: number; overtime: number } {
+    const regular = Math.min(actualHours, rosteredHours);
+    const overtime = Math.max(0, actualHours - rosteredHours);
+    return { regular, overtime };
 }

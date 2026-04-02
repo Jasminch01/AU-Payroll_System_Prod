@@ -1,8 +1,9 @@
 import { NextRequest } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { successResponse, errorResponse, validateRequiredFields } from '@/lib/api-helpers';
+import { successResponse, errorResponse} from '@/lib/api-helpers';
 import { verifyKioskToken } from '@/lib/kiosk-auth';
 import { getAvailableActions } from '@/lib/attendance-logic';
+import { EventType } from '@/types/database';
 import { cookies } from 'next/headers';
 import { generateBusinessPrefix } from '@/lib/utils/employee-id';
 
@@ -76,11 +77,38 @@ export async function GET(request: NextRequest) {
             .maybeSingle();
 
         if (lastLogError) {
+            console.error(`[Kiosk Status] Error fetching attendance logs for ${employee.employee_id}:`, lastLogError);
             return errorResponse('Error fetching status', 500);
         }
 
+        console.log(`[Kiosk Status] Employee: ${employee.employee_id}`);
+        console.log(`[Kiosk Status] Last log (raw):`, JSON.stringify(lastLog));
+        console.log(`[Kiosk Status] Last log type:`, typeof lastLog);
+        console.log(`[Kiosk Status] Last log is array:`, Array.isArray(lastLog));
+
+        // Type guard: ensure lastLog has the correct shape and is on the correct type
+        let typedLastLog: { event_type: EventType; timestamp: string } | null = null;
+        
+        if (lastLog && typeof lastLog === 'object' && !Array.isArray(lastLog)) {
+            const obj = lastLog as Record<string, unknown>;
+            const eventType = obj.event_type;
+            const timestamp = obj.timestamp;
+            
+            if (eventType && timestamp) {
+                typedLastLog = {
+                    event_type: eventType as EventType,
+                    timestamp: String(timestamp)
+                };
+                console.log(`[Kiosk Status] LastLog is valid event:`, eventType);
+            }
+        }
+
+        console.log(`[Kiosk Status] Typed last log:`, typedLastLog);
+
         // 3. Determine available actions
-        const actions = getAvailableActions(lastLog);
+        const actions = getAvailableActions(typedLastLog);
+
+        console.log(`[Kiosk Status] Available actions (${actions.length}):`, actions.map(a => a.label).join(', '));
 
         return successResponse({
             employee_name: `${employee.first_name} ${employee.last_name}`,

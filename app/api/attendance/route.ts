@@ -4,6 +4,7 @@ import { requireRole } from '@/lib/auth';
 import { successResponse, errorResponse } from '@/lib/api-helpers';
 import { EventType } from '@/types/database';
 import { validateAttendanceTransition } from '@/lib/attendance-logic';
+import { notifyAttendanceEvent } from '@/lib/attendance-notifications';
 
 /**
  * GET /api/attendance
@@ -33,12 +34,27 @@ export async function GET(request: NextRequest) {
         if (employee_id) query = query.eq('employee_id', employee_id);
         if (event_type) query = query.eq('event_type', event_type);
 
-        if (from) {
-            // Assuming from/to are dates YYYY-MM-DD, we filter the ISO timestamp
-            query = query.gte('timestamp', `${from}T00:00:00Z`);
-        }
-        if (to) {
-            query = query.lte('timestamp', `${to}T23:59:59Z`);
+        if (from || to) {
+            // Expand date range by ±1 day to capture cross-midnight work sessions
+            // E.g. if querying 2026-03-31, include logs from 2026-03-30 onwards
+            // This ensures we get CLOCK_OUT that happens on 2026-04-01 if CLOCK_IN is 2026-03-31
+            
+            let startDate = from;
+            let endDate = to;
+
+            if (from) {
+                const fromDate = new Date(from);
+                fromDate.setDate(fromDate.getDate() - 1);
+                startDate = fromDate.toISOString().split('T')[0];
+                query = query.gte('timestamp', `${startDate}T00:00:00Z`);
+            }
+
+            if (to) {
+                const toDate = new Date(to);
+                toDate.setDate(toDate.getDate() + 1);
+                endDate = toDate.toISOString().split('T')[0];
+                query = query.lte('timestamp', `${endDate}T23:59:59Z`);
+            }
         }
 
         const { data: logs, error } = await query;
@@ -76,10 +92,12 @@ export async function POST(request: NextRequest) {
         const supabase = await createClient();
 
         // 1. Check current state for validation
+        const newTimestamp = body.timestamp || new Date().toISOString();
         const { data: lastLog } = await supabase
             .from('AttendanceLog')
             .select('event_type, timestamp')
             .eq('employee_id', employee_id)
+            .lte('timestamp', newTimestamp)
             .order('timestamp', { ascending: false })
             .limit(1)
             .maybeSingle();
@@ -87,7 +105,7 @@ export async function POST(request: NextRequest) {
         const transitionError = validateAttendanceTransition(
             lastLog as { event_type: EventType, timestamp: string } | null,
             event_type as EventType,
-            body.timestamp || new Date().toISOString()
+            newTimestamp
         );
 
         if (transitionError) {
@@ -103,18 +121,33 @@ export async function POST(request: NextRequest) {
         const seconds = String(now.getSeconds()).padStart(2, '0');
         const localTimestamp = `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
 
+        // Build insert object with optional override_by
+        const insertData: any = {
+            ...body,
+            timestamp: body.timestamp || localTimestamp,
+            business_id: authUser.business_id,
+        };
+
+        // Only set override_by if employee_id exists
+        if (authUser.employee_id) {
+            insertData.override_by = authUser.employee_id;
+        }
+
         const { data: log, error } = await supabase
             .from('AttendanceLog')
-            .insert({
-                ...body,
-                timestamp: body.timestamp || localTimestamp,
-                business_id: authUser.business_id,
-                override_by: authUser.user_id, // Track who made the manual entry
-            })
+            .insert(insertData)
             .select()
             .single();
 
         if (error) return errorResponse(error.message, 400);
+
+        // Notify owner and managers of attendance event (async, no await)
+        notifyAttendanceEvent(
+            employee_id,
+            event_type as EventType,
+            body.timestamp || localTimestamp,
+            authUser.business_id
+        ).catch(err => console.error('Failed to send attendance notification:', err));
 
         return successResponse(log, 'Manual attendance entry recorded', 201);
     } catch (err) {
