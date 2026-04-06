@@ -132,7 +132,7 @@ export function ShiftSwapDialog({ open, onOpenChange, shift, role }: ShiftSwapDi
                     <DialogDescription>
                         {new Date(shift.start_time).toLocaleDateString("en-AU", { 
                             weekday: "long", month: "short", day: "numeric" 
-                        })} at {new Date(shift.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        })} at {shift.start_time?.split('T')[1]?.substring(0, 5)}
                     </DialogDescription>
                 </DialogHeader>
 
@@ -231,7 +231,7 @@ export function ShiftSwapDialog({ open, onOpenChange, shift, role }: ShiftSwapDi
                                                 colleagueShifts.map((s: any) => (
                                                     <SelectItem key={s.shift_id} value={s.shift_id}>
                                                         {new Date(s.start_time).toLocaleDateString("en-AU", { weekday: 'short', day: 'numeric', month: 'short' })}
-                                                        {" ("}{new Date(s.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}{")"}
+                                                        {" ("}{s.start_time?.split('T')[1]?.substring(0, 5)}{")"}
                                                     </SelectItem>
                                                 ))
                                             )}

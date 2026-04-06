@@ -518,16 +518,38 @@ export default function ManagerRosterPage() {
             return;
         }
 
+        // Ensure time format has leading zeros and proper mm format
+        const formatTimeForPayload = (timeStr: string): string => {
+            if (!timeStr) return "09:00";
+            const parts = timeStr.split(':');
+            if (parts.length >= 2) {
+                const hrs = String(parseInt(parts[0]) || 0).padStart(2, '0');
+                const mins = String(parseInt(parts[1]) || 0).padStart(2, '0');
+                return `${hrs}:${mins}`;
+            }
+            return timeStr;
+        };
+
+        const formattedStart = formatTimeForPayload(shiftStart);
+        const formattedEnd = formatTimeForPayload(shiftEnd);
+
+        console.log('[handleAddShift] Input times - shiftStart:', shiftStart, 'shiftEnd:', shiftEnd);
+        console.log('[handleAddShift] Formatted times - formattedStart:', formattedStart, 'formattedEnd:', formattedEnd);
+
         const payload = {
             employee_id: shiftEmployee,
             shift_date: selectedDate,
-            start_time: `${selectedDate}T${shiftStart}:00`,
-            end_time: `${selectedDate}T${shiftEnd}:00`,
+            start_time: `${selectedDate}T${formattedStart}:00`,
+            end_time: `${selectedDate}T${formattedEnd}:00`,
             shift_type: shiftType,
             roster_start: rangeStart,
             roster_end: rangeEnd,
             notify,
         };
+
+        console.log('[handleAddShift] Final payload - start_time:', payload.start_time, 'end_time:', payload.end_time);
+
+        console.log('[handleAddShift] Payload times - Start:', payload.start_time, 'End:', payload.end_time);
 
         // Check for expansion
         if (currentRoster) {
@@ -577,14 +599,21 @@ export default function ManagerRosterPage() {
             const parseTime = (timeStr: string) => {
                 if (!timeStr) return "09:00";
                 if (timeStr.includes("T")) {
-                    return new Date(timeStr).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+                    // Extract time directly from ISO string to avoid timezone conversion
+                    // Format: 2026-03-10T14:30:00 -> 14:30
+                    const extracted = timeStr.split('T')[1]?.substring(0, 5) || "09:00";
+                    console.log('[parseTime] Input:', timeStr, '-> Extracted:', extracted);
+                    return extracted;
                 }
                 // If it's already HH:mm or HH:mm:ss, return first 5 chars
-                return timeStr.substring(0, 5);
+                const result = timeStr.substring(0, 5);
+                console.log('[parseTime] Direct format:', timeStr, '-> Result:', result);
+                return result;
             };
 
             const startTime = parseTime(shift.start_time);
             const endTime = parseTime(shift.end_time);
+            console.log('[openAddShift] Parsed times - Start:', startTime, 'End:', endTime);
 
             setShiftStart(startTime);
             setShiftEnd(endTime);
@@ -1222,9 +1251,9 @@ export default function ManagerRosterPage() {
                                                                                 <div className="flex items-center gap-2">
                                                                                     <Clock size={12} className={cn("opacity-60", isPublished ? "text-green-700" : "text-[hsl(var(--brand))]")} />
                                                                                     <span className="text-sm font-black tracking-tight tabular-nums">
-                                                                                        {new Date(s.start_time).toLocaleTimeString("en-AU", { hour: "numeric", minute: "2-digit", hour12: true })}
+                                                                                        {s.start_time?.split('T')[1]?.substring(0, 5)}
                                                                                         {" – "}
-                                                                                        {new Date(s.end_time).toLocaleTimeString("en-AU", { hour: "numeric", minute: "2-digit", hour12: true })}
+                                                                                        {s.end_time?.split('T')[1]?.substring(0, 5)}
                                                                                     </span>
                                                                                 </div>
                                                                                 <Badge variant="secondary" className={cn(
@@ -1488,8 +1517,9 @@ export default function ManagerRosterPage() {
                                                         )}>
                                                             {dayShifts.map((s: any) => {
                                                                 const isPublished = s.shift_status === 'published';
-                                                                const startTimeStr = new Date(s.start_time).toLocaleTimeString("en-AU", { hour: "numeric", hour12: true }).replace(" ", "").toLowerCase();
-                                                                const endTimeStr = new Date(s.end_time).toLocaleTimeString("en-AU", { hour: "numeric", hour12: true }).replace(" ", "").toLowerCase();
+                                                                // Extract time directly from ISO string to avoid timezone conversion
+                                                                const startTimeStr = s.start_time?.split('T')[1]?.substring(0, 5) || "00:00";
+                                                                const endTimeStr = s.end_time?.split('T')[1]?.substring(0, 5) || "00:00";
 
                                                                 return (
                                                                     <div

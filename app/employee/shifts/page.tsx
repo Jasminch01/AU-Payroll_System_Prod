@@ -304,9 +304,9 @@ export default function EmployeeShiftsPage() {
                                     <p className="text-sm text-[hsl(var(--muted-foreground))]">
                                         {new Date(sr.Shift?.start_time).toLocaleDateString("en-AU", { weekday: "short", month: "short", day: "numeric" })}
                                         {" · "}
-                                        {new Date(sr.Shift?.start_time).toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit" })}
+                                        {sr.Shift?.start_time?.split('T')[1]?.substring(0, 5)}
                                         {" – "}
-                                        {new Date(sr.Shift?.end_time).toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit" })}
+                                        {sr.Shift?.end_time?.split('T')[1]?.substring(0, 5)}
                                     </p>
                                 </div>
                                 <div className="flex items-center gap-2">
@@ -351,7 +351,7 @@ export default function EmployeeShiftsPage() {
                                         </div>
                                         <div className="flex items-center gap-2 text-xs text-[hsl(var(--muted-foreground))]">
                                             <Clock size={14} />
-                                            {new Date(pool.Shift?.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - {new Date(pool.Shift?.end_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                            {pool.Shift?.start_time?.split('T')[1]?.substring(0, 5)} - {pool.Shift?.end_time?.split('T')[1]?.substring(0, 5)}
                                         </div>
                                     </div>
                                     <Button 
@@ -433,7 +433,7 @@ export default function EmployeeShiftsPage() {
                                                         <Clock size={10} /> {s.shift_type}
                                                     </div>
                                                     <div className="font-bold">
-                                                        {new Date(s.start_time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })}
+                                                        {s.start_time?.split('T')[1]?.substring(0, 5)}
                                                     </div>
                                                 </div>
                                             ))}
@@ -501,9 +501,9 @@ export default function EmployeeShiftsPage() {
                                                             <td className="px-4 py-4">
                                                                 <div className="flex items-center gap-2 text-[hsl(var(--brand))] font-bold">
                                                                     <Clock size={14} className="opacity-50" />
-                                                                    {new Date(shift.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })}
+                                                                    {shift.start_time?.split('T')[1]?.substring(0, 5)}
                                                                     {" – "}
-                                                                    {new Date(shift.end_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })}
+                                                                    {shift.end_time?.split('T')[1]?.substring(0, 5)}
                                                                 </div>
                                                             </td>
                                                             <td className="px-4 py-4 text-center">

@@ -565,14 +565,24 @@ export default function OwnerRosterPage() {
 
         if (shift) {
             setEditingShiftId(shift.shift_id);
-            setShiftStart(new Date(shift.start_time).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }));
-            setShiftEnd(new Date(shift.end_time).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }));
+            const parseTime = (timeStr: string) => {
+                if (!timeStr) return "09:00";
+                if (timeStr.includes("T")) {
+                    return timeStr.split('T')[1]?.substring(0, 5) || "09:00";
+                }
+                return timeStr.substring(0, 5);
+            };
+            const startTime = parseTime(shift.start_time);
+            const endTime = parseTime(shift.end_time);
+            
+            setShiftStart(startTime);
+            setShiftEnd(endTime);
             setShiftType(shift.shift_type);
             setInitialFormState({
                 employee_id: empId,
                 shift_date: date,
-                start_time: new Date(shift.start_time).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }),
-                end_time: new Date(shift.end_time).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }),
+                start_time: startTime,
+                end_time: endTime,
                 shift_type: shift.shift_type
             });
         } else {
@@ -1196,9 +1206,9 @@ export default function OwnerRosterPage() {
                                                                                 <div className="flex items-center gap-2">
                                                                                     <Clock size={12} className={cn("opacity-60", isPublished ? "text-green-700" : "text-[hsl(var(--brand))]")} />
                                                                                     <span className="text-sm font-black tracking-tight tabular-nums">
-                                                                                        {new Date(s.start_time).toLocaleTimeString("en-AU", { hour: "numeric", minute: "2-digit", hour12: true })}
+                                                                                        {s.start_time?.split('T')[1]?.substring(0, 5)}
                                                                                         {" – "}
-                                                                                        {new Date(s.end_time).toLocaleTimeString("en-AU", { hour: "numeric", minute: "2-digit", hour12: true })}
+                                                                                        {s.end_time?.split('T')[1]?.substring(0, 5)}
                                                                                     </span>
                                                                                 </div>
                                                                                 <Badge variant="secondary" className={cn(
@@ -1461,8 +1471,9 @@ export default function OwnerRosterPage() {
                                                             )}>
                                                                 {dayShifts.map((s: any) => {
                                                                     const isPublished = s.shift_status === 'published';
-                                                                    const startTimeStr = new Date(s.start_time).toLocaleTimeString("en-AU", { hour: "numeric", hour12: true }).replace(" ", "").toLowerCase();
-                                                                    const endTimeStr = new Date(s.end_time).toLocaleTimeString("en-AU", { hour: "numeric", hour12: true }).replace(" ", "").toLowerCase();
+                                                                    // Extract time directly from ISO string to avoid timezone conversion
+                                                                    const startTimeStr = s.start_time?.split('T')[1]?.substring(0, 5) || "00:00";
+                                                                    const endTimeStr = s.end_time?.split('T')[1]?.substring(0, 5) || "00:00";
 
                                                                     return (
                                                                         <div

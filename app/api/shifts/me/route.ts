@@ -9,7 +9,13 @@ import { successResponse, errorResponse } from '@/lib/api-helpers';
  * Get assigned shifts for the authenticated employee
  * Access: Employee, Manager, Owner
  * 
- * Note: Only returns shifts from PUBLISHED rosters.
+ * VISIBILITY REQUIREMENTS:
+ * Shifts are only visible to employees when BOTH conditions are met:
+ * 1. The Roster has been published (published_at timestamp exists)
+ * 2. The individual Shift has been published (shift_status = 'published')
+ * 
+ * This ensures managers can create draft shifts without employees seeing them,
+ * then publish rosters/shifts when they're ready.
  */
 export async function GET(request: NextRequest) {
     try {
