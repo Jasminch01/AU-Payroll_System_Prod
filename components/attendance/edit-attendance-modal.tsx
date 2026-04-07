@@ -6,11 +6,14 @@ import { apiPatch } from "@/lib/api-client";
 import { EventType, AttendanceLog } from "@/types/database";
 import { X, AlertCircle, CheckCircle, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { createAustralianTimestamp, getAustralianDateTimeForInput } from "@/lib/timezone-utils";
 
 interface EditAttendanceModalProps {
     isOpen: boolean;
     onClose: () => void;
     log: AttendanceLog & { Employee?: { first_name: string; last_name: string } | null };
+    fromDate?: string;
+    toDate?: string;
 }
 
 const EVENT_TYPES: { value: EventType; label: string }[] = [
@@ -24,15 +27,17 @@ export function EditAttendanceModal({
     isOpen,
     onClose,
     log,
+    fromDate,
+    toDate,
 }: EditAttendanceModalProps) {
     const queryClient = useQueryClient();
 
-    // Parse initial timestamp
-    const initialDate = new Date(log.timestamp);
+    // Parse initial timestamp using Australian timezone
+    const { date: initialDate, time: initialTime } = getAustralianDateTimeForInput(log.timestamp);
     const [formData, setFormData] = useState({
         event_type: log.event_type as EventType,
-        date: initialDate.toISOString().split("T")[0],
-        time: initialDate.toTimeString().slice(0, 5),
+        date: initialDate,
+        time: initialTime,
         override_reason: log.override_reason || "",
     });
 
@@ -52,8 +57,20 @@ export function EditAttendanceModal({
             setSuccess("Attendance record updated successfully");
             setError("");
 
-            // Refetch attendance data
-            queryClient.invalidateQueries({ queryKey: ["attendance-raw"] });
+            // Invalidate with specific query key if dates provided, otherwise invalidate all
+            if (fromDate && toDate) {
+                console.log('[EDIT ATTENDANCE] Invalidating specific query:', {
+                    queryKey: ["attendance-raw", fromDate, toDate]
+                });
+                queryClient.invalidateQueries({ 
+                    queryKey: ["attendance-raw", fromDate, toDate] 
+                });
+            } else {
+                console.log('[EDIT ATTENDANCE] Invalidating all attendance queries');
+                queryClient.invalidateQueries({ 
+                    queryKey: ["attendance-raw"] 
+                });
+            }
 
             setTimeout(() => {
                 onClose();
@@ -71,6 +88,18 @@ export function EditAttendanceModal({
         setError("");
         setSuccess("");
 
+        // Prevent converting CLOCK_IN to CLOCK_OUT - must stay as CLOCK_IN
+        if (log.event_type === 'CLOCK_IN' && formData.event_type !== 'CLOCK_IN') {
+            setError("Cannot change CLOCK_IN to another event type. Create a new CLOCK_OUT entry instead using Manual Entry.");
+            return;
+        }
+
+        // Prevent converting other types to CLOCK_IN
+        if (log.event_type !== 'CLOCK_IN' && formData.event_type === 'CLOCK_IN') {
+            setError("Cannot change to CLOCK_IN. Event type mismatch.");
+            return;
+        }
+
         if (!formData.date || !formData.time) {
             setError("Please select date and time");
             return;
@@ -81,8 +110,45 @@ export function EditAttendanceModal({
             return;
         }
 
-        const localDateTime = new Date(`${formData.date}T${formData.time}:00`);
-        const timestamp = localDateTime.toISOString();
+        console.log('[EDIT ATTENDANCE] Form data before conversion:', {
+            formData_date: formData.date,
+            formData_time: formData.time,
+            formData_event_type: formData.event_type,
+            formData_override_reason: formData.override_reason,
+            original_event_type: log.event_type
+        });
+
+        // Create timestamp using Australian timezone-aware function
+        const timestamp = createAustralianTimestamp(formData.date, formData.time);
+
+        console.log('[EDIT ATTENDANCE] Timestamp conversion:', {
+            input_date: formData.date,
+            input_time: formData.time,
+            output_timestamp: timestamp,
+            output_breakdown: {
+                utc_iso: timestamp,
+                display_as_sydney: new Intl.DateTimeFormat('en-AU', {
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                    hour12: false,
+                    timeZone: 'Australia/Sydney'
+                }).format(new Date(timestamp))
+            }
+        });
+
+        console.log('[EDIT ATTENDANCE] Sending to API:', {
+            log_id: log.log_id,
+            employee_id: log.employee_id,
+            old_event_type: log.event_type,
+            new_event_type: formData.event_type,
+            old_timestamp: log.timestamp,
+            new_timestamp: timestamp,
+            override_reason: formData.override_reason,
+        });
 
         mutation.mutate({
             event_type: formData.event_type,
@@ -139,17 +205,12 @@ export function EditAttendanceModal({
                         {/* Event type */}
                         <div className="space-y-2">
                             <label className="font-semibold text-[hsl(var(--foreground))] text-xs uppercase tracking-wider">
-                                Event Type
+                                Event Type (cannot be changed)
                             </label>
                             <select
+                                disabled={true}
                                 value={formData.event_type}
-                                onChange={(e) =>
-                                    setFormData({
-                                        ...formData,
-                                        event_type: e.target.value as EventType,
-                                    })
-                                }
-                                className="w-full h-11 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-3 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--brand))]/20 focus:border-[hsl(var(--brand))]"
+                                className="w-full h-11 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/50 px-3 text-sm opacity-60 cursor-not-allowed"
                             >
                                 {EVENT_TYPES.map((type) => (
                                     <option key={type.value} value={type.value}>

@@ -218,6 +218,26 @@ export async function POST(request: NextRequest) {
 
         if (error) return errorResponse(error.message, 400);
 
+        // If the shift is published and the roster is still draft, publish the roster too
+        if (shift && shift.shift_status === 'published') {
+            const { data: roster } = await supabase
+                .from('Roster')
+                .select('status, published_at')
+                .eq('roster_id', target_roster_id)
+                .single();
+
+            if (roster && roster.status === 'draft' && !roster.published_at) {
+                await supabase
+                    .from('Roster')
+                    .update({ 
+                        status: 'published',
+                        published_at: new Date().toISOString(),
+                        updated_at: new Date().toISOString()
+                    })
+                    .eq('roster_id', target_roster_id);
+            }
+        }
+
         // If notify is requested, trigger the single shift notification
         if (notify && shift) {
             notifyShiftPublished(shift.shift_id).catch(err => 

@@ -82,11 +82,13 @@ function formatTime(iso: string | null) {
     const date = new Date(iso);
     if (isNaN(date.getTime())) return "--:--";
 
-    return date.toLocaleTimeString("en-AU", {
+    // Use Sydney timezone to ensure consistent Australian time display
+    return new Intl.DateTimeFormat("en-AU", {
         hour: "2-digit",
         minute: "2-digit",
         hour12: true,
-    });
+        timeZone: 'Australia/Sydney'
+    }).format(date);
 }
 
 /* ===== Component ===== */

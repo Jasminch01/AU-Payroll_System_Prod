@@ -146,6 +146,26 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 
         if (error) return errorResponse(error.message, 400);
 
+        // If shift is published, ensure the roster is also published
+        if (updated.shift_status === 'published' && existing.roster_id) {
+            const { data: roster } = await supabase
+                .from('Roster')
+                .select('status, published_at', { count: 'exact' })
+                .eq('roster_id', existing.roster_id)
+                .single();
+
+            if (roster && roster.status === 'draft' && !roster.published_at) {
+                await supabase
+                    .from('Roster')
+                    .update({ 
+                        status: 'published',
+                        published_at: new Date().toISOString(),
+                        updated_at: new Date().toISOString()
+                    })
+                    .eq('roster_id', existing.roster_id);
+            }
+        }
+
         // If shift was already published, keep it published (Deputy-style: edits are live)
         // Also notify the employee of the change
         if (existing.roster_id) {

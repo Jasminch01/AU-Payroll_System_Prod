@@ -6,6 +6,7 @@ import { apiPost } from "@/lib/api-client";
 import { EventType } from "@/types/database";
 import { X, AlertCircle, CheckCircle, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { createAustralianTimestamp, getAustralianDateTimeForInput } from "@/lib/timezone-utils";
 
 interface ManualEntryModalProps {
     isOpen: boolean;
@@ -15,6 +16,8 @@ interface ManualEntryModalProps {
         first_name: string;
         last_name: string;
     }>;
+    fromDate?: string;
+    toDate?: string;
 }
 
 const EVENT_TYPES: { value: EventType; label: string }[] = [
@@ -28,13 +31,19 @@ export function ManualEntryModal({
     isOpen,
     onClose,
     employees,
+    fromDate,
+    toDate,
 }: ManualEntryModalProps) {
     const queryClient = useQueryClient();
+    
+    // Get current Australian date/time for default values
+    const { date: todayDate, time: nowTime } = getAustralianDateTimeForInput(new Date().toISOString());
+    
     const [formData, setFormData] = useState({
         employee_id: "",
         event_type: "CLOCK_IN" as EventType,
-        date: new Date().toISOString().split("T")[0],
-        time: new Date().toTimeString().slice(0, 5),
+        date: todayDate,
+        time: nowTime,
         override_reason: "",
     });
 
@@ -62,8 +71,14 @@ export function ManualEntryModal({
             });
             setError("");
 
-            // Refetch attendance data
-            queryClient.invalidateQueries({ queryKey: ["attendance-raw"] });
+            // Refetch attendance data with specific date range
+            if (fromDate && toDate) {
+                queryClient.invalidateQueries({ 
+                    queryKey: ["attendance-raw", fromDate, toDate] 
+                });
+            } else {
+                queryClient.invalidateQueries({ queryKey: ["attendance-raw"] });
+            }
 
             setTimeout(() => {
                 onClose();

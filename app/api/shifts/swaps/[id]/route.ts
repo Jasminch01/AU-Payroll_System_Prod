@@ -25,6 +25,11 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
         const authUser = await getAuthUser();
         if (!authUser) return errorResponse('Unauthorized', 401);
 
+        // Employees must have an employee_id linked to their account
+        if (authUser.role === 'employee' && !authUser.employee_id) {
+            return errorResponse('Valid employee profile required to manage shift swaps.', 401);
+        }
+
         const { id } = await params;
         const body = await request.json();
         const { action, manager_note } = body; // action: 'accept' | 'decline' | 'approve' | 'reject' | 'cancel'

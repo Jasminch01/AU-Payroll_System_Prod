@@ -100,6 +100,9 @@ export async function POST(request: NextRequest) {
             const oldStartTimePart = s.start_time.split('T')[1];
             const oldEndTimePart = s.end_time.split('T')[1];
             
+            // If target roster is published, inherit its published status
+            const inheritedStatus = targetRoster.status === 'published' ? 'published' : 'draft';
+            
             const ns = {
                 business_id: authUser.business_id,
                 roster_id: targetRoster.roster_id,
@@ -108,7 +111,7 @@ export async function POST(request: NextRequest) {
                 start_time: `${newDateStr}T${oldStartTimePart}`,
                 end_time: `${newDateStr}T${oldEndTimePart}`,
                 shift_type: s.shift_type,
-                shift_status: 'draft',
+                shift_status: inheritedStatus,
             };
 
             // Check for overlap
