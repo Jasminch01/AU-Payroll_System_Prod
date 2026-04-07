@@ -15,6 +15,11 @@ export async function GET(request: NextRequest) {
         const authUser = await getAuthUser();
         if (!authUser) return errorResponse('Unauthorized', 401);
 
+        // Employees must have an employee_id linked to their account
+        if (authUser.role === 'employee' && !authUser.employee_id) {
+            return errorResponse('Valid employee profile required to view shift swaps.', 401);
+        }
+
         const supabase = await createClient();
         const { searchParams } = new URL(request.url);
 
@@ -32,7 +37,7 @@ export async function GET(request: NextRequest) {
 
         // Employees see only their relevant requests AND open pool offers
         if (authUser.role === 'employee') {
-            const employeeId = authUser.employee_id;
+            const employeeId = authUser.employee_id!; // Now guaranteed to exist
             // PostgREST .or() needs quotes for string literals with letters
             query = query.or(`requester_id.eq."${employeeId}",target_employee_id.eq."${employeeId}",target_employee_id.is.null`);
         }

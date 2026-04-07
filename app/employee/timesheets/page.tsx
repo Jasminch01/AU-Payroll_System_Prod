@@ -54,7 +54,13 @@ export default function EmployeeTimesheetsPage() {
     const formatTimeDisplay = (dateStr: string, timeStr: string | null) => {
         const date = parseTime(dateStr, timeStr);
         if (!date || isNaN(date.getTime())) return "—";
-        return date.toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit", hour12: true });
+        // Use Sydney timezone for consistent Australian time display
+        return new Intl.DateTimeFormat("en-AU", {
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: true,
+            timeZone: 'Australia/Sydney'
+        }).format(date);
     };
 
     return (

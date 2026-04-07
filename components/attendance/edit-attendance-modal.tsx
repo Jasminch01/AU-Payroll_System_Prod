@@ -6,6 +6,7 @@ import { apiPatch } from "@/lib/api-client";
 import { EventType, AttendanceLog } from "@/types/database";
 import { X, AlertCircle, CheckCircle, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { createAustralianTimestamp, getAustralianDateTimeForInput } from "@/lib/timezone-utils";
 
 interface EditAttendanceModalProps {
     isOpen: boolean;
@@ -27,12 +28,12 @@ export function EditAttendanceModal({
 }: EditAttendanceModalProps) {
     const queryClient = useQueryClient();
 
-    // Parse initial timestamp
-    const initialDate = new Date(log.timestamp);
+    // Parse initial timestamp using Australian timezone
+    const { date: initialDate, time: initialTime } = getAustralianDateTimeForInput(log.timestamp);
     const [formData, setFormData] = useState({
         event_type: log.event_type as EventType,
-        date: initialDate.toISOString().split("T")[0],
-        time: initialDate.toTimeString().slice(0, 5),
+        date: initialDate,
+        time: initialTime,
         override_reason: log.override_reason || "",
     });
 
@@ -81,8 +82,8 @@ export function EditAttendanceModal({
             return;
         }
 
-        const localDateTime = new Date(`${formData.date}T${formData.time}:00`);
-        const timestamp = localDateTime.toISOString();
+        // Create timestamp using Australian timezone-aware function
+        const timestamp = createAustralianTimestamp(formData.date, formData.time);
 
         mutation.mutate({
             event_type: formData.event_type,

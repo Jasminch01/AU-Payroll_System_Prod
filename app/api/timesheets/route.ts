@@ -21,6 +21,11 @@ export async function GET(request: NextRequest) {
         const authUser = await getAuthUser();
         if (!authUser) return errorResponse('Unauthorized', 401);
 
+        // Employees must have an employee_id linked to their account
+        if (authUser.role === 'employee' && !authUser.employee_id) {
+            return errorResponse('Valid employee profile required to view timesheets.', 401);
+        }
+
         const { searchParams } = new URL(request.url);
         const employee_id = searchParams.get('employee_id');
         const status = searchParams.get('status');

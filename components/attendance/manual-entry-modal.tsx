@@ -6,6 +6,7 @@ import { apiPost } from "@/lib/api-client";
 import { EventType } from "@/types/database";
 import { X, AlertCircle, CheckCircle, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { createAustralianTimestamp, getAustralianDateTimeForInput } from "@/lib/timezone-utils";
 
 interface ManualEntryModalProps {
     isOpen: boolean;
@@ -30,11 +31,15 @@ export function ManualEntryModal({
     employees,
 }: ManualEntryModalProps) {
     const queryClient = useQueryClient();
+    
+    // Get current Australian date/time for default values
+    const { date: todayDate, time: nowTime } = getAustralianDateTimeForInput(new Date().toISOString());
+    
     const [formData, setFormData] = useState({
         employee_id: "",
         event_type: "CLOCK_IN" as EventType,
-        date: new Date().toISOString().split("T")[0],
-        time: new Date().toTimeString().slice(0, 5),
+        date: todayDate,
+        time: nowTime,
         override_reason: "",
     });
 
@@ -53,11 +58,12 @@ export function ManualEntryModal({
         },
         onSuccess: () => {
             setSuccess("Manual entry recorded successfully");
+            const { date: resetDate, time: resetTime } = getAustralianDateTimeForInput(new Date().toISOString());
             setFormData({
                 employee_id: "",
                 event_type: "CLOCK_IN",
-                date: new Date().toISOString().split("T")[0],
-                time: new Date().toTimeString().slice(0, 5),
+                date: resetDate,
+                time: resetTime,
                 override_reason: "",
             });
             setError("");
@@ -99,8 +105,8 @@ export function ManualEntryModal({
             return;
         }
 
-        const localDateTime = new Date(`${formData.date}T${formData.time}:00`);
-        const timestamp = localDateTime.toISOString();
+        // Create timestamp using Australian timezone-aware function
+        const timestamp = createAustralianTimestamp(formData.date, formData.time);
 
         mutation.mutate({
             employee_id: formData.employee_id,

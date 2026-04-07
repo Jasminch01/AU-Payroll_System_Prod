@@ -82,15 +82,14 @@ function formatTime(iso: string | null) {
     const date = new Date(iso);
     if (isNaN(date.getTime())) return "--:--";
 
-    // Use Intl.DateTimeFormat to ensure consistent local display
-    // If the user wants "no timezone", we should display it as it is in the ISO string
-    // but browser's toLocaleTimeString will use browser's timezone.
-    // However, if the ISO string has 'Z', it's UTC.
-    return date.toLocaleTimeString("en-AU", {
+    // Use Intl.DateTimeFormat with Sydney timezone to ensure consistent Australian time display
+    // regardless of the user's browser location
+    return new Intl.DateTimeFormat("en-AU", {
         hour: "2-digit",
         minute: "2-digit",
         hour12: true,
-    });
+        timeZone: 'Australia/Sydney'
+    }).format(date);
 }
 
 /* ===== Component ===== */
