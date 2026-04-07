@@ -1,0 +1,219 @@
+
+> australia-payroll-system@0.1.0 build
+> next build
+
+▲ Next.js 16.1.6 (Turbopack)
+- Environments: .env
+
+⚠ The "middleware" file convention is deprecated. Please use "proxy" instead. Learn more: https://nextjs.org/docs/messages/middleware-to-proxy
+  Creating an optimized production build ...
+✓ Compiled successfully in 3.4s
+  Running TypeScript ...
+  Collecting page data using 9 workers ...
+  Generating static pages using 9 workers (0/95) ...
+⚠ Unsupported metadata themeColor is configured in metadata export in /manager/dashboard. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+  Generating static pages using 9 workers (23/95) 
+⚠ Unsupported metadata themeColor is configured in metadata export in /api/xero/success. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+⚠ Unsupported metadata themeColor is configured in metadata export in /_not-found. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+⚠ Unsupported metadata themeColor is configured in metadata export in /employee/clock. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+The width(-1) and height(-1) of chart should be greater than 0,
+       please check the style of container, or the props width(100%) and height(100%),
+       or add a minWidth(0) or minHeight(undefined) or use aspect(undefined) to control the
+       height and width.
+⚠ Unsupported metadata themeColor is configured in metadata export in /employee/leave. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+⚠ Unsupported metadata themeColor is configured in metadata export in /manager/roster. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+  Generating static pages using 9 workers (47/95) 
+⚠ Unsupported metadata themeColor is configured in metadata export in /employee/shifts. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+⚠ Unsupported metadata themeColor is configured in metadata export in /employee/dashboard. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+⚠ Unsupported metadata themeColor is configured in metadata export in /manager/shifts. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+⚠ Unsupported metadata themeColor is configured in metadata export in /manager/leave. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+⚠ Unsupported metadata themeColor is configured in metadata export in /manager/timesheets. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+⚠ Unsupported metadata themeColor is configured in metadata export in /manager/team. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+⚠ Unsupported metadata themeColor is configured in metadata export in /employee/timesheets. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+⚠ Unsupported metadata themeColor is configured in metadata export in /owner/analytics. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+⚠ Unsupported metadata themeColor is configured in metadata export in /onboarding. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+⚠ Unsupported metadata themeColor is configured in metadata export in /forgot-password. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+⚠ Unsupported metadata themeColor is configured in metadata export in /kiosk. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+⚠ Unsupported metadata themeColor is configured in metadata export in /login. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+⚠ Unsupported metadata themeColor is configured in metadata export in /kiosk/setup. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+⚠ Unsupported metadata themeColor is configured in metadata export in /manager/approvals. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+  Generating static pages using 9 workers (71/95) 
+⚠ Unsupported metadata themeColor is configured in metadata export in /manager/attendance. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+⚠ Unsupported metadata themeColor is configured in metadata export in /owner/approvals. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+⚠ Unsupported metadata themeColor is configured in metadata export in /owner/audit. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+⚠ Unsupported metadata themeColor is configured in metadata export in /owner/dashboard. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+The width(-1) and height(-1) of chart should be greater than 0,
+       please check the style of container, or the props width(100%) and height(100%),
+       or add a minWidth(0) or minHeight(undefined) or use aspect(undefined) to control the
+       height and width.
+⚠ Unsupported metadata themeColor is configured in metadata export in /owner/employees. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+⚠ Unsupported metadata themeColor is configured in metadata export in /owner/payroll. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+⚠ Unsupported metadata themeColor is configured in metadata export in /owner/attendance. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+⚠ Unsupported metadata themeColor is configured in metadata export in /owner/leave. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+⚠ Unsupported metadata themeColor is configured in metadata export in /owner/roster. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+⚠ Unsupported metadata themeColor is configured in metadata export in /owner/timesheets. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+⚠ Unsupported metadata themeColor is configured in metadata export in /owner/settings. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+⚠ Unsupported metadata themeColor is configured in metadata export in /owner/settings/holidays. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+⚠ Unsupported metadata themeColor is configured in metadata export in /. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+⚠ Unsupported metadata themeColor is configured in metadata export in /profile. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+⚠ Unsupported metadata themeColor is configured in metadata export in /register. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+⚠ Unsupported metadata themeColor is configured in metadata export in /reset-password. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+✓ Generating static pages using 9 workers (95/95) in 345.0ms
+  Finalizing page optimization ...
+
+Route (app)
+┌ ○ /
+├ ○ /_not-found
+├ ƒ /api/analytics/compliance
+├ ƒ /api/analytics/labour-vs-revenue
+├ ƒ /api/analytics/summary
+├ ƒ /api/attendance
+├ ƒ /api/attendance/[id]
+├ ƒ /api/attendance/kiosk
+├ ƒ /api/attendance/kiosk/status
+├ ƒ /api/attendance/me
+├ ƒ /api/audit-log
+├ ƒ /api/auth/login
+├ ƒ /api/auth/logout
+├ ƒ /api/auth/me
+├ ƒ /api/auth/register
+├ ƒ /api/business/preview
+├ ƒ /api/cron/generate-timesheets
+├ ƒ /api/cron/sync-holidays
+├ ƒ /api/debug-audit
+├ ƒ /api/debug-schema
+├ ƒ /api/debug/check-shifts
+├ ƒ /api/debug/shifts-diagnosis
+├ ƒ /api/employees
+├ ƒ /api/employees/[id]
+├ ƒ /api/employees/[id]/rates
+├ ƒ /api/employees/invite
+├ ƒ /api/employees/join
+├ ƒ /api/employees/resend-invite
+├ ƒ /api/holidays
+├ ƒ /api/holidays/[id]
+├ ƒ /api/kiosk/authorize
+├ ƒ /api/leave
+├ ƒ /api/leave/[id]
+├ ƒ /api/leave/balances
+├ ƒ /api/leave/balances/[id]
+├ ƒ /api/leave/types
+├ ƒ /api/managers
+├ ƒ /api/managers/[id]
+├ ƒ /api/notifications
+├ ƒ /api/notifications/read
+├ ƒ /api/notifications/subscribe
+├ ƒ /api/notifications/test-push
+├ ƒ /api/onboarding/complete
+├ ƒ /api/onboarding/status
+├ ƒ /api/payroll
+├ ƒ /api/payroll/[id]
+├ ƒ /api/payroll/lines
+├ ƒ /api/profile
+├ ƒ /api/rosters
+├ ƒ /api/rosters/[id]
+├ ƒ /api/rosters/[id]/duplicate
+├ ƒ /api/rosters/[id]/publish
+├ ƒ /api/rosters/copy-shifts
+├ ƒ /api/sales
+├ ƒ /api/sales/[id]
+├ ƒ /api/shift
+├ ƒ /api/shift/[id]
+├ ƒ /api/shift/[id]/notify
+├ ƒ /api/shift/delete-many
+├ ƒ /api/shifts/colleague
+├ ƒ /api/shifts/me
+├ ƒ /api/shifts/swaps
+├ ƒ /api/shifts/swaps/[id]
+├ ƒ /api/test-link
+├ ƒ /api/timesheets
+├ ƒ /api/timesheets/[id]
+├ ƒ /api/timesheets/employee/[id]
+├ ƒ /api/timesheets/generate
+├ ƒ /api/upload/avatar
+├ ƒ /api/upload/certificate
+├ ƒ /api/upload/document
+├ ƒ /api/xero/auth
+├ ƒ /api/xero/callback
+├ ƒ /api/xero/status
+├ ○ /api/xero/success
+├ ƒ /api/xero/sync-employees
+├ ƒ /api/xero/sync-payroll
+├ ○ /employee/clock
+├ ○ /employee/dashboard
+├ ○ /employee/leave
+├ ○ /employee/shifts
+├ ○ /employee/timesheets
+├ ○ /forgot-password
+├ ○ /kiosk
+├ ○ /kiosk/setup
+├ ○ /login
+├ ○ /manager/approvals
+├ ○ /manager/attendance
+├ ○ /manager/dashboard
+├ ○ /manager/leave
+├ ○ /manager/roster
+├ ○ /manager/shifts
+├ ○ /manager/team
+├ ƒ /manager/team/[id]
+├ ○ /manager/timesheets
+├ ○ /onboarding
+├ ○ /owner/analytics
+├ ○ /owner/approvals
+├ ○ /owner/attendance
+├ ○ /owner/audit
+├ ○ /owner/dashboard
+├ ○ /owner/employees
+├ ƒ /owner/employees/[id]
+├ ○ /owner/leave
+├ ○ /owner/payroll
+├ ○ /owner/roster
+├ ○ /owner/settings
+├ ○ /owner/settings/holidays
+├ ○ /owner/timesheets
+├ ○ /profile
+├ ○ /register
+└ ○ /reset-password
+
+
+ƒ Proxy (Middleware)
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+

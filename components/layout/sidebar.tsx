@@ -61,6 +61,7 @@ const managerNav: NavItem[] = [
 
 const employeeNav: NavItem[] = [
     { label: "Dashboard", href: "/employee/dashboard", icon: <LayoutDashboard size={20} /> },
+    { label: "Clock In / Out", href: "/employee/clock", icon: <Clock size={20} /> },
     { label: "My Shifts", href: "/employee/shifts", icon: <CalendarDays size={20} /> },
     { label: "Timesheets", href: "/employee/timesheets", icon: <FileText size={20} /> },
     { label: "Leave", href: "/employee/leave", icon: <Palmtree size={20} /> },
@@ -87,7 +88,7 @@ export function Sidebar({ role, businessName = "AU Payroll", isCollapsed = false
             {/* Logo / Business Name */}
             <div className="flex h-16 items-center gap-3 border-b border-[hsl(var(--sidebar-muted))] px-4">
                 <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[hsl(var(--sidebar-accent))] text-white font-bold text-sm">
-                    {businessName.charAt(0).toUpperCase()}
+                    {(businessName || "A").charAt(0).toUpperCase()}
                 </div>
                 <AnimatePresence>
                     {!isCollapsed && (
@@ -97,7 +98,7 @@ export function Sidebar({ role, businessName = "AU Payroll", isCollapsed = false
                             exit={{ opacity: 0, width: 0 }}
                             className="truncate text-sm font-semibold overflow-hidden whitespace-nowrap"
                         >
-                            {businessName}
+                            {businessName || "AU Payroll"}
                         </motion.span>
                     )}
                 </AnimatePresence>

@@ -26,7 +26,7 @@ export async function PATCH(
         // 1. Verify existence and business_id
         const { data: existingLog, error: fetchError } = await supabase
             .from('AttendanceLog')
-            .select('business_id, employee_id')
+            .select('business_id, employee_id, timestamp')
             .eq('log_id', log_id)
             .single();
 
@@ -43,7 +43,25 @@ export async function PATCH(
             updated_at: new Date().toISOString(),
         };
 
-        if (timestamp) updateData.timestamp = timestamp;
+        console.log('Update request received:', {
+            log_id,
+            body,
+            timestamp: body.timestamp,
+            event_type: body.event_type,
+            override_reason: body.override_reason
+        });
+
+        if (timestamp) {
+            updateData.timestamp = timestamp;
+            console.log('Setting timestamp in update:', {
+                log_id,
+                employee_id: existingLog.employee_id,
+                old_timestamp: existingLog?.timestamp,
+                new_timestamp: timestamp,
+                event_type,
+                updateData_keys: Object.keys(updateData)
+            });
+        }
         if (event_type) updateData.event_type = event_type;
         if (override_reason) updateData.override_reason = override_reason;
         
@@ -51,6 +69,8 @@ export async function PATCH(
         if (authUser.employee_id) {
             updateData.override_by = authUser.employee_id;
         }
+
+        console.log('Final updateData to be sent:', JSON.stringify(updateData, null, 2));
 
         // 3. Perform update
         const { data: updatedLog, error: updateError } = await supabase
@@ -61,7 +81,42 @@ export async function PATCH(
             .single();
 
         if (updateError) {
+            console.error('Failed to update attendance:', {
+                error: updateError.message,
+                code: updateError.code,
+                log_id,
+                updateData
+            });
             return errorResponse(updateError.message, 400);
+        }
+
+        console.log('Attendance record updated successfully:', {
+            log_id: updatedLog.log_id,
+            employee_id: updatedLog.employee_id,
+            event_type: updatedLog.event_type,
+            timestamp: updatedLog.timestamp,
+            override_by: updatedLog.override_by,
+            override_reason: updatedLog.override_reason,
+            updated_at: updatedLog.updated_at,
+            full_log: JSON.stringify(updatedLog, null, 2)
+        });
+
+        // Verify update was applied
+        const { data: verification, error: verifyError } = await supabase
+            .from('AttendanceLog')
+            .select('*')
+            .eq('log_id', log_id)
+            .single();
+
+        if (verifyError) {
+            console.error('Failed to verify updated attendance:', verifyError);
+        } else {
+            console.log('Verification: Updated attendance record found in database:', {
+                log_id: verification.log_id,
+                event_type: verification.event_type,
+                timestamp: verification.timestamp,
+                override_by: verification.override_by
+            });
         }
 
         return successResponse(updatedLog, 'Attendance record updated successfully');

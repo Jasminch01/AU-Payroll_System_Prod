@@ -16,6 +16,8 @@ interface ManualEntryModalProps {
         first_name: string;
         last_name: string;
     }>;
+    fromDate?: string;
+    toDate?: string;
 }
 
 const EVENT_TYPES: { value: EventType; label: string }[] = [
@@ -29,6 +31,8 @@ export function ManualEntryModal({
     isOpen,
     onClose,
     employees,
+    fromDate,
+    toDate,
 }: ManualEntryModalProps) {
     const queryClient = useQueryClient();
     
@@ -58,18 +62,23 @@ export function ManualEntryModal({
         },
         onSuccess: () => {
             setSuccess("Manual entry recorded successfully");
-            const { date: resetDate, time: resetTime } = getAustralianDateTimeForInput(new Date().toISOString());
             setFormData({
                 employee_id: "",
                 event_type: "CLOCK_IN",
-                date: resetDate,
-                time: resetTime,
+                date: new Date().toISOString().split("T")[0],
+                time: new Date().toTimeString().slice(0, 5),
                 override_reason: "",
             });
             setError("");
 
-            // Refetch attendance data
-            queryClient.invalidateQueries({ queryKey: ["attendance-raw"] });
+            // Refetch attendance data with specific date range
+            if (fromDate && toDate) {
+                queryClient.invalidateQueries({ 
+                    queryKey: ["attendance-raw", fromDate, toDate] 
+                });
+            } else {
+                queryClient.invalidateQueries({ queryKey: ["attendance-raw"] });
+            }
 
             setTimeout(() => {
                 onClose();
@@ -105,8 +114,8 @@ export function ManualEntryModal({
             return;
         }
 
-        // Create timestamp using Australian timezone-aware function
-        const timestamp = createAustralianTimestamp(formData.date, formData.time);
+        const localDateTime = new Date(`${formData.date}T${formData.time}:00`);
+        const timestamp = localDateTime.toISOString();
 
         mutation.mutate({
             employee_id: formData.employee_id,

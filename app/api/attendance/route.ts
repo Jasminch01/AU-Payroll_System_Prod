@@ -61,6 +61,15 @@ export async function GET(request: NextRequest) {
 
         if (error) return errorResponse(error.message, 400);
 
+        console.log('[ATTENDANCE GET]', {
+            business_id: authUser.business_id,
+            employee_id,
+            from,
+            to,
+            logsReturned: logs?.length || 0,
+            eventTypes: logs?.map(l => l.event_type) || []
+        });
+
         return successResponse(logs);
     } catch (err) {
         console.error('List attendance error:', err);
@@ -133,13 +142,90 @@ export async function POST(request: NextRequest) {
             insertData.override_by = authUser.employee_id;
         }
 
+        // Validate employee exists
+        const { data: employee, error: empError } = await supabase
+            .from('Employee')
+            .select('employee_id, business_id')
+            .eq('employee_id', insertData.employee_id)
+            .single();
+
+        if (empError || !employee) {
+            console.error('Employee validation failed:', {
+                employee_id: insertData.employee_id,
+                error: empError?.message
+            });
+            return errorResponse('Employee not found', 404);
+        }
+
+        console.log('Employee validation passed:', {
+            employee_id: employee.employee_id,
+            employee_business_id: employee.business_id,
+            request_business_id: insertData.business_id,
+            match: employee.business_id === insertData.business_id
+        });
+
+        // Validate business exists
+        const { data: business, error: bizError } = await supabase
+            .from('Business')
+            .select('business_id')
+            .eq('business_id', insertData.business_id)
+            .single();
+
+        if (bizError || !business) {
+            console.error('Business validation failed:', {
+                business_id: insertData.business_id,
+                error: bizError?.message
+            });
+            return errorResponse('Business not found', 404);
+        }
+
+        console.log('Business validation passed:', { business_id: insertData.business_id });
+
+        console.log('Manual attendance entry being saved:', {
+            employee_id: insertData.employee_id,
+            event_type: insertData.event_type,
+            timestamp: insertData.timestamp,
+            business_id: insertData.business_id,
+            override_by: insertData.override_by
+        });
+
         const { data: log, error } = await supabase
             .from('AttendanceLog')
             .insert(insertData)
             .select()
             .single();
 
-        if (error) return errorResponse(error.message, 400);
+        if (error) {
+            console.error('Failed to insert manual attendance:', {
+                error: error.message,
+                code: error.code,
+                details: error.details,
+                insertData
+            });
+            return errorResponse(error.message, 400);
+        }
+
+        console.log('Manual attendance entry saved successfully:', {
+            log_id: log.log_id,
+            employee_id: log.employee_id,
+            event_type: log.event_type,
+            timestamp: log.timestamp,
+            business_id: log.business_id,
+            override_by: log.override_by
+        });
+
+        // Now verify it can be retrieved
+        const { data: verification, error: verifyError } = await supabase
+            .from('AttendanceLog')
+            .select('*')
+            .eq('log_id', log.log_id)
+            .single();
+
+        if (verifyError) {
+            console.error('Failed to verify saved attendance:', verifyError);
+        } else {
+            console.log('Verification: Attendance record found in database:', verification);
+        }
 
         // Notify owner and managers of attendance event (async, no await)
         notifyAttendanceEvent(

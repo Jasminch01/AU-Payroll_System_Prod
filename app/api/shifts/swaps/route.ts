@@ -23,15 +23,10 @@ export async function GET(request: NextRequest) {
         const supabase = await createClient();
         const { searchParams } = new URL(request.url);
 
+        // Query shift swap requests (without problematic joins)
         let query = supabase
             .from('ShiftSwapRequest')
-            .select(`
-                *,
-                Shift:shift_id(*),
-                Requester:requester_id(employee_id, first_name, last_name, user_id),
-                TargetEmployee:target_employee_id(employee_id, first_name, last_name),
-                TargetShift:target_shift_id(*)
-            `)
+            .select('*')
             .eq('business_id', authUser.business_id)
             .order('created_at', { ascending: false });
 
@@ -39,17 +34,63 @@ export async function GET(request: NextRequest) {
         if (authUser.role === 'employee') {
             const employeeId = authUser.employee_id!; // Now guaranteed to exist
             // PostgREST .or() needs quotes for string literals with letters
-            query = query.or(`requester_id.eq."${employeeId}",target_employee_id.eq."${employeeId}",target_employee_id.is.null`);
+            const orFilter = `requester_id.eq."${employeeId}",target_employee_id.eq."${employeeId}",target_employee_id.is.null`;
+            console.log('Applying employee filter for swaps:', { employeeId, orFilter });
+            query = query.or(orFilter);
         }
 
         const { data: swaps, error } = await query;
 
-        if (error) return errorResponse(error.message, 400);
+        if (error) {
+            console.error('Swaps query error:', {
+                message: error.message,
+                code: error.code,
+                details: error.details,
+                employee_id: authUser.employee_id,
+                role: authUser.role
+            });
+            return errorResponse(error.message, 400);
+        }
 
         let filteredSwaps = swaps || [];
 
-        // Pre-fetch roles for filtering
-        const requesterUserIds = filteredSwaps.map(s => s.Requester?.user_id).filter(Boolean);
+        // Fetch related data separately (no problematic joins)
+        const shiftIds = filteredSwaps.map(s => s.shift_id).filter(Boolean) as string[];
+        const targetShiftIds = filteredSwaps.map(s => s.target_shift_id).filter(Boolean) as string[];
+        const requesterIds = filteredSwaps.map(s => s.requester_id).filter(Boolean) as string[];
+        const targetEmpIds = filteredSwaps.map(s => s.target_employee_id).filter(Boolean) as string[];
+
+        // Fetch all related shifts
+        const shifts = new Map();
+        if (shiftIds.length > 0) {
+            const { data: fetchedShifts } = await supabase
+                .from('Shift')
+                .select('*')
+                .in('shift_id', shiftIds);
+            (fetchedShifts || []).forEach(s => shifts.set(s.shift_id, s));
+        }
+        if (targetShiftIds.length > 0) {
+            const { data: fetchedShifts } = await supabase
+                .from('Shift')
+                .select('*')
+                .in('shift_id', targetShiftIds);
+            (fetchedShifts || []).forEach(s => shifts.set(s.shift_id, s));
+        }
+
+        // Fetch employees (requesters and targets)
+        const employees = new Map();
+        const allEmpIds = [...new Set([...requesterIds, ...targetEmpIds])];
+        if (allEmpIds.length > 0) {
+            const { data: fetchedEmps } = await supabase
+                .from('Employee')
+                .select('employee_id, first_name, last_name, user_id')
+                .in('employee_id', allEmpIds);
+            (fetchedEmps || []).forEach(e => employees.set(e.employee_id, e));
+        }
+
+        // Fetch roles for requesters
+        const requesterEmps = requesterIds.map(id => employees.get(id)).filter(Boolean);
+        const requesterUserIds = requesterEmps.map(e => e.user_id).filter(Boolean);
         const roleMap = new Map<string, string>();
         if (requesterUserIds.length > 0) {
             const { data: userRoles } = await supabase
@@ -59,15 +100,26 @@ export async function GET(request: NextRequest) {
             (userRoles || []).forEach(u => roleMap.set(u.user_id, u.role));
         }
 
+        // Enrich swap data with related objects
+        const enrichedSwaps = filteredSwaps.map((swap: any) => ({
+            ...swap,
+            Shift: shifts.get(swap.shift_id) || null,
+            TargetShift: shifts.get(swap.target_shift_id) || null,
+            Requester: employees.get(swap.requester_id) || null,
+            TargetEmployee: employees.get(swap.target_employee_id) || null,
+        }));
+
         // Post-filter logic for Roles and Pool
+        let finalSwaps = enrichedSwaps;
         if (authUser.role === 'employee') {
             const employeeId = authUser.employee_id;
-            filteredSwaps = filteredSwaps.filter((swap: any) => {
+            finalSwaps = enrichedSwaps.filter((swap: any) => {
                 const isPersonal = swap.requester_id === employeeId || swap.target_employee_id === employeeId;
                 const isOpenPool = !swap.target_employee_id && swap.status === 'pending_approval';
 
                 if (isOpenPool) {
-                    const reqRole = roleMap.get(swap.Requester?.user_id) || 'employee';
+                    const requester = employees.get(swap.requester_id);
+                    const reqRole = requester?.user_id ? roleMap.get(requester.user_id) : 'employee';
                     // We include own pool posts so they can see "Pooled" status and Undo them
                     return reqRole === 'employee';
                 }
@@ -75,8 +127,9 @@ export async function GET(request: NextRequest) {
             });
         } else if (authUser.role === 'manager') {
             const employeeId = authUser.employee_id;
-            filteredSwaps = filteredSwaps.filter((swap: any) => {
-                const reqRole = roleMap.get(swap.Requester?.user_id) || 'employee';
+            finalSwaps = enrichedSwaps.filter((swap: any) => {
+                const requester = employees.get(swap.requester_id);
+                const reqRole = requester?.user_id ? roleMap.get(requester.user_id) : 'employee';
                 const isOwnSwap = employeeId && (swap.requester_id === employeeId || swap.target_employee_id === employeeId);
                 const isOpenForManagers = !swap.target_employee_id && reqRole === 'manager' && swap.requester_id !== employeeId;
                 
@@ -84,7 +137,7 @@ export async function GET(request: NextRequest) {
             });
         }
 
-        return successResponse(filteredSwaps);
+        return successResponse(finalSwaps);
     } catch (err) {
         console.error('List swaps error:', err);
         return errorResponse('Internal server error', 500);

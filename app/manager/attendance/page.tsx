@@ -698,6 +698,8 @@ export default function ManagerAttendancePage() {
                 isOpen={isManualEntryModalOpen}
                 onClose={() => setIsManualEntryModalOpen(false)}
                 employees={employees}
+                fromDate={fromDate}
+                toDate={toDate}
             />
 
             {/* ── Edit Entry Modal ── */}
@@ -711,6 +713,8 @@ export default function ManagerAttendancePage() {
                         setDetailRow(null);
                     }}
                     log={editingLog}
+                    fromDate={fromDate}
+                    toDate={toDate}
                 />
             )}
         </DashboardLayout>
