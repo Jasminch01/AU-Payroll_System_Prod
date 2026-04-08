@@ -23,10 +23,10 @@
 export function createAustralianTimestamp(dateStr: string, timeStr: string): string {
   // Create a local date/time string that JavaScript will interpret as local time
   const localDateTimeStr = `${dateStr}T${timeStr}:00`;
-  
+
   // Create date object - JavaScript will parse this as local timezone
   const date = new Date(localDateTimeStr);
-  
+
   // The key issue: date.toISOString() assumes the Date object is in some timezone,
   // but we need to convert from Australian timezone to UTC.
   // 
@@ -46,17 +46,16 @@ export function createAustralianTimestamp(dateStr: string, timeStr: string): str
   const parts = formatter.formatToParts(date);
   const sydneyHour = parseInt(parts.find(p => p.type === 'hour')?.value || '0');
   const sydneyMinute = parseInt(parts.find(p => p.type === 'minute')?.value || '0');
-  const sydneySecond = parseInt(parts.find(p => p.type === 'second')?.value || '0');
 
   // Calculate offset: (Sydney time - UTC time) in minutes
   const utcHour = date.getUTCHours();
   const utcMinute = date.getUTCMinutes();
-  
+
   const offset = (sydneyHour - utcHour) * 60 + (sydneyMinute - utcMinute);
-  
+
   // Now adjust the date backwards by the offset to get the true UTC time
   const adjustedDate = new Date(date.getTime() - offset * 60 * 1000);
-  
+
   return adjustedDate.toISOString();
 }
 
@@ -67,7 +66,7 @@ export function createAustralianTimestamp(dateStr: string, timeStr: string): str
  */
 export function getAustralianDateFromTimestamp(timestamp: string): string {
   const date = new Date(timestamp);
-  
+
   // Format using Australian locale with explicit timezone
   const formatter = new Intl.DateTimeFormat('en-AU', {
     year: 'numeric',
@@ -75,12 +74,12 @@ export function getAustralianDateFromTimestamp(timestamp: string): string {
     day: '2-digit',
     timeZone: 'Australia/Sydney' // Use Sydney as the canonical Australian timezone
   });
-  
+
   const parts = formatter.formatToParts(date);
   const year = parts.find(p => p.type === 'year')?.value;
   const month = parts.find(p => p.type === 'month')?.value;
   const day = parts.find(p => p.type === 'day')?.value;
-  
+
   return `${year}-${month}-${day}`;
 }
 
@@ -91,14 +90,14 @@ export function getAustralianDateFromTimestamp(timestamp: string): string {
  */
 export function getAustralianTimeFromTimestamp(timestamp: string): string {
   const date = new Date(timestamp);
-  
+
   const formatter = new Intl.DateTimeFormat('en-AU', {
     hour: '2-digit',
     minute: '2-digit',
     hour12: false,
     timeZone: 'Australia/Sydney'
   });
-  
+
   return formatter.format(date);
 }
 
@@ -112,4 +111,44 @@ export function getAustralianDateTimeForInput(timestamp: string): { date: string
     date: getAustralianDateFromTimestamp(timestamp),
     time: getAustralianTimeFromTimestamp(timestamp)
   };
+}
+
+/**
+ * Get the current time as an ISO timestamp representing Australian local time
+ * This ensures that the timestamp correctly represents "now" in Australia
+ * regardless of the server's timezone (localhost vs production).
+ * 
+ * @returns ISO 8601 UTC timestamp that represents the current time in Australia/Sydney
+ */
+export function getCurrentAustralianTimestamp(): string {
+  const utcNow = new Date();
+
+  // Get the current UTC time formatted in Sydney timezone to see what "now" is in Sydney
+  const formatter = new Intl.DateTimeFormat('en-AU', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+    timeZone: 'Australia/Sydney'
+  });
+
+  const parts = formatter.formatToParts(utcNow);
+  const sydneyHour = parseInt(parts.find(p => p.type === 'hour')?.value || '0');
+  const sydneyMinute = parseInt(parts.find(p => p.type === 'minute')?.value || '0');
+
+  // The current UTC hour/minute for offset calculation
+  const utcHour = utcNow.getUTCHours();
+  const utcMinute = utcNow.getUTCMinutes();
+
+  // Calculate the timezone offset in minutes (Sydney time - UTC time)
+  const offset = (sydneyHour - utcHour) * 60 + (sydneyMinute - utcMinute);
+
+  // Adjust the current UTC timestamp back by the offset to get the timestamp
+  // that represents the current Sydney time
+  const adjustedTimestamp = new Date(utcNow.getTime() - offset * 60 * 1000);
+
+  return adjustedTimestamp.toISOString();
 }
