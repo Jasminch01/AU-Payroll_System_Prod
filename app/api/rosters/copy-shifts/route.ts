@@ -91,7 +91,9 @@ export async function POST(request: NextRequest) {
         const overlaps: string[] = [];
 
         for (const s of sourceShifts) {
-            const oldDate = new Date(s.shift_date + 'T00:00:00Z');
+            // Extract just the date part in case shift_date includes a timestamp
+            const dateOnlyStr = s.shift_date.split('T')[0];
+            const oldDate = new Date(dateOnlyStr + 'T00:00:00Z');
             const newDate = new Date(oldDate.getTime());
             newDate.setUTCDate(newDate.getUTCDate() + offsetDays);
             const newDateStr = newDate.toISOString().split('T')[0];

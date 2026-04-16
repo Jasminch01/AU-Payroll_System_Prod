@@ -151,13 +151,14 @@ export default function OwnerRosterPage() {
     const [shiftType, setShiftType] = useState("morning");
     const [initialFormState, setInitialFormState] = useState<any>(null);
 
-    // Auto-detect shift type when start time changes
+    // Auto-detect shift type when start time changes (works for both new and editing shifts)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     useEffect(() => {
-        if (!editingShiftId && shiftStart) {
+        if (shiftStart) {
             const detectedType = getShiftTypeFromTime(shiftStart);
             setShiftType(detectedType);
         }
-    }, [shiftStart, editingShiftId, shiftType]);
+    }, [shiftStart]);
 
     // Reset shift form when dialog closes
     useEffect(() => {
@@ -574,16 +575,19 @@ export default function OwnerRosterPage() {
             };
             const startTime = parseTime(shift.start_time);
             const endTime = parseTime(shift.end_time);
-            
+
+            // Auto-detect the shift type based on start time (not the old type from DB)
+            const autoDetectedType = getShiftTypeFromTime(startTime);
+
             setShiftStart(startTime);
             setShiftEnd(endTime);
-            setShiftType(shift.shift_type);
+            setShiftType(autoDetectedType);
             setInitialFormState({
                 employee_id: empId,
                 shift_date: date,
                 start_time: startTime,
                 end_time: endTime,
-                shift_type: shift.shift_type
+                shift_type: autoDetectedType
             });
         } else {
             setEditingShiftId(null);
@@ -596,6 +600,8 @@ export default function OwnerRosterPage() {
         }
         setAddShiftOpen(true);
     };
+    // console.log("Current roster:", currentRoster);
+    //consoole
 
     const isDirty = useMemo(() => {
         if (!editingShiftId || !initialFormState) return true;
@@ -1869,13 +1875,16 @@ export default function OwnerRosterPage() {
                                     let payload: any = null;
 
                                     if (isAdvancedCopy) {
-                                        const sourceOpt = periodOptions.find(o => o.offset === sourceOffset);
-                                        const targetOpt = periodOptions.find(o => o.offset === targetOffset);
-                                        if (sourceOpt && targetOpt) {
+                                        // Calculate source and target dates directly from offsets instead of searching periodOptions
+                                        // This ensures we handle any offset value, not just those in the predefined periodOptions array
+                                        const sourceDates = getRosterDates(sourceOffset, rosterPeriod);
+                                        const targetDates = getRosterDates(targetOffset, rosterPeriod);
+
+                                        if (sourceDates.length > 0 && targetDates.length > 0) {
                                             payload = {
-                                                source_from: sourceOpt.start,
-                                                source_to: sourceOpt.end,
-                                                target_start: targetOpt.start
+                                                source_from: formatDate(sourceDates[0]),
+                                                source_to: formatDate(sourceDates[sourceDates.length - 1]),
+                                                target_start: formatDate(targetDates[0])
                                             };
                                         }
                                     } else if (copyOption === 'next_week') {
