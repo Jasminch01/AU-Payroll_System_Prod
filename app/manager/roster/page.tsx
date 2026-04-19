@@ -694,6 +694,7 @@ export default function ManagerRosterPage() {
         let published = 0;
         let drafts = 0;
         let total = 0;
+        let totalPublishedHours = 0;
 
         for (const s of shifts) {
             const d = s.shift_date?.split('T')[0] || s.shift_date;
@@ -702,6 +703,12 @@ export default function ManagerRosterPage() {
             total++;
             if (s.shift_status === 'published') {
                 published++;
+                if (s.start_time && s.end_time) {
+                    const start = new Date(s.start_time).getTime();
+                    const end = new Date(s.end_time).getTime();
+                    const hours = (end - start) / (1000 * 60 * 60);
+                    if (hours > 0) totalPublishedHours += hours;
+                }
             } else {
                 drafts++;
             }
@@ -711,7 +718,8 @@ export default function ManagerRosterPage() {
             published,
             drafts,
             modified: 0,
-            allPublished: total > 0 && total === published
+            allPublished: total > 0 && total === published,
+            totalPublishedHours
         };
     }, [shifts, rangeStart, rangeEnd]);
 
@@ -914,6 +922,12 @@ export default function ManagerRosterPage() {
                                 ))}
                             </DropdownMenuContent>
                         </DropdownMenu>
+                        
+                        {/* Weekly Published Hours Widget */}
+                        <div className="hidden sm:flex flex-col justify-center h-10 px-4 bg-emerald-50 border border-emerald-200 rounded-xl">
+                            <span className="text-[9px] font-black uppercase text-emerald-600 tracking-widest leading-tight">Total Hours</span>
+                            <span className="text-xs font-black text-emerald-900 leading-tight block -mt-0.5">{statusSummary.totalPublishedHours.toFixed(1)} hrs</span>
+                        </div>
                     </div>
                 </div>
 
@@ -985,7 +999,7 @@ export default function ManagerRosterPage() {
                                         )}
                                     </div>
                                     <span className="text-[10px] text-[hsl(var(--muted-foreground))] uppercase tracking-wider font-medium mt-1">
-                                        {statusSummary.published} of {statusSummary.total} shifts notified
+                                        {statusSummary.published} of {statusSummary.total} shifts notified • {statusSummary.totalPublishedHours.toFixed(1)} hrs published
                                     </span>
                                 </div>
                             </div>
@@ -1706,6 +1720,17 @@ export default function ManagerRosterPage() {
                             )}
                         </div>
                         <div className="flex items-center gap-2">
+                            {editingShiftId && shifts.find((s: any) => s.shift_id === editingShiftId)?.shift_status === 'draft' && (
+                                <Button
+                                    variant="outline"
+                                    className="border-[hsl(var(--brand))] text-[hsl(var(--brand))] hover:bg-[hsl(var(--brand))]/10"
+                                    onClick={() => notifyShiftMutation.mutate(editingShiftId)}
+                                    loading={notifyShiftMutation.isPending}
+                                    disabled={notifyShiftMutation.isPending}
+                                >
+                                    Publish Shift
+                                </Button>
+                            )}
                             <Button variant="outline" onClick={() => setAddShiftOpen(false)}>Cancel</Button>
 
                             {!editingShiftId ? (

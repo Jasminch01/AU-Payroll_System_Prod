@@ -211,7 +211,7 @@ export async function POST(request: NextRequest) {
                 start_time,
                 end_time,
                 shift_type,
-                shift_status: 'published', // Shifts are published by default so employees can see them
+                shift_status: 'draft', // Shifts are draft by default
             })
             .select()
             .single();
