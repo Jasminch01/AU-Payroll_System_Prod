@@ -922,7 +922,7 @@ export default function ManagerRosterPage() {
                                 ))}
                             </DropdownMenuContent>
                         </DropdownMenu>
-                        
+
                         {/* Weekly Published Hours Widget */}
                         <div className="hidden sm:flex flex-col justify-center h-10 px-4 bg-emerald-50 border border-emerald-200 rounded-xl">
                             <span className="text-[9px] font-black uppercase text-emerald-600 tracking-widest leading-tight">Total Hours</span>

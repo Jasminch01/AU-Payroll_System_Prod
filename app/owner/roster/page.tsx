@@ -874,7 +874,7 @@ export default function OwnerRosterPage() {
                                 ))}
                             </DropdownMenuContent>
                         </DropdownMenu>
-                        
+
                         {/* Weekly Published Hours Widget */}
                         <div className="hidden sm:flex flex-col justify-center h-10 px-4 bg-emerald-50 border border-emerald-200 rounded-xl">
                             <span className="text-[9px] font-black uppercase text-emerald-600 tracking-widest leading-tight">Total Hours</span>
@@ -1127,7 +1127,7 @@ export default function OwnerRosterPage() {
                                                     ? "bg-[hsl(var(--brand))] text-white border-[hsl(var(--brand))] shadow-md shadow-[hsl(var(--brand))]/20 scale-105"
                                                     : "bg-white text-[hsl(var(--muted-foreground))] border-[hsl(var(--border))] hover:border-[hsl(var(--brand))]/30",
                                                 isToday && !isSelected && "ring-2 ring-[hsl(var(--brand))]/30",
-                                                isPastDay && !isSelected && "opacity-40 grayscale bg-[hsl(var(--muted))]/40"
+                                                isPastDay && !isSelected && "opacity-75 bg-[hsl(var(--muted))]/15"
                                             )}
                                         >
                                             <span className="text-[9px] uppercase font-black tracking-tighter opacity-70">{dayName}</span>
@@ -1217,9 +1217,8 @@ export default function OwnerRosterPage() {
                                                                             className={cn(
                                                                                 "p-3 rounded-xl border transition-all active:scale-[0.98] relative overflow-hidden flex items-center justify-between shadow-sm",
                                                                                 isPublished
-                                                                                    ? "bg-[#F1F8E9] border-[#C5E1A5] text-green-900"
-                                                                                    : "bg-white border-[hsl(var(--border))] text-[hsl(var(--foreground))]",
-                                                                                isPastDay && "opacity-60 grayscale-[0.2]"
+                                                                                    ? isPastDay ? "bg-[#C8E6C9]/60 border-[#A5D6A7] text-green-900 opacity-90" : "bg-[#F1F8E9] border-[#C5E1A5] text-green-900"
+                                                                                    : isPastDay ? "bg-[#EEEEEE] border-[#BDBDBD] text-gray-800 opacity-90" : "bg-white border-[hsl(var(--border))] text-[hsl(var(--foreground))]"
                                                                             )}
                                                                         >
                                                                             <div className="flex flex-col gap-0.5">
@@ -1233,14 +1232,14 @@ export default function OwnerRosterPage() {
                                                                                 </div>
                                                                                 <Badge variant="secondary" className={cn(
                                                                                     "text-[8px] uppercase font-black tracking-widest h-4 w-min whitespace-nowrap",
-                                                                                    isPublished ? "bg-green-200 text-green-900" : "bg-orange-100 text-orange-900"
+                                                                                    isPastDay ? "bg-gray-300 text-gray-800" : isPublished ? "bg-green-200 text-green-900" : "bg-orange-100 text-orange-900"
                                                                                 )}>
                                                                                     {s.shift_type}
                                                                                 </Badge>
                                                                             </div>
                                                                             <div className={cn(
                                                                                 "flex h-7 w-7 items-center justify-center rounded-lg transition-colors shadow-sm",
-                                                                                isPublished ? "bg-green-500 text-white" : "bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))]"
+                                                                                isPastDay ? "bg-slate-400 text-white" : isPublished ? "bg-green-500 text-white" : "bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))]"
                                                                             )}>
                                                                                 {isPublished ? <CheckCircle2 size={14} /> : <FileText size={14} />}
                                                                             </div>
@@ -1310,7 +1309,7 @@ export default function OwnerRosterPage() {
                                                 className={cn(
                                                     "px-1 py-4 text-center font-bold border-b border-l border-[hsl(var(--border))] first:border-l-0 last:border-r-0 transition-colors",
                                                     isToday ? "text-[hsl(var(--brand))] bg-[hsl(var(--brand-light))]/30" : "text-[hsl(var(--muted-foreground))]",
-                                                    isPast && !isToday && "opacity-40 grayscale bg-[hsl(var(--muted))]/30"
+                                                    isPast && !isToday && "opacity-75 bg-[hsl(var(--muted))]/15"
                                                 )}
                                                 style={{
                                                     minWidth: (rosterPeriod === "monthly" || rosterPeriod === "fortnightly") ? "0" : "140px",
@@ -1466,7 +1465,7 @@ export default function OwnerRosterPage() {
                                                             "border-b border-l border-[hsl(var(--border))] align-top transition-colors relative group/cell",
                                                             rosterPeriod === "monthly" ? "p-1 min-w-0" : "p-2 min-w-[140px]",
                                                             formatDate(d) === formatDate(new Date()) ? "bg-[hsl(var(--brand-light))]/5" : "",
-                                                            isPast ? "bg-[hsl(var(--muted))]/30 opacity-40 grayscale pointer-events-auto" : "hover:bg-[hsl(var(--brand))]/5",
+                                                            isPast ? "bg-[hsl(var(--muted))]/15 opacity-85 pointer-events-auto" : "hover:bg-[hsl(var(--brand))]/5",
                                                             "transition-opacity"
                                                         )}
                                                         onClick={() => !isPast && rosterPeriod !== "monthly" && openAddShift(dateStr, emp.employee_id)}
@@ -1501,9 +1500,9 @@ export default function OwnerRosterPage() {
                                                                             className={cn(
                                                                                 "rounded-lg px-2 py-1.5 font-bold mb-1 transition-all cursor-pointer border relative group/shift overflow-hidden flex flex-col h-full min-h-[64px] shadow-sm",
                                                                                 isPublished
-                                                                                    ? "bg-[#E8F5E9] border-[#C8E6C9] text-green-900"
-                                                                                    : "bg-[#F5F5F5] border-[#E0E0E0] text-gray-700",
-                                                                                isPast ? "opacity-60 grayscale-[0.5]" : "hover:shadow-md hover:-translate-y-0.5"
+                                                                                    ? isPast ? "bg-[#C8E6C9]/70 border-[#A5D6A7] text-green-900 opacity-90" : "bg-[#E8F5E9] border-[#C8E6C9] text-green-900"
+                                                                                    : isPast ? "bg-[#EEEEEE] border-[#BDBDBD] text-gray-800 opacity-90" : "bg-[#F5F5F5] border-[#E0E0E0] text-gray-700",
+                                                                                !isPast && "hover:shadow-md hover:-translate-y-0.5"
                                                                             )}
                                                                             onClick={(e) => {
                                                                                 e.stopPropagation();
@@ -1526,7 +1525,7 @@ export default function OwnerRosterPage() {
                                                                             {/* Bottom Accent Bar as requested in reference image */}
                                                                             <div className={cn(
                                                                                 "absolute bottom-0 left-0 right-0 h-1.5",
-                                                                                isPublished ? "bg-green-500" : "bg-red-500"
+                                                                                isPast ? "bg-slate-400" : isPublished ? "bg-green-500" : "bg-red-500"
                                                                             )} />
                                                                         </div>
                                                                     );
