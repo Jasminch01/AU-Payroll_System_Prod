@@ -53,6 +53,7 @@ interface GroupedAttendance {
         role_title: string;
     } | null;
     date: string;
+    searchDate?: string; // For search: formatted + ISO date
     first_in: string | null;
     last_out: string | null;
     sessions: Session[];
@@ -122,7 +123,24 @@ export default function OwnerAttendancePage() {
         // Use the new cross-midnight aware grouping function
         const groupedSessions = groupAttendanceIntoSessions(records);
 
-        return groupedSessions
+        // Filter logic: only show records where clock_in_date is within the selected date range
+        const filteredSessions = groupedSessions.filter((group) => {
+            if (!fromDate && !toDate) return true; // No filter = show all
+
+            // String comparison on YYYY-MM-DD format is reliable and timezone-safe
+            if (fromDate && toDate) {
+                return group.clock_in_date >= fromDate && group.clock_in_date <= toDate;
+            }
+            if (fromDate) {
+                return group.clock_in_date >= fromDate;
+            }
+            if (toDate) {
+                return group.clock_in_date <= toDate;
+            }
+            return true;
+        });
+
+        return filteredSessions
             .flatMap((group) =>
                 group.sessions.map((session) => {
                     // Build a Session object for each work session
@@ -146,6 +164,11 @@ export default function OwnerAttendancePage() {
                         employee_id: group.employee_id,
                         Employee: group.Employee,
                         date: group.clock_in_date,
+                        searchDate: `${group.clock_in_date} ${new Intl.DateTimeFormat("en-AU", {
+                            day: "numeric",
+                            month: "short",
+                            year: "numeric",
+                        }).format(new Date(group.clock_in_date))}`,
                         first_in: session.clock_in?.timestamp ?? null,
                         last_out: session.clock_out?.timestamp ?? null,
                         sessions: [sessionObj],
@@ -174,7 +197,7 @@ export default function OwnerAttendancePage() {
                 const dateB = new Date(b.first_in || b.date).getTime();
                 return dateB - dateA;
             });
-    }, [records]);
+    }, [records, fromDate, toDate]);
 
     // Extract unique employees for manual entry modal
     const uniqueEmployees = useMemo(() => {
@@ -493,8 +516,8 @@ export default function OwnerAttendancePage() {
                 columns={columns}
                 data={groupedRecords}
                 searchable
-                searchKeys={["Employee.first_name", "Employee.last_name", "date"]}
-                searchPlaceholder="Search by employee or date..."
+                searchKeys={["Employee.first_name", "Employee.last_name", "searchDate"]}
+                searchPlaceholder="Search by employee name or date (e.g., '20 Apr' or '2026-04-20')..."
                 emptyMessage="No attendance records found for this period"
                 emptyIcon={<Clock size={40} />}
                 loading={isLoading}
@@ -525,7 +548,7 @@ export default function OwnerAttendancePage() {
                                 <ChevronRight size={16} className="text-[hsl(var(--muted-foreground))]/40" />
                             </div>
                         </div>
-                        
+
                         <div className="flex items-center gap-4">
                             <div className="flex items-center gap-1.5 text-xs text-[hsl(var(--success))] font-bold bg-[hsl(var(--success-light))]/20 px-2 py-1 rounded-lg">
                                 <ArrowDownCircle size={12} />
