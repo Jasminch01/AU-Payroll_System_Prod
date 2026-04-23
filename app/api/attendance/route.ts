@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
             // Expand date range by ±1 day to capture cross-midnight work sessions
             // E.g. if querying 2026-03-31, include logs from 2026-03-30 onwards
             // This ensures we get CLOCK_OUT that happens on 2026-04-01 if CLOCK_IN is 2026-03-31
-
+            
             let startDate = from;
             let endDate = to;
 

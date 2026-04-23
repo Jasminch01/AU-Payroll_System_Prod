@@ -1,16 +1,15 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
 import { DashboardLayout } from "@/components/layout";
-import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Card, CardContent } from "@/components/ui/card";
 import { apiGet, apiPost } from "@/lib/api-client";
-import { toast } from "sonner";
-import { motion, AnimatePresence } from "framer-motion";
-import { LogIn, LogOut, Fingerprint, Clock, CheckCircle, AlertCircle } from "lucide-react";
 import { getNextAttendanceEvent } from "@/lib/attendance-logic";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { AnimatePresence, motion } from "framer-motion";
+import { CheckCircle, Clock, LogIn, LogOut } from "lucide-react";
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
 
 export default function EmployeeClockPage() {
     const [lastAction, setLastAction] = useState<{ type: string; time: string } | null>(null);
@@ -100,7 +99,7 @@ export default function EmployeeClockPage() {
                 timestamp: attendanceData.logs[0].timestamp
             } : null
         });
-    }, [currentStatus, nextEvent, attendanceData]);
+    }, [currentStatus, nextEvent, attendanceData, statusLabel  , isClockingIn]);
 
     return (
         <DashboardLayout
@@ -179,3 +178,4 @@ export default function EmployeeClockPage() {
         </DashboardLayout>
     );
 }
+
