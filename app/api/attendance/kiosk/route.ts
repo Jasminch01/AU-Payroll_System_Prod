@@ -43,14 +43,7 @@ export async function POST(request: NextRequest) {
         const { employee_id, device_info } = body;
         let { event_type } = body;
 
-        const now = new Date();
-        const year = now.getFullYear();
-        const month = String(now.getMonth() + 1).padStart(2, '0');
-        const day = String(now.getDate()).padStart(2, '0');
-        const hours = String(now.getHours()).padStart(2, '0');
-        const minutes = String(now.getMinutes()).padStart(2, '0');
-        const seconds = String(now.getSeconds()).padStart(2, '0');
-        const localTimestamp = `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
+        const localTimestamp = new Date().toISOString();
 
         // 1. Resolve Employee ID
         let finalEmployeeId = employee_id.toUpperCase();

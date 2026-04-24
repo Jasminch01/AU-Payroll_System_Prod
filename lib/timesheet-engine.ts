@@ -6,6 +6,7 @@ import {
     RateType,
     TimesheetStatus
 } from '@/types/database';
+import { getDayOfWeekInTimezone, getDateInTimezone } from '@/lib/timezone-utils';
 
 /**
  * The core logic for translating Attendance Logs and Rosters into valid Timesheets.
@@ -23,6 +24,7 @@ export async function generateTimesheets(
         .from('Employee')
         .select(`
             *,
+            Business:business_id(timezone),
             EmployeeRateHistory(*)
         `)
         .eq('business_id', businessId)
@@ -131,7 +133,7 @@ export async function generateTimesheets(
 }
 
 function processDay(
-    employee: { employee_id: string; business_id: string; EmployeeRateHistory?: Array<{ weekday_rate: number; saturday_multiplier?: number; sunday_multiplier?: number; public_holiday_multiplier?: number; evening_rate?: number; evening_start_time?: number | null; evening_end_time?: number | null }> },
+    employee: { employee_id: string; business_id: string; Business?: { timezone: string | null }; EmployeeRateHistory?: Array<{ weekday_rate: number; saturday_multiplier?: number; sunday_multiplier?: number; public_holiday_multiplier?: number; evening_rate?: number; evening_start_time?: number | null; evening_end_time?: number | null }> },
     date: string,
     logs: AttendanceLog[],
     shift: Shift | undefined,
@@ -266,9 +268,11 @@ function processDay(
 
     // --- 6. RATE TYPE & MIDNIGHT SPLITTING ---
     // For now, we calculate based on the START date for the segment
+    const timezone = employee.Business?.timezone || 'Australia/Sydney';
+    
     const getRateType = (dt: Date) => {
-        const dateStr = dt.toISOString().split('T')[0];
-        const dayOfWeek = dt.getUTCDay(); // 0 = Sunday
+        const dateStr = getDateInTimezone(dt.toISOString(), timezone);
+        const dayOfWeek = getDayOfWeekInTimezone(dt, timezone); // 0 = Sunday
         if (publicHolidays.includes(dateStr)) return 'public_holiday';
         if (dayOfWeek === 0) return 'sunday';
         if (dayOfWeek === 6) return 'saturday';

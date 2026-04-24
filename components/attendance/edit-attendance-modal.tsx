@@ -6,7 +6,8 @@ import { apiPatch } from "@/lib/api-client";
 import { EventType, AttendanceLog } from "@/types/database";
 import { X, AlertCircle, CheckCircle, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { createAustralianTimestamp, getAustralianDateTimeForInput } from "@/lib/timezone-utils";
+import { createBusinessTimestamp, getDateTimeForInput } from "@/lib/timezone-utils";
+import { useBusinessTimezone } from "@/lib/timezone-context";
 
 interface EditAttendanceModalProps {
     isOpen: boolean;
@@ -32,8 +33,9 @@ export function EditAttendanceModal({
 }: EditAttendanceModalProps) {
     const queryClient = useQueryClient();
 
-    // Parse initial timestamp using Australian timezone
-    const { date: initialDate, time: initialTime } = getAustralianDateTimeForInput(log.timestamp);
+    const { businessTimezone } = useBusinessTimezone();
+    // Parse initial timestamp using Business timezone
+    const { date: initialDate, time: initialTime } = getDateTimeForInput(log.timestamp, businessTimezone);
     const [formData, setFormData] = useState({
         event_type: log.event_type as EventType,
         date: initialDate,
@@ -118,8 +120,8 @@ export function EditAttendanceModal({
             original_event_type: log.event_type
         });
 
-        // Create timestamp using Australian timezone-aware function
-        const timestamp = createAustralianTimestamp(formData.date, formData.time);
+        // Create timestamp using Business timezone-aware function
+        const timestamp = createBusinessTimestamp(formData.date, formData.time, businessTimezone);
 
         console.log('[EDIT ATTENDANCE] Timestamp conversion:', {
             input_date: formData.date,
@@ -127,7 +129,7 @@ export function EditAttendanceModal({
             output_timestamp: timestamp,
             output_breakdown: {
                 utc_iso: timestamp,
-                display_as_sydney: new Intl.DateTimeFormat('en-AU', {
+                display_as_business: new Intl.DateTimeFormat('en-AU', {
                     year: 'numeric',
                     month: '2-digit',
                     day: '2-digit',
@@ -135,7 +137,7 @@ export function EditAttendanceModal({
                     minute: '2-digit',
                     second: '2-digit',
                     hour12: false,
-                    timeZone: 'Australia/Sydney'
+                    timeZone: businessTimezone
                 }).format(new Date(timestamp))
             }
         });

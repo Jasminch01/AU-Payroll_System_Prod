@@ -85,3 +85,19 @@ export async function requireRole(
     if (!allowedRoles.includes(authUser.role)) return null;
     return authUser;
 }
+
+/**
+ * Get the timezone for a given business.
+ * Falls back to 'Australia/Sydney' if none is set.
+ */
+export async function getBusinessTimezone(businessId: string): Promise<string> {
+    const supabase = await createClient();
+    const { data } = await supabase
+        .from('Business')
+        .select('timezone')
+        .eq('business_id', businessId)
+        .single();
+    
+    return data?.timezone || 'Australia/Sydney';
+}
+

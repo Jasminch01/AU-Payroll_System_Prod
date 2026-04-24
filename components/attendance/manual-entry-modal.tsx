@@ -6,7 +6,8 @@ import { apiPost } from "@/lib/api-client";
 import { EventType } from "@/types/database";
 import { X, AlertCircle, CheckCircle, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { createAustralianTimestamp, getAustralianDateTimeForInput } from "@/lib/timezone-utils";
+import { createBusinessTimestamp, getDateTimeForInput, getCurrentTimestamp } from "@/lib/timezone-utils";
+import { useBusinessTimezone } from "@/lib/timezone-context";
 
 interface ManualEntryModalProps {
     isOpen: boolean;
@@ -36,8 +37,9 @@ export function ManualEntryModal({
 }: ManualEntryModalProps) {
     const queryClient = useQueryClient();
     
-    // Get current Australian date/time for default values
-    const { date: todayDate, time: nowTime } = getAustralianDateTimeForInput(new Date().toISOString());
+    const { businessTimezone } = useBusinessTimezone();
+    // Get current date/time for default values in business timezone
+    const { date: todayDate, time: nowTime } = getDateTimeForInput(getCurrentTimestamp(), businessTimezone);
     
     const [formData, setFormData] = useState({
         employee_id: "",
@@ -61,12 +63,13 @@ export function ManualEntryModal({
             return response;
         },
         onSuccess: () => {
+            const { date: newDate, time: newTime } = getDateTimeForInput(getCurrentTimestamp(), businessTimezone);
             setSuccess("Manual entry recorded successfully");
             setFormData({
                 employee_id: "",
                 event_type: "CLOCK_IN",
-                date: new Date().toISOString().split("T")[0],
-                time: new Date().toTimeString().slice(0, 5),
+                date: newDate,
+                time: newTime,
                 override_reason: "",
             });
             setError("");
@@ -114,8 +117,7 @@ export function ManualEntryModal({
             return;
         }
 
-        const localDateTime = new Date(`${formData.date}T${formData.time}:00`);
-        const timestamp = localDateTime.toISOString();
+        const timestamp = createBusinessTimestamp(formData.date, formData.time, businessTimezone);
 
         mutation.mutate({
             employee_id: formData.employee_id,

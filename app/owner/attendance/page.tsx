@@ -7,6 +7,8 @@ import { DataTable, Column } from "@/components/ui/data-table";
 import { StatusBadge } from "@/components/ui/badge";
 import { apiGet } from "@/lib/api-client";
 import { groupAttendanceIntoSessions } from "@/lib/attendance-grouper";
+import { useBusinessTimezone } from "@/lib/timezone-context";
+import { getDateInTimezone } from "@/lib/timezone-utils";
 import { ManualEntryModal } from "@/components/attendance/manual-entry-modal";
 import {
     Clock,
@@ -66,10 +68,7 @@ interface GroupedAttendance {
 
 /* ===== Helpers ===== */
 
-function todayDateString(): string {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
+
 
 function formatDuration(totalMinutes: number): string {
     if (totalMinutes <= 0) return "0h 0m";
@@ -78,24 +77,24 @@ function formatDuration(totalMinutes: number): string {
     return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }
 
-function formatTime(iso: string | null) {
+function formatTime(iso: string | null, timezone: string) {
     if (!iso) return "--:--";
     const date = new Date(iso);
     if (isNaN(date.getTime())) return "--:--";
 
-    // Use Sydney timezone to ensure consistent Australian time display
     return new Intl.DateTimeFormat("en-AU", {
         hour: "2-digit",
         minute: "2-digit",
         hour12: true,
-        timeZone: 'Australia/Sydney'
+        timeZone: timezone
     }).format(date);
 }
 
 /* ===== Component ===== */
 
 export default function OwnerAttendancePage() {
-    const today = todayDateString();
+    const { businessTimezone } = useBusinessTimezone();
+    const today = getDateInTimezone(new Date().toISOString(), businessTimezone);
     const [fromDate, setFromDate] = useState<string>(today);
     const [toDate, setToDate] = useState<string>(today);
     const [detailRow, setDetailRow] = useState<GroupedAttendance | null>(null);
@@ -121,7 +120,7 @@ export default function OwnerAttendancePage() {
     /* ── Session-aware grouping ── */
     const groupedRecords = useMemo(() => {
         // Use the new cross-midnight aware grouping function
-        const groupedSessions = groupAttendanceIntoSessions(records);
+        const groupedSessions = groupAttendanceIntoSessions(records, businessTimezone);
 
         // Filter logic: only show records where clock_in_date is within the selected date range
         const filteredSessions = groupedSessions.filter((group) => {
@@ -168,6 +167,7 @@ export default function OwnerAttendancePage() {
                             day: "numeric",
                             month: "short",
                             year: "numeric",
+                            timeZone: businessTimezone,
                         }).format(new Date(group.clock_in_date))}`,
                         first_in: session.clock_in?.timestamp ?? null,
                         last_out: session.clock_out?.timestamp ?? null,
@@ -281,7 +281,7 @@ export default function OwnerAttendancePage() {
                                 : "text-[hsl(var(--muted-foreground))]/50"
                         )}
                     >
-                        {formatTime(row.first_in)}
+                        {formatTime(row.first_in, businessTimezone)}
                     </span>
                 </div>
             ),
@@ -307,7 +307,7 @@ export default function OwnerAttendancePage() {
                                 : "text-[hsl(var(--muted-foreground))]/50"
                         )}
                     >
-                        {formatTime(row.last_out)}
+                        {formatTime(row.last_out, businessTimezone)}
                     </span>
                 </div>
             ),
@@ -536,7 +536,7 @@ export default function OwnerAttendancePage() {
                                         {row.Employee ? `${row.Employee.first_name} ${row.Employee.last_name}` : "Unknown"}
                                     </span>
                                     <span className="text-[10px] uppercase font-bold text-[hsl(var(--muted-foreground))] tracking-wider">
-                                        {new Date(row.date).toLocaleDateString("en-AU", { weekday: "short", day: "numeric", month: "short" })}
+                                        {new Date(row.date).toLocaleDateString("en-AU", { weekday: "short", day: "numeric", month: "short", timeZone: businessTimezone })}
                                     </span>
                                 </div>
                             </div>
@@ -552,11 +552,11 @@ export default function OwnerAttendancePage() {
                         <div className="flex items-center gap-4">
                             <div className="flex items-center gap-1.5 text-xs text-[hsl(var(--success))] font-bold bg-[hsl(var(--success-light))]/20 px-2 py-1 rounded-lg">
                                 <ArrowDownCircle size={12} />
-                                {formatTime(row.first_in)}
+                                {formatTime(row.first_in, businessTimezone)}
                             </div>
                             <div className="flex items-center gap-1.5 text-xs text-[hsl(var(--warning))] font-bold bg-[hsl(var(--warning-light))]/20 px-2 py-1 rounded-lg">
                                 <ArrowUpCircle size={12} />
-                                {formatTime(row.last_out)}
+                                {formatTime(row.last_out, businessTimezone)}
                             </div>
                             {row.is_manual && <StatusBadge status="manual" className="scale-75 origin-left" />}
                         </div>
@@ -590,6 +590,7 @@ export default function OwnerAttendancePage() {
                                         day: "numeric",
                                         month: "long",
                                         year: "numeric",
+                                        timeZone: businessTimezone,
                                     })}
                                 </p>
                             </div>
@@ -636,7 +637,7 @@ export default function OwnerAttendancePage() {
                                                                     : "text-[hsl(var(--muted-foreground))]/40"
                                                             )}
                                                         />
-                                                        {formatTime(s.clock_in)}
+                                                        {formatTime(s.clock_in, businessTimezone)}
                                                     </p>
                                                 </div>
                                                 <div>
@@ -652,7 +653,7 @@ export default function OwnerAttendancePage() {
                                                                     : "text-[hsl(var(--muted-foreground))]/40"
                                                             )}
                                                         />
-                                                        {formatTime(s.clock_out)}
+                                                        {formatTime(s.clock_out, businessTimezone)}
                                                     </p>
                                                 </div>
                                                 <div>

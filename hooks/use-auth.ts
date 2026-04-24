@@ -13,6 +13,8 @@ export interface AuthProfile {
     business?: {
         business_id: string;
         business_name: string;
+        timezone: string | null;
+        state: string | null;
         [key: string]: unknown;
     };
     employee_id?: string;

@@ -7,6 +7,7 @@ import { Clock, ArrowLeft, LogOut, CheckCircle2 } from "lucide-react";
 import { apiGet, apiPost } from "@/lib/api-client";
 import { toast } from "sonner";
 import { EventType } from "@/types/database";
+import { useBusinessTimezone } from "@/lib/timezone-context";
 
 type KioskAction = {
     type: EventType;
@@ -15,6 +16,7 @@ type KioskAction = {
 };
 
 export default function KioskPage() {
+    const { businessTimezone } = useBusinessTimezone();
     const [currentTime, setCurrentTime] = useState(new Date());
     const [step, setStep] = useState<'id' | 'board' | 'success'>('id');
     const [employeeId, setEmployeeId] = useState("");
@@ -113,10 +115,10 @@ export default function KioskPage() {
             <div className="mb-12 flex flex-col items-center animate-in fade-in slide-in-from-top-4 duration-700">
                 <Clock className="mb-4 text-[hsl(var(--brand))]" size={48} />
                 <h1 className="text-6xl sm:text-7xl font-bold tracking-tight text-[hsl(var(--foreground))] tabular-nums">
-                    {currentTime.toLocaleTimeString("en-AU", { hour: "numeric", minute: "2-digit" })}
+                    {currentTime.toLocaleTimeString("en-AU", { hour: "numeric", minute: "2-digit", timeZone: businessTimezone })}
                 </h1>
                 <p className="mt-2 text-lg text-[hsl(var(--muted-foreground))]">
-                    {currentTime.toLocaleDateString("en-AU", { weekday: "long", month: "long", day: "numeric" })}
+                    {currentTime.toLocaleDateString("en-AU", { weekday: "long", month: "long", day: "numeric", timeZone: businessTimezone })}
                 </p>
             </div>
 
