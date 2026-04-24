@@ -17,6 +17,7 @@ import {
     ChevronDown, ChevronUp, CalendarDays, User, Pencil,
     Plus, Search, AlertTriangle, Filter, Zap
 } from "lucide-react";
+import { useBusinessTimezone } from "@/lib/timezone-context";
 import { cn, formatDecimalHours } from "@/lib/utils";
 import type { TimeSheet, TimesheetStatus } from "@/types/database";
 
@@ -49,6 +50,7 @@ const TABS: { key: TabKey; label: string }[] = [
 /* ── Page Component ────────────────────────────────────── */
 
 export default function OwnerTimesheetsPage() {
+    const { businessTimezone } = useBusinessTimezone();
     const queryClient = useQueryClient();
     const [activeTab, setActiveTab] = useState<TabKey>("all");
     const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -225,12 +227,12 @@ export default function OwnerTimesheetsPage() {
     const formatTimeDisplay = (dateStr: string, timeStr: string | null) => {
         const date = parseTime(dateStr, timeStr);
         if (!date || isNaN(date.getTime())) return "—";
-        // Use Sydney timezone for consistent Australian time display
+        
         return new Intl.DateTimeFormat("en-AU", {
             hour: "2-digit",
             minute: "2-digit",
-            hour12: true,
-            timeZone: 'Australia/Sydney'
+            hour12: false,
+            timeZone: businessTimezone
         }).format(date);
     };
 
@@ -531,7 +533,7 @@ export default function OwnerTimesheetsPage() {
                                         {/* Approved info */}
                                         {ts.approved_by && (
                                             <p className="text-xs text-[hsl(var(--muted-foreground))] mb-3">
-                                                {ts.status === "approved" ? "Approved" : "Reviewed"} at {ts.approved_at ? new Date(ts.approved_at).toLocaleString("en-AU") : "—"}
+                                                {ts.status === "approved" ? "Approved" : "Reviewed"} at {ts.approved_at ? new Date(ts.approved_at).toLocaleString("en-AU", { timeZone: businessTimezone }) : "—"}
                                             </p>
                                         )}
 

@@ -7,8 +7,6 @@ import { DataTable, Column } from "@/components/ui/data-table";
 import { StatusBadge } from "@/components/ui/badge";
 import { apiGet } from "@/lib/api-client";
 import { groupAttendanceIntoSessions } from "@/lib/attendance-grouper";
-import { useBusinessTimezone } from "@/lib/timezone-context";
-import { getDateInTimezone } from "@/lib/timezone-utils";
 import { ManualEntryModal } from "@/components/attendance/manual-entry-modal";
 import {
     Clock,
@@ -22,10 +20,13 @@ import {
     ChevronRight,
     Plus,
     Edit2,
+    Coffee,
+    ArrowRight
 } from "lucide-react";
 import type { AttendanceLog } from "@/types/database";
 import { cn } from "@/lib/utils";
 import { EditAttendanceModal } from "@/components/attendance/edit-attendance-modal";
+import { useBusinessTimezone } from "@/lib/timezone-context";
 
 /* ===== Types ===== */
 
@@ -39,6 +40,7 @@ interface AttendanceRecord extends AttendanceLog {
 
 /** A single clock-in → clock-out pair */
 interface Session {
+    breaks: any;
     clock_in: string | null;
     clock_out: string | null;
     duration_minutes: number | null; // null when session is still open
@@ -68,7 +70,10 @@ interface GroupedAttendance {
 
 /* ===== Helpers ===== */
 
-
+function todayDateString(): string {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
 
 function formatDuration(totalMinutes: number): string {
     if (totalMinutes <= 0) return "0h 0m";
@@ -85,7 +90,7 @@ function formatTime(iso: string | null, timezone: string) {
     return new Intl.DateTimeFormat("en-AU", {
         hour: "2-digit",
         minute: "2-digit",
-        hour12: true,
+        hour12: false,
         timeZone: timezone
     }).format(date);
 }
@@ -94,7 +99,7 @@ function formatTime(iso: string | null, timezone: string) {
 
 export default function OwnerAttendancePage() {
     const { businessTimezone } = useBusinessTimezone();
-    const today = getDateInTimezone(new Date().toISOString(), businessTimezone);
+    const today = todayDateString();
     const [fromDate, setFromDate] = useState<string>(today);
     const [toDate, setToDate] = useState<string>(today);
     const [detailRow, setDetailRow] = useState<GroupedAttendance | null>(null);
@@ -154,6 +159,7 @@ export default function OwnerAttendancePage() {
                         ]
                             .filter(Boolean)
                             .join(", "),
+                        breaks: undefined
                     };
 
                     const totalMinutes = session.duration_minutes ?? 0;
@@ -167,7 +173,6 @@ export default function OwnerAttendancePage() {
                             day: "numeric",
                             month: "short",
                             year: "numeric",
-                            timeZone: businessTimezone,
                         }).format(new Date(group.clock_in_date))}`,
                         first_in: session.clock_in?.timestamp ?? null,
                         last_out: session.clock_out?.timestamp ?? null,
@@ -536,7 +541,7 @@ export default function OwnerAttendancePage() {
                                         {row.Employee ? `${row.Employee.first_name} ${row.Employee.last_name}` : "Unknown"}
                                     </span>
                                     <span className="text-[10px] uppercase font-bold text-[hsl(var(--muted-foreground))] tracking-wider">
-                                        {new Date(row.date).toLocaleDateString("en-AU", { weekday: "short", day: "numeric", month: "short", timeZone: businessTimezone })}
+                                        {new Date(row.date).toLocaleDateString("en-AU", { weekday: "short", day: "numeric", month: "short" })}
                                     </span>
                                 </div>
                             </div>
@@ -571,7 +576,7 @@ export default function OwnerAttendancePage() {
                     onClick={() => setDetailRow(null)}
                 >
                     <div
-                        className="relative w-full max-w-lg mx-4 rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-2xl animate-in zoom-in-95"
+                        className="relative w-full max-w-2xl mx-4 rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-2xl animate-in zoom-in-95 overflow-hidden"
                         onClick={(e) => e.stopPropagation()}
                     >
                         {/* Header */}
@@ -590,7 +595,6 @@ export default function OwnerAttendancePage() {
                                         day: "numeric",
                                         month: "long",
                                         year: "numeric",
-                                        timeZone: businessTimezone,
                                     })}
                                 </p>
                             </div>
@@ -611,86 +615,142 @@ export default function OwnerAttendancePage() {
                                         <div
                                             key={i}
                                             className={cn(
-                                                "flex items-center gap-4 p-3 rounded-xl border transition-colors",
+                                                "flex flex-col gap-4 p-4 rounded-xl border transition-colors",
                                                 isIncomplete
-                                                    ? "border-[hsl(var(--warning))]/30 bg-[hsl(var(--warning-light))]/30"
-                                                    : "border-[hsl(var(--border))] bg-[hsl(var(--muted))]/50"
+                                                    ? "border-[hsl(var(--warning))]/30 bg-[hsl(var(--warning-light))]/10"
+                                                    : "border-[hsl(var(--border))] bg-[hsl(var(--muted))]/30"
                                             )}
                                         >
-                                            {/* Session number */}
-                                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[hsl(var(--brand-light))] text-[hsl(var(--brand))] text-xs font-bold">
-                                                {i + 1}
+                                            <div className="flex items-center gap-4">
+                                                {/* Session number */}
+                                                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[hsl(var(--brand-light))] text-[hsl(var(--brand))] text-xs font-bold">
+                                                    {i + 1}
+                                                </div>
+
+                                                {/* Times */}
+                                                <div className="flex-1 grid grid-cols-3 gap-2 text-sm">
+                                                    <div>
+                                                        <p className="text-[10px] uppercase tracking-wider text-[hsl(var(--muted-foreground))] font-medium">
+                                                            In
+                                                        </p>
+                                                        <p className="font-semibold flex items-center gap-1">
+                                                            <ArrowDownCircle
+                                                                size={12}
+                                                                className={cn(
+                                                                    s.clock_in
+                                                                        ? "text-[hsl(var(--success))]"
+                                                                        : "text-[hsl(var(--muted-foreground))]/40"
+                                                                )}
+                                                            />
+                                                            {formatTime(s.clock_in, businessTimezone)}
+                                                            {s.clock_in && (
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        const log = detailRow.raw_logs.find(rx => rx.timestamp === s.clock_in && rx.event_type === 'CLOCK_IN');
+                                                                        if (log) {
+                                                                            setEditingLog({ ...log, Employee: detailRow.Employee });
+                                                                            setIsEditModalOpen(true);
+                                                                        }
+                                                                    }}
+                                                                    className="ml-auto p-1 rounded-md text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--brand))] hover:bg-[hsl(var(--brand-light))] transition-colors"
+                                                                    title="Edit Clock In"
+                                                                >
+                                                                    <Edit2 size={12} />
+                                                                </button>
+                                                            )}
+                                                        </p>
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-[10px] uppercase tracking-wider text-[hsl(var(--muted-foreground))] font-medium">
+                                                            Out
+                                                        </p>
+                                                        <p className="font-semibold flex items-center gap-1">
+                                                            <ArrowUpCircle
+                                                                size={12}
+                                                                className={cn(
+                                                                    s.clock_out
+                                                                        ? "text-[hsl(var(--warning))]"
+                                                                        : "text-[hsl(var(--muted-foreground))]/40"
+                                                                )}
+                                                            />
+                                                            {formatTime(s.clock_out, businessTimezone)}
+                                                            {s.clock_out && (
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        const log = detailRow.raw_logs.find(rx => rx.timestamp === s.clock_out && rx.event_type === 'CLOCK_OUT');
+                                                                        if (log) {
+                                                                            setEditingLog({ ...log, Employee: detailRow.Employee });
+                                                                            setIsEditModalOpen(true);
+                                                                        }
+                                                                    }}
+                                                                    className="ml-auto p-1 rounded-md text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--brand))] hover:bg-[hsl(var(--brand-light))] transition-colors"
+                                                                    title="Edit Clock Out"
+                                                                >
+                                                                    <Edit2 size={12} />
+                                                                </button>
+                                                            )}
+                                                        </p>
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-[10px] uppercase tracking-wider text-[hsl(var(--muted-foreground))] font-medium">
+                                                            Duration
+                                                        </p>
+                                                        <p className="font-semibold tabular-nums">
+                                                            {s.duration_minutes != null
+                                                                ? formatDuration(s.duration_minutes)
+                                                                : "—"}
+                                                        </p>
+                                                    </div>
+                                                </div>
+
                                             </div>
 
-                                            {/* Times */}
-                                            <div className="flex-1 grid grid-cols-3 gap-2 text-sm">
-                                                <div>
-                                                    <p className="text-[10px] uppercase tracking-wider text-[hsl(var(--muted-foreground))] font-medium">
-                                                        In
+                                            {/* Breaks Section */}
+                                            {s.breaks && s.breaks.length > 0 && (
+                                                <div className="mt-2 pt-3 border-t border-[hsl(var(--border))]/50">
+                                                    <p className="text-[10px] uppercase tracking-wider text-[hsl(var(--muted-foreground))] font-bold mb-2 flex items-center gap-1.5">
+                                                        <Coffee size={12} className="text-[hsl(var(--brand))]" />
+                                                        Breaks ({s.breaks.length / 2 | 0})
                                                     </p>
-                                                    <p className="font-semibold flex items-center gap-1">
-                                                        <ArrowDownCircle
-                                                            size={12}
-                                                            className={cn(
-                                                                s.clock_in
-                                                                    ? "text-[hsl(var(--success))]"
-                                                                    : "text-[hsl(var(--muted-foreground))]/40"
-                                                            )}
-                                                        />
-                                                        {formatTime(s.clock_in, businessTimezone)}
-                                                    </p>
+                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
+                                                        {(() => {
+                                                            const pairs = [];
+                                                            for (let b = 0; b < s.breaks.length; b++) {
+                                                                if (s.breaks[b].event_type === 'BREAK_START') {
+                                                                    const end = s.breaks.find((bx: any, idx: number) => idx > b && bx.event_type === 'BREAK_END');
+                                                                    pairs.push({ start: s.breaks[b], end });
+                                                                }
+                                                            }
+                                                            return pairs.map((pair, idx) => (
+                                                                <div key={idx} className="flex items-center justify-between text-xs bg-[hsl(var(--background))] px-2.5 py-1.5 rounded-lg border border-[hsl(var(--border))]/50">
+                                                                    <div className="flex items-center gap-3">
+                                                                        <span className="text-[hsl(var(--muted-foreground))] font-medium">#{idx + 1}</span>
+                                                                        <div className="flex items-center gap-2">
+                                                                            <span className="font-semibold text-[hsl(var(--foreground))]">{formatTime(pair.start.timestamp, businessTimezone)}</span>
+                                                                            <ArrowRight size={10} className="text-[hsl(var(--muted-foreground))]" />
+                                                                            <span className="font-semibold text-[hsl(var(--foreground))]">{pair.end ? formatTime(pair.end.timestamp, businessTimezone) : '—'}</span>
+                                                                        </div>
+                                                                    </div>
+                                                                    {pair.start && (
+                                                                        <button
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                setEditingLog({ ...pair.start, Employee: detailRow.Employee });
+                                                                                setIsEditModalOpen(true);
+                                                                            }}
+                                                                            className="p-1 rounded hover:bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--brand))]"
+                                                                        >
+                                                                            <Edit2 size={10} />
+                                                                        </button>
+                                                                    )}
+                                                                </div>
+                                                            ));
+                                                        })()}
+                                                    </div>
                                                 </div>
-                                                <div>
-                                                    <p className="text-[10px] uppercase tracking-wider text-[hsl(var(--muted-foreground))] font-medium">
-                                                        Out
-                                                    </p>
-                                                    <p className="font-semibold flex items-center gap-1">
-                                                        <ArrowUpCircle
-                                                            size={12}
-                                                            className={cn(
-                                                                s.clock_out
-                                                                    ? "text-[hsl(var(--warning))]"
-                                                                    : "text-[hsl(var(--muted-foreground))]/40"
-                                                            )}
-                                                        />
-                                                        {formatTime(s.clock_out, businessTimezone)}
-                                                    </p>
-                                                </div>
-                                                <div>
-                                                    <p className="text-[10px] uppercase tracking-wider text-[hsl(var(--muted-foreground))] font-medium">
-                                                        Duration
-                                                    </p>
-                                                    <p className="font-semibold tabular-nums">
-                                                        {s.duration_minutes != null
-                                                            ? formatDuration(s.duration_minutes)
-                                                            : "—"}
-                                                    </p>
-                                                </div>
-                                            </div>
-
-                                            {/* Badges & Actions */}
-                                            <div className="flex flex-col items-end gap-2 shrink-0">
-                                                <button
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        const rawLog = detailRow.raw_logs.find(rx => rx.timestamp === s.clock_in || rx.timestamp === s.clock_out);
-                                                        if (rawLog) {
-                                                            setEditingLog({ ...rawLog, Employee: detailRow.Employee });
-                                                            setIsEditModalOpen(true);
-                                                        }
-                                                    }}
-                                                    className="p-1.5 rounded-lg text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--brand))] hover:bg-[hsl(var(--brand-light))] transition-colors"
-                                                    title="Edit Record"
-                                                >
-                                                    <Edit2 size={14} />
-                                                </button>
-                                                {s.is_manual && <StatusBadge status="manual" label="Manual" />}
-                                                {isIncomplete && (
-                                                    <span className="text-[10px] font-medium text-[hsl(var(--warning))] uppercase tracking-tighter">
-                                                        Incomplete
-                                                    </span>
-                                                )}
-                                            </div>
+                                            )}
                                         </div>
                                     );
                                 })}

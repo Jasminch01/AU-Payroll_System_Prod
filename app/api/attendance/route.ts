@@ -62,8 +62,6 @@ export async function GET(request: NextRequest) {
         const { data: logs, error } = await query;
 
         if (error) return errorResponse(error.message, 400);
-        console.log("attendance data got", logs)
-
         return successResponse(logs);
     } catch (err) {
         console.error('List attendance error:', err);
@@ -144,12 +142,6 @@ export async function POST(request: NextRequest) {
             return errorResponse('Employee not found', 404);
         }
 
-        console.log('Employee validation passed:', {
-            employee_id: employee.employee_id,
-            employee_business_id: employee.business_id,
-            request_business_id: insertData.business_id,
-            match: employee.business_id === insertData.business_id
-        });
 
         // Validate business exists
         const { data: business, error: bizError } = await supabase
@@ -192,14 +184,6 @@ export async function POST(request: NextRequest) {
             return errorResponse(error.message, 400);
         }
 
-        console.log('Manual attendance entry saved successfully:', {
-            log_id: log.log_id,
-            employee_id: log.employee_id,
-            event_type: log.event_type,
-            timestamp: log.timestamp,
-            business_id: log.business_id,
-            override_by: log.override_by
-        });
 
         // Now verify it can be retrieved
         const { data: verification, error: verifyError } = await supabase

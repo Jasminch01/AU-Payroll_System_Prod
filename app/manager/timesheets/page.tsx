@@ -18,6 +18,7 @@ import {
     Plus, Search, AlertTriangle, Filter, Zap
 } from "lucide-react";
 import { cn, formatDecimalHours } from "@/lib/utils";
+import { useBusinessTimezone } from "@/lib/timezone-context";
 import type { TimeSheet, TimesheetStatus } from "@/types/database";
 import { useAuth } from "@/hooks/use-auth";
 
@@ -50,6 +51,7 @@ const TABS: { key: TabKey; label: string }[] = [
 /* ── Page Component ────────────────────────────────────── */
 
 export default function ManagerTimesheetsPage() {
+    const { businessTimezone } = useBusinessTimezone();
     const queryClient = useQueryClient();
     const { user } = useAuth();
     const [activeTab, setActiveTab] = useState<TabKey>("all");
@@ -225,12 +227,12 @@ export default function ManagerTimesheetsPage() {
     const formatTimeDisplay = (dateStr: string, timeStr: string | null) => {
         const date = parseTime(dateStr, timeStr);
         if (!date || isNaN(date.getTime())) return "—";
-        // Use Sydney timezone for consistent Australian time display
+        
         return new Intl.DateTimeFormat("en-AU", {
             hour: "2-digit",
-            minute: "2-digit", 
-            hour12: true,
-            timeZone: 'Australia/Sydney'
+            minute: "2-digit",
+            hour12: false,
+            timeZone: businessTimezone
         }).format(date);
     };
 
@@ -532,7 +534,7 @@ export default function ManagerTimesheetsPage() {
                                         {/* Approved info */}
                                         {ts.approved_by && (
                                             <p className="text-xs text-[hsl(var(--muted-foreground))] mb-3">
-                                                {ts.status === "approved" ? "Approved" : "Reviewed"} at {ts.approved_at ? new Date(ts.approved_at).toLocaleString("en-AU") : "—"}
+                                                {ts.status === "approved" ? "Approved" : "Reviewed"} at {ts.approved_at ? new Date(ts.approved_at).toLocaleString("en-AU", { timeZone: businessTimezone }) : "—"}
                                             </p>
                                         )}
 

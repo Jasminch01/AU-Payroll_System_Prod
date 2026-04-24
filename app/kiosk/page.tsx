@@ -115,7 +115,7 @@ export default function KioskPage() {
             <div className="mb-12 flex flex-col items-center animate-in fade-in slide-in-from-top-4 duration-700">
                 <Clock className="mb-4 text-[hsl(var(--brand))]" size={48} />
                 <h1 className="text-6xl sm:text-7xl font-bold tracking-tight text-[hsl(var(--foreground))] tabular-nums">
-                    {currentTime.toLocaleTimeString("en-AU", { hour: "numeric", minute: "2-digit", timeZone: businessTimezone })}
+                    {currentTime.toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: businessTimezone })}
                 </h1>
                 <p className="mt-2 text-lg text-[hsl(var(--muted-foreground))]">
                     {currentTime.toLocaleDateString("en-AU", { weekday: "long", month: "long", day: "numeric", timeZone: businessTimezone })}

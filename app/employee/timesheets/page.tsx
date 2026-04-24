@@ -8,6 +8,7 @@ import { StatusBadge } from "@/components/ui/badge";
 import { apiGet } from "@/lib/api-client";
 import { FileText, DollarSign, Clock, ChevronDown, ChevronUp, CalendarDays } from "lucide-react";
 import { cn, formatDecimalHours } from "@/lib/utils";
+import { useBusinessTimezone } from "@/lib/timezone-context";
 import type { TimeSheet, TimesheetStatus } from "@/types/database";
 
 type TabKey = "all" | "pending" | "approved" | "rejected";
@@ -20,6 +21,7 @@ const TABS: { key: TabKey; label: string }[] = [
 ];
 
 export default function EmployeeTimesheetsPage() {
+    const { businessTimezone } = useBusinessTimezone();
     const [activeTab, setActiveTab] = useState<TabKey>("all");
     const [expandedId, setExpandedId] = useState<string | null>(null);
 
@@ -54,12 +56,12 @@ export default function EmployeeTimesheetsPage() {
     const formatTimeDisplay = (dateStr: string, timeStr: string | null) => {
         const date = parseTime(dateStr, timeStr);
         if (!date || isNaN(date.getTime())) return "—";
-        // Use Sydney timezone for consistent Australian time display
+        
         return new Intl.DateTimeFormat("en-AU", {
             hour: "2-digit",
             minute: "2-digit",
-            hour12: true,
-            timeZone: 'Australia/Sydney'
+            hour12: false,
+            timeZone: businessTimezone
         }).format(date);
     };
 
@@ -248,7 +250,7 @@ export default function EmployeeTimesheetsPage() {
                                         {/* Approved info */}
                                         {ts.approved_at && (
                                             <p className="text-xs text-[hsl(var(--muted-foreground))] mt-3">
-                                                {ts.status === "approved" ? "Approved" : "Reviewed"} at {new Date(ts.approved_at).toLocaleString("en-AU")}
+                                                {ts.status === "approved" ? "Approved" : "Reviewed"} at {new Date(ts.approved_at).toLocaleString("en-AU", { timeZone: businessTimezone })}
                                             </p>
                                         )}
 

@@ -79,6 +79,7 @@ export function groupAttendanceIntoSessions(
     for (const log of sorted) {
       if (log.event_type === 'CLOCK_IN') {
         if (activeSession && !activeSession.clock_out) {
+          if (activeSession.clock_in) usedClockInIds.add(activeSession.clock_in.log_id);
           sessions.push(activeSession as WorkSession);
         }
 
@@ -97,7 +98,8 @@ export function groupAttendanceIntoSessions(
           activeSession.clock_out = log;
           activeSession.all_logs!.push(log);
 
-          if (activeSession.clock_in && log) {
+          if (activeSession.clock_in) {
+            usedClockInIds.add(activeSession.clock_in.log_id);
             const inMs = new Date(activeSession.clock_in.timestamp).getTime();
             const outMs = new Date(log.timestamp).getTime();
             activeSession.duration_minutes = (outMs - inMs) / 60000;

@@ -2,9 +2,9 @@
 
 import React, { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiPatch } from "@/lib/api-client";
+import { apiPatch, apiDelete } from "@/lib/api-client";
 import { EventType, AttendanceLog } from "@/types/database";
-import { X, AlertCircle, CheckCircle, Clock } from "lucide-react";
+import { X, AlertCircle, CheckCircle, Clock, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createBusinessTimestamp, getDateTimeForInput } from "@/lib/timezone-utils";
 import { useBusinessTimezone } from "@/lib/timezone-context";
@@ -22,6 +22,17 @@ const EVENT_TYPES: { value: EventType; label: string }[] = [
     { value: "CLOCK_OUT", label: "Clock Out" },
     { value: "BREAK_START", label: "Break Start" },
     { value: "BREAK_END", label: "Break End" },
+];
+
+const TIME_OPTIONS = [
+    ...Array.from({ length: 23 * 4 }, (_, i) => {
+        // Start from 01:00 and end at 23:45 (remove 00:xx hour)
+        const totalIntervals = (i + 4);
+        const hours = Math.floor(totalIntervals / 4).toString().padStart(2, "0");
+        const minutes = ((totalIntervals % 4) * 15).toString().padStart(2, "0");
+        return `${hours}:${minutes}`;
+    }),
+    "24:00"
 ];
 
 export function EditAttendanceModal({
@@ -45,6 +56,7 @@ export function EditAttendanceModal({
 
     const [error, setError] = useState("");
     const [success, setSuccess] = useState("");
+    const [isTimeDropdownOpen, setIsTimeDropdownOpen] = useState(false);
 
     const mutation = useMutation({
         mutationFn: async (data: {
@@ -64,13 +76,13 @@ export function EditAttendanceModal({
                 console.log('[EDIT ATTENDANCE] Invalidating specific query:', {
                     queryKey: ["attendance-raw", fromDate, toDate]
                 });
-                queryClient.invalidateQueries({ 
-                    queryKey: ["attendance-raw", fromDate, toDate] 
+                queryClient.invalidateQueries({
+                    queryKey: ["attendance-raw", fromDate, toDate]
                 });
             } else {
                 console.log('[EDIT ATTENDANCE] Invalidating all attendance queries');
-                queryClient.invalidateQueries({ 
-                    queryKey: ["attendance-raw"] 
+                queryClient.invalidateQueries({
+                    queryKey: ["attendance-raw"]
                 });
             }
 
@@ -89,18 +101,6 @@ export function EditAttendanceModal({
         e.preventDefault();
         setError("");
         setSuccess("");
-
-        // Prevent converting CLOCK_IN to CLOCK_OUT - must stay as CLOCK_IN
-        if (log.event_type === 'CLOCK_IN' && formData.event_type !== 'CLOCK_IN') {
-            setError("Cannot change CLOCK_IN to another event type. Create a new CLOCK_OUT entry instead using Manual Entry.");
-            return;
-        }
-
-        // Prevent converting other types to CLOCK_IN
-        if (log.event_type !== 'CLOCK_IN' && formData.event_type === 'CLOCK_IN') {
-            setError("Cannot change to CLOCK_IN. Event type mismatch.");
-            return;
-        }
 
         if (!formData.date || !formData.time) {
             setError("Please select date and time");
@@ -207,7 +207,7 @@ export function EditAttendanceModal({
                         {/* Event type */}
                         <div className="space-y-2">
                             <label className="font-semibold text-[hsl(var(--foreground))] text-xs uppercase tracking-wider">
-                                Event Type (cannot be changed)
+                                Event Type (Locked)
                             </label>
                             <select
                                 disabled={true}
@@ -220,6 +220,9 @@ export function EditAttendanceModal({
                                     </option>
                                 ))}
                             </select>
+                            <p className="text-[10px] text-[hsl(var(--muted-foreground))]">
+                                To change the event type, delete this record and add a new one via Manual Entry.
+                            </p>
                         </div>
 
                         {/* Date & Time */}
@@ -234,12 +237,58 @@ export function EditAttendanceModal({
                                     onChange={(e) => setFormData({ ...formData, date: e.target.value })}
                                     className="flex-1 h-11 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-3 text-xs focus:outline-none focus:ring-2 focus:ring-[hsl(var(--brand))]/20 focus:border-[hsl(var(--brand))]"
                                 />
-                                <input
-                                    type="time"
-                                    value={formData.time}
-                                    onChange={(e) => setFormData({ ...formData, time: e.target.value })}
-                                    className="w-28 h-11 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-3 text-xs focus:outline-none focus:ring-2 focus:ring-[hsl(var(--brand))]/20 focus:border-[hsl(var(--brand))]"
-                                />
+                                <div className="relative w-28">
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsTimeDropdownOpen(!isTimeDropdownOpen)}
+                                        className="w-full h-11 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-3 text-xs flex items-center justify-between focus:outline-none focus:ring-2 focus:ring-[hsl(var(--brand))]/20 focus:border-[hsl(var(--brand))]"
+                                    >
+                                        <span>{formData.time}</span>
+                                        <Clock size={12} className="text-[hsl(var(--muted-foreground))]" />
+                                    </button>
+
+                                    {isTimeDropdownOpen && (
+                                        <>
+                                            <div
+                                                className="fixed inset-0 z-70"
+                                                onClick={() => setIsTimeDropdownOpen(false)}
+                                            />
+                                            <div className="absolute top-12 mb-2 right-0 w-32 bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-lg shadow-xl z-71 max-h-48 overflow-y-auto animate-in slide-in-from-bottom-2 duration-200">
+                                                <div className="p-1">
+                                                    {TIME_OPTIONS.map(time => (
+                                                        <button
+                                                            key={time}
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setFormData({ ...formData, time });
+                                                                setIsTimeDropdownOpen(false);
+                                                            }}
+                                                            className={cn(
+                                                                "w-full text-left px-3 py-2 text-xs rounded-lg transition-colors",
+                                                                formData.time === time
+                                                                    ? "bg-[hsl(var(--brand))] text-white"
+                                                                    : "hover:bg-[hsl(var(--muted))] text-[hsl(var(--foreground))]"
+                                                            )}
+                                                        >
+                                                            {time}
+                                                        </button>
+                                                    ))}
+                                                    {!TIME_OPTIONS.includes(formData.time) && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setIsTimeDropdownOpen(false);
+                                                            }}
+                                                            className="w-full text-left px-3 py-2 text-xs rounded-lg mt-1 bg-[hsl(var(--brand-light))]/30 text-[hsl(var(--brand))] font-bold"
+                                                        >
+                                                            {formData.time} (Original)
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </>
+                                    )}
+                                </div>
                             </div>
                         </div>
 
