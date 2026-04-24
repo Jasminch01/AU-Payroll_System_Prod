@@ -17,7 +17,8 @@ import {
     ChevronDown, ChevronUp, CalendarDays, User, Pencil,
     Plus, Search, AlertTriangle, Filter, Zap
 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { useBusinessTimezone } from "@/lib/timezone-context";
+import { cn, formatDecimalHours } from "@/lib/utils";
 import type { TimeSheet, TimesheetStatus } from "@/types/database";
 
 /* ── Types ─────────────────────────────────────────────── */
@@ -49,6 +50,7 @@ const TABS: { key: TabKey; label: string }[] = [
 /* ── Page Component ────────────────────────────────────── */
 
 export default function OwnerTimesheetsPage() {
+    const { businessTimezone } = useBusinessTimezone();
     const queryClient = useQueryClient();
     const [activeTab, setActiveTab] = useState<TabKey>("all");
     const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -225,7 +227,13 @@ export default function OwnerTimesheetsPage() {
     const formatTimeDisplay = (dateStr: string, timeStr: string | null) => {
         const date = parseTime(dateStr, timeStr);
         if (!date || isNaN(date.getTime())) return "—";
-        return date.toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit", hour12: true });
+        
+        return new Intl.DateTimeFormat("en-AU", {
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: false,
+            timeZone: businessTimezone
+        }).format(date);
     };
 
     const openEditDialog = (ts: TimesheetRecord) => {
@@ -288,7 +296,7 @@ export default function OwnerTimesheetsPage() {
             <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-6">
                 <MetricCard title="Total Timesheets" value={timesheets.length} icon={<FileText size={24} />} />
                 <MetricCard title="Pending Approval" value={counts.pending} icon={<Clock size={24} />} />
-                <MetricCard title="Total Hours" value={`${totalHours.toFixed(1)}h`} icon={<CalendarDays size={24} />} />
+                <MetricCard title="Total Hours" value={formatDecimalHours(totalHours)} icon={<CalendarDays size={24} />} />
                 <MetricCard title="Approved Pay" value={`$${totalGrossPay.toLocaleString("en-AU", { minimumFractionDigits: 2 })}`} icon={<DollarSign size={24} />} />
             </div>
 
@@ -418,14 +426,14 @@ export default function OwnerTimesheetsPage() {
                                             <div className="text-right">
                                                 <p className="text-xs text-[hsl(var(--muted-foreground))]">Hours</p>
                                                 <div className="flex flex-col items-end">
-                                                    <p className="text-sm font-semibold">{ts.actual_hours?.toFixed(2) ?? "0"}h</p>
+                                                    <p className="text-sm font-semibold">{formatDecimalHours(ts.actual_hours)}</p>
                                                     {ts.overtime_hours && ts.overtime_hours > 0 ? (
                                                         <span className="text-[10px] font-bold text-orange-600 bg-orange-50 px-1 rounded border border-orange-100">
-                                                            +{ts.overtime_hours.toFixed(2)}h OT
+                                                            +{formatDecimalHours(ts.overtime_hours)} OT
                                                         </span>
                                                     ) : ts.actual_hours && ts.rostered_hours && ts.actual_hours > ts.rostered_hours && (
                                                         <span className="text-[10px] font-bold text-[hsl(var(--brand))] bg-[hsl(var(--brand-light))]/50 px-1 rounded">
-                                                            +{(ts.actual_hours - ts.rostered_hours).toFixed(2)}h OT
+                                                            +{formatDecimalHours(ts.actual_hours - ts.rostered_hours)} OT
                                                         </span>
                                                     )}
                                                 </div>
@@ -474,16 +482,16 @@ export default function OwnerTimesheetsPage() {
                                             </div>
                                             <div>
                                                 <p className="text-xs text-[hsl(var(--muted-foreground))] mb-0.5">Rostered Hours</p>
-                                                <p className="text-sm font-medium">{ts.rostered_hours?.toFixed(2) ?? "—"}h</p>
+                                                <p className="text-sm font-medium">{formatDecimalHours(ts.rostered_hours)}</p>
                                             </div>
                                             <div>
                                                 <p className="text-xs text-[hsl(var(--muted-foreground))] mb-0.5">Break Hours</p>
-                                                <p className="text-sm font-medium text-slate-500">{ts.break_hours?.toFixed(2) ?? "0.00"}h</p>
+                                                <p className="text-sm font-medium text-slate-500">{formatDecimalHours(ts.break_hours)}</p>
                                             </div>
                                             <div>
                                                 <p className="text-xs text-[hsl(var(--muted-foreground))] mb-0.5">Overtime Hours</p>
                                                 <p className={cn("text-sm font-bold", (ts.overtime_hours ?? 0) > 0 ? "text-orange-600" : "text-slate-500")}>
-                                                    {ts.overtime_hours?.toFixed(2) ?? "0.00"}h
+                                                    {formatDecimalHours(ts.overtime_hours)}
                                                 </p>
                                             </div>
                                             <div>
@@ -525,7 +533,7 @@ export default function OwnerTimesheetsPage() {
                                         {/* Approved info */}
                                         {ts.approved_by && (
                                             <p className="text-xs text-[hsl(var(--muted-foreground))] mb-3">
-                                                {ts.status === "approved" ? "Approved" : "Reviewed"} at {ts.approved_at ? new Date(ts.approved_at).toLocaleString("en-AU") : "—"}
+                                                {ts.status === "approved" ? "Approved" : "Reviewed"} at {ts.approved_at ? new Date(ts.approved_at).toLocaleString("en-AU", { timeZone: businessTimezone }) : "—"}
                                             </p>
                                         )}
 

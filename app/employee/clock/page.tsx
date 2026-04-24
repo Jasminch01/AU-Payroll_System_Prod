@@ -1,44 +1,107 @@
 "use client";
 
-import React, { useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
 import { DashboardLayout } from "@/components/layout";
-import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Card, CardContent } from "@/components/ui/card";
 import { apiGet, apiPost } from "@/lib/api-client";
+import { getNextAttendanceEvent } from "@/lib/attendance-logic";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { AnimatePresence, motion } from "framer-motion";
+import { CheckCircle, Clock, LogIn, LogOut } from "lucide-react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { motion, AnimatePresence } from "framer-motion";
-import { LogIn, LogOut, Fingerprint, Clock, CheckCircle } from "lucide-react";
+import { useBusinessTimezone } from "@/lib/timezone-context";
 
 export default function EmployeeClockPage() {
     const [lastAction, setLastAction] = useState<{ type: string; time: string } | null>(null);
+    const { businessTimezone } = useBusinessTimezone();
+    
     const { data: profile } = useQuery({
         queryKey: ["profile"],
         queryFn: () => apiGet<any>("/profile"),
     });
 
+    // Get today's attendance logs to determine current status
+    const { data: attendanceData, refetch: refetchAttendance } = useQuery({
+        queryKey: ["my-attendance"],
+        queryFn: () => apiGet<any>("/attendance/me"),
+    });
+
     const clockMutation = useMutation({
-        mutationFn: (data: { employee_id: string; action: "CLOCK_IN" | "CLOCK_OUT" | "BREAK_START" | "BREAK_END" }) =>
-            apiPost("/attendance/kiosk", data),
-        onSuccess: (_, variables) => {
-            const time = new Date().toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit" });
-            const actionLabel = variables.action.replace('_', ' ').toLowerCase();
-            setLastAction({ type: actionLabel.charAt(0).toUpperCase() + actionLabel.slice(1), time });
-            toast.success(`Success! You're ${actionLabel}.`);
+        mutationFn: () =>
+            apiPost("/attendance/me", {}),
+        onSuccess: (data: any) => {
+            console.log('[CLOCK PAGE] Clock action successful:', {
+                event_type: data.event_type,
+                timestamp: data.timestamp
+            });
+
+            const time = new Intl.DateTimeFormat("en-AU", {
+                hour: "2-digit",
+                minute: "2-digit",
+                hour12: true,
+                timeZone: businessTimezone
+            }).format(new Date());
+            
+            const actionLabel = data.event_type.replace(/_/g, ' ').toLowerCase();
+            setLastAction({ 
+                type: actionLabel.split(' ').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' '), 
+                time 
+            });
+            
+            toast.success(`Success! You've ${actionLabel}.`);
+            
+            // Invalidate and refetch attendance logs to get fresh data
+            setTimeout(() => {
+                console.log('[CLOCK PAGE] Refetching attendance data...');
+                refetchAttendance();
+            }, 500);
+            
+            // Clear notification after 2 seconds
+            setTimeout(() => setLastAction(null), 2000);
         },
         onError: (err: Error) => {
+            console.error('[CLOCK PAGE] Clock error:', err);
             toast.error(err.message);
         },
     });
 
-    const handleAction = (action: "CLOCK_IN" | "CLOCK_OUT") => {
+    const handleAction = () => {
         if (!profile?.employee_id) {
             toast.error("Profile not loaded.");
             return;
         }
-        clockMutation.mutate({ employee_id: profile.employee_id, action });
+        clockMutation.mutate();
     };
+
+    // Determine current status from last log
+    const currentStatus: string | null = attendanceData?.current_status || null;
+    const nextEvent = getNextAttendanceEvent(
+        attendanceData?.logs?.[0] ? {
+            event_type: attendanceData.logs[0].event_type,
+            timestamp: attendanceData.logs[0].timestamp
+        } : null
+    );
+
+    const isClockingIn = nextEvent === 'CLOCK_IN';
+    const statusLabel = currentStatus ? 
+        currentStatus.replace(/_/g, ' ').toLowerCase() : 
+        'No logs today';
+
+    // Debug logging
+    useEffect(() => {
+        console.log('[CLOCK PAGE] Status calculated:', {
+            currentStatus,
+            nextEvent,
+            isClockingIn,
+            statusLabel,
+            logs_count: attendanceData?.logs?.length || 0,
+            first_log: attendanceData?.logs?.[0] ? {
+                event_type: attendanceData.logs[0].event_type,
+                timestamp: attendanceData.logs[0].timestamp
+            } : null
+        });
+    }, [currentStatus, nextEvent, attendanceData, statusLabel  , isClockingIn]);
 
     return (
         <DashboardLayout
@@ -76,29 +139,40 @@ export default function EmployeeClockPage() {
                             <p className="text-sm text-[hsl(var(--muted-foreground))]">Tap below to log your status</p>
                         </div>
 
+                        {/* Current Status */}
+                        <div className="mb-6 p-4 bg-[hsl(var(--muted))]/30 rounded-lg text-center">
+                            <p className="text-xs text-[hsl(var(--muted-foreground))] uppercase tracking-wide">Current Status</p>
+                            <p className="text-lg font-semibold text-[hsl(var(--foreground))]">
+                                {statusLabel.split(' ').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+                            </p>
+                        </div>
+
                         {/* Action Buttons */}
-                        <div className="grid grid-cols-2 gap-3">
-                            <Button
-                                size="lg"
-                                className="h-14"
-                                onClick={() => handleAction("CLOCK_IN")}
-                                loading={clockMutation.isPending}
-                                disabled={!profile}
-                            >
-                                <LogIn size={20} />
-                                Clock In
-                            </Button>
-                            <Button
-                                size="lg"
-                                variant="outline"
-                                className="h-14"
-                                onClick={() => handleAction("CLOCK_OUT")}
-                                loading={clockMutation.isPending}
-                                disabled={!profile}
-                            >
-                                <LogOut size={20} />
-                                Clock Out
-                            </Button>
+                        <div className="grid grid-cols-1 gap-3">
+                            {isClockingIn ? (
+                                <Button
+                                    size="lg"
+                                    className="h-14 bg-[hsl(var(--success))] hover:bg-[hsl(var(--success))]/90"
+                                    onClick={() => handleAction()}
+                                    loading={clockMutation.isPending}
+                                    disabled={!profile}
+                                >
+                                    <LogIn size={20} />
+                                    Clock In
+                                </Button>
+                            ) : (
+                                <Button
+                                    size="lg"
+                                    // variant="destructive"
+                                    className="h-14"
+                                    onClick={() => handleAction()}
+                                    loading={clockMutation.isPending}
+                                    disabled={!profile}
+                                >
+                                    <LogOut size={20} />
+                                    Clock Out
+                                </Button>
+                            )}
                         </div>
                     </CardContent>
                 </Card>
@@ -106,3 +180,4 @@ export default function EmployeeClockPage() {
         </DashboardLayout>
     );
 }
+

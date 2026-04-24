@@ -7,7 +7,8 @@ import { Card, CardContent, MetricCard } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/badge";
 import { apiGet } from "@/lib/api-client";
 import { FileText, DollarSign, Clock, ChevronDown, ChevronUp, CalendarDays } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, formatDecimalHours } from "@/lib/utils";
+import { useBusinessTimezone } from "@/lib/timezone-context";
 import type { TimeSheet, TimesheetStatus } from "@/types/database";
 
 type TabKey = "all" | "pending" | "approved" | "rejected";
@@ -20,6 +21,7 @@ const TABS: { key: TabKey; label: string }[] = [
 ];
 
 export default function EmployeeTimesheetsPage() {
+    const { businessTimezone } = useBusinessTimezone();
     const [activeTab, setActiveTab] = useState<TabKey>("all");
     const [expandedId, setExpandedId] = useState<string | null>(null);
 
@@ -54,7 +56,13 @@ export default function EmployeeTimesheetsPage() {
     const formatTimeDisplay = (dateStr: string, timeStr: string | null) => {
         const date = parseTime(dateStr, timeStr);
         if (!date || isNaN(date.getTime())) return "—";
-        return date.toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit", hour12: true });
+        
+        return new Intl.DateTimeFormat("en-AU", {
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: false,
+            timeZone: businessTimezone
+        }).format(date);
     };
 
     return (
@@ -65,7 +73,7 @@ export default function EmployeeTimesheetsPage() {
         >
             {/* Summary */}
             <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-6">
-                <MetricCard title="Total Hours" value={`${totalHours.toFixed(1)}h`} icon={<Clock size={24} />} />
+                <MetricCard title="Total Hours" value={formatDecimalHours(totalHours)} icon={<Clock size={24} />} />
                 <MetricCard title="Total Earnings" value={`$${totalPay.toLocaleString("en-AU", { minimumFractionDigits: 2 })}`} icon={<DollarSign size={24} />} />
                 <MetricCard title="Timesheets" value={timesheets.length} icon={<FileText size={24} />} />
                 <MetricCard title="Pending" value={counts.pending} icon={<CalendarDays size={24} />} />
@@ -142,10 +150,10 @@ export default function EmployeeTimesheetsPage() {
                                                 {new Date(ts.date).toLocaleDateString("en-AU", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
                                             </p>
                                             <p className="text-sm text-[hsl(var(--muted-foreground))] flex items-center gap-2">
-                                                <span>{ts.actual_hours?.toFixed(2) ?? "—"}h worked</span>
+                                                <span>{formatDecimalHours(ts.actual_hours)} worked</span>
                                                 {ts.overtime_hours && ts.overtime_hours > 0 && (
                                                     <span className="text-[10px] font-bold text-orange-600 bg-orange-50 px-1 rounded border border-orange-100">
-                                                        +{ts.overtime_hours.toFixed(2)}h OT
+                                                        +{formatDecimalHours(ts.overtime_hours)} OT
                                                     </span>
                                                 )}
                                                 {ts.rate_type && <span className="mx-1">·</span>}
@@ -203,16 +211,16 @@ export default function EmployeeTimesheetsPage() {
                                             </div>
                                             <div>
                                                 <p className="text-xs text-[hsl(var(--muted-foreground))] mb-0.5">Rostered Hours</p>
-                                                <p className="text-sm font-medium">{ts.rostered_hours?.toFixed(2) ?? "—"}h</p>
+                                                <p className="text-sm font-medium">{formatDecimalHours(ts.rostered_hours)}</p>
                                             </div>
                                             <div>
                                                 <p className="text-xs text-[hsl(var(--muted-foreground))] mb-0.5">Break Hours</p>
-                                                <p className="text-sm font-medium text-slate-500">{ts.break_hours?.toFixed(2) ?? "0.00"}h</p>
+                                                <p className="text-sm font-medium text-slate-500">{formatDecimalHours(ts.break_hours)}</p>
                                             </div>
                                             <div>
                                                 <p className="text-xs text-[hsl(var(--muted-foreground))] mb-0.5">Overtime Hours</p>
                                                 <p className={cn("text-sm font-bold", (ts.overtime_hours ?? 0) > 0 ? "text-orange-600" : "text-slate-500")}>
-                                                    {ts.overtime_hours?.toFixed(2) ?? "0.00"}h
+                                                    {formatDecimalHours(ts.overtime_hours)}
                                                 </p>
                                             </div>
                                             <div>
@@ -242,7 +250,7 @@ export default function EmployeeTimesheetsPage() {
                                         {/* Approved info */}
                                         {ts.approved_at && (
                                             <p className="text-xs text-[hsl(var(--muted-foreground))] mt-3">
-                                                {ts.status === "approved" ? "Approved" : "Reviewed"} at {new Date(ts.approved_at).toLocaleString("en-AU")}
+                                                {ts.status === "approved" ? "Approved" : "Reviewed"} at {new Date(ts.approved_at).toLocaleString("en-AU", { timeZone: businessTimezone })}
                                             </p>
                                         )}
 

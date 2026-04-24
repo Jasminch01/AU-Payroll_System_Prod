@@ -20,7 +20,6 @@ import { Reorder, AnimatePresence, motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { createClient } from "@/lib/supabase/client";
-import { useAuth } from "@/hooks/use-auth";
 import {
     Popover, PopoverTrigger, PopoverContent
 } from "@/components/ui/popover";
@@ -35,11 +34,16 @@ import {
 
 type RosterPeriod = "weekly" | "fortnightly" | "monthly";
 
-const TIME_OPTIONS = Array.from({ length: 48 }, (_, i) => {
-    const hour = Math.floor(i / 2).toString().padStart(2, '0');
-    const minute = i % 2 === 0 ? '00' : '30';
-    return `${hour}:${minute}`;
-});
+const TIME_OPTIONS = [
+    ...Array.from({ length: 23 * 4 }, (_, i) => {
+        // Start from 01:00 and end at 23:45 (remove 00:xx hour)
+        const totalIntervals = (i + 4);
+        const hours = Math.floor(totalIntervals / 4).toString().padStart(2, "0");
+        const minutes = ((totalIntervals % 4) * 15).toString().padStart(2, "0");
+        return `${hours}:${minutes}`;
+    }),
+    "24:00"
+];
 
 function getRosterDates(offset: number, period: RosterPeriod): Date[] {
     const today = new Date();
@@ -129,6 +133,8 @@ export default function OwnerRosterPage() {
     const [selectedDayIndex, setSelectedDayIndex] = useState(0);
     const [isCalendarExpanded, setIsCalendarExpanded] = useState(false);
     const [viewDate, setViewDate] = useState(new Date());
+    const [isStartDropdownOpen, setIsStartDropdownOpen] = useState(false);
+    const [isEndDropdownOpen, setIsEndDropdownOpen] = useState(false);
 
     const rosterDates = useMemo(() => getRosterDates(offset, rosterPeriod), [offset, rosterPeriod]);
     const rangeStart = formatDate(rosterDates[0]);
@@ -151,13 +157,14 @@ export default function OwnerRosterPage() {
     const [shiftType, setShiftType] = useState("morning");
     const [initialFormState, setInitialFormState] = useState<any>(null);
 
-    // Auto-detect shift type when start time changes
+    // Auto-detect shift type when start time changes (works for both new and editing shifts)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     useEffect(() => {
-        if (!editingShiftId && shiftStart) {
+        if (shiftStart) {
             const detectedType = getShiftTypeFromTime(shiftStart);
             setShiftType(detectedType);
         }
-    }, [shiftStart, editingShiftId, shiftType]);
+    }, [shiftStart]);
 
     // Reset shift form when dialog closes
     useEffect(() => {
@@ -565,15 +572,28 @@ export default function OwnerRosterPage() {
 
         if (shift) {
             setEditingShiftId(shift.shift_id);
-            setShiftStart(new Date(shift.start_time).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }));
-            setShiftEnd(new Date(shift.end_time).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }));
-            setShiftType(shift.shift_type);
+            const parseTime = (timeStr: string) => {
+                if (!timeStr) return "09:00";
+                if (timeStr.includes("T")) {
+                    return timeStr.split('T')[1]?.substring(0, 5) || "09:00";
+                }
+                return timeStr.substring(0, 5);
+            };
+            const startTime = parseTime(shift.start_time);
+            const endTime = parseTime(shift.end_time);
+
+            // Auto-detect the shift type based on start time (not the old type from DB)
+            const autoDetectedType = getShiftTypeFromTime(startTime);
+
+            setShiftStart(startTime);
+            setShiftEnd(endTime);
+            setShiftType(autoDetectedType);
             setInitialFormState({
                 employee_id: empId,
                 shift_date: date,
-                start_time: new Date(shift.start_time).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }),
-                end_time: new Date(shift.end_time).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }),
-                shift_type: shift.shift_type
+                start_time: startTime,
+                end_time: endTime,
+                shift_type: autoDetectedType
             });
         } else {
             setEditingShiftId(null);
@@ -586,6 +606,8 @@ export default function OwnerRosterPage() {
         }
         setAddShiftOpen(true);
     };
+    // console.log("Current roster:", currentRoster);
+    //consoole
 
     const isDirty = useMemo(() => {
         if (!editingShiftId || !initialFormState) return true;
@@ -629,12 +651,28 @@ export default function OwnerRosterPage() {
         let published = 0;
         let drafts = 0;
         let total = 0;
+        let totalHours = 0;
+        let totalPublishedHours = 0;
 
         for (const s of shifts) {
             const d = s.shift_date?.split('T')[0] || s.shift_date;
             if (d < rangeStart || d > rangeEnd) continue;
 
             total++;
+            
+            // Calculate hours for ALL shifts in range
+            if (s.start_time && s.end_time) {
+                const start = new Date(s.start_time).getTime();
+                const end = new Date(s.end_time).getTime();
+                const hours = (end - start) / (1000 * 60 * 60);
+                if (hours > 0) {
+                    totalHours += hours;
+                    if (s.shift_status === 'published') {
+                        totalPublishedHours += hours;
+                    }
+                }
+            }
+
             if (s.shift_status === 'published') {
                 published++;
             } else {
@@ -646,7 +684,9 @@ export default function OwnerRosterPage() {
             published,
             drafts,
             modified: 0,
-            allPublished: total > 0 && total === published
+            allPublished: total > 0 && total === published,
+            totalHours,
+            totalPublishedHours
         };
     }, [shifts, rangeStart, rangeEnd]);
 
@@ -850,6 +890,12 @@ export default function OwnerRosterPage() {
                                 ))}
                             </DropdownMenuContent>
                         </DropdownMenu>
+
+                        {/* Weekly Published Hours Widget */}
+                        <div className="hidden sm:flex flex-col justify-center h-10 px-4 bg-[hsl(var(--brand-light))]/10 border border-[hsl(var(--brand))]/20 rounded-xl">
+                            <span className="text-[9px] font-black uppercase text-[hsl(var(--brand))] tracking-widest leading-tight">Total Rostered</span>
+                            <span className="text-xs font-black text-[hsl(var(--foreground))] leading-tight block -mt-0.5">{statusSummary.totalHours.toFixed(1)} hrs</span>
+                        </div>
                     </div>
                 </div>
 
@@ -921,7 +967,7 @@ export default function OwnerRosterPage() {
                                         )}
                                     </div>
                                     <span className="text-[10px] text-[hsl(var(--muted-foreground))] uppercase tracking-wider font-medium mt-1">
-                                        {statusSummary.published} of {statusSummary.total} shifts notified
+                                        {statusSummary.published} of {statusSummary.total} shifts notified • {statusSummary.totalHours.toFixed(1)} hrs total rostered
                                     </span>
                                 </div>
                             </div>
@@ -1097,7 +1143,7 @@ export default function OwnerRosterPage() {
                                                     ? "bg-[hsl(var(--brand))] text-white border-[hsl(var(--brand))] shadow-md shadow-[hsl(var(--brand))]/20 scale-105"
                                                     : "bg-white text-[hsl(var(--muted-foreground))] border-[hsl(var(--border))] hover:border-[hsl(var(--brand))]/30",
                                                 isToday && !isSelected && "ring-2 ring-[hsl(var(--brand))]/30",
-                                                isPastDay && !isSelected && "opacity-40 grayscale bg-[hsl(var(--muted))]/40"
+                                                isPastDay && !isSelected && "opacity-75 bg-[hsl(var(--muted))]/15"
                                             )}
                                         >
                                             <span className="text-[9px] uppercase font-black tracking-tighter opacity-70">{dayName}</span>
@@ -1187,30 +1233,29 @@ export default function OwnerRosterPage() {
                                                                             className={cn(
                                                                                 "p-3 rounded-xl border transition-all active:scale-[0.98] relative overflow-hidden flex items-center justify-between shadow-sm",
                                                                                 isPublished
-                                                                                    ? "bg-[#F1F8E9] border-[#C5E1A5] text-green-900"
-                                                                                    : "bg-white border-[hsl(var(--border))] text-[hsl(var(--foreground))]",
-                                                                                isPastDay && "opacity-60 grayscale-[0.2]"
+                                                                                    ? isPastDay ? "bg-[#C8E6C9]/60 border-[#A5D6A7] text-green-900 opacity-90" : "bg-[#F1F8E9] border-[#C5E1A5] text-green-900"
+                                                                                    : isPastDay ? "bg-[#EEEEEE] border-[#BDBDBD] text-gray-800 opacity-90" : "bg-white border-[hsl(var(--border))] text-[hsl(var(--foreground))]"
                                                                             )}
                                                                         >
                                                                             <div className="flex flex-col gap-0.5">
                                                                                 <div className="flex items-center gap-2">
                                                                                     <Clock size={12} className={cn("opacity-60", isPublished ? "text-green-700" : "text-[hsl(var(--brand))]")} />
                                                                                     <span className="text-sm font-black tracking-tight tabular-nums">
-                                                                                        {new Date(s.start_time).toLocaleTimeString("en-AU", { hour: "numeric", minute: "2-digit", hour12: true })}
+                                                                                        {s.start_time?.split('T')[1]?.substring(0, 5)}
                                                                                         {" – "}
-                                                                                        {new Date(s.end_time).toLocaleTimeString("en-AU", { hour: "numeric", minute: "2-digit", hour12: true })}
+                                                                                        {s.end_time?.split('T')[1]?.substring(0, 5)}
                                                                                     </span>
                                                                                 </div>
                                                                                 <Badge variant="secondary" className={cn(
                                                                                     "text-[8px] uppercase font-black tracking-widest h-4 w-min whitespace-nowrap",
-                                                                                    isPublished ? "bg-green-200 text-green-900" : "bg-orange-100 text-orange-900"
+                                                                                    isPastDay ? "bg-gray-300 text-gray-800" : isPublished ? "bg-green-200 text-green-900" : "bg-orange-100 text-orange-900"
                                                                                 )}>
                                                                                     {s.shift_type}
                                                                                 </Badge>
                                                                             </div>
                                                                             <div className={cn(
                                                                                 "flex h-7 w-7 items-center justify-center rounded-lg transition-colors shadow-sm",
-                                                                                isPublished ? "bg-green-500 text-white" : "bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))]"
+                                                                                isPastDay ? "bg-slate-400 text-white" : isPublished ? "bg-green-500 text-white" : "bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))]"
                                                                             )}>
                                                                                 {isPublished ? <CheckCircle2 size={14} /> : <FileText size={14} />}
                                                                             </div>
@@ -1280,7 +1325,7 @@ export default function OwnerRosterPage() {
                                                 className={cn(
                                                     "px-1 py-4 text-center font-bold border-b border-l border-[hsl(var(--border))] first:border-l-0 last:border-r-0 transition-colors",
                                                     isToday ? "text-[hsl(var(--brand))] bg-[hsl(var(--brand-light))]/30" : "text-[hsl(var(--muted-foreground))]",
-                                                    isPast && !isToday && "opacity-40 grayscale bg-[hsl(var(--muted))]/30"
+                                                    isPast && !isToday && "opacity-75 bg-[hsl(var(--muted))]/15"
                                                 )}
                                                 style={{
                                                     minWidth: (rosterPeriod === "monthly" || rosterPeriod === "fortnightly") ? "0" : "140px",
@@ -1436,7 +1481,7 @@ export default function OwnerRosterPage() {
                                                             "border-b border-l border-[hsl(var(--border))] align-top transition-colors relative group/cell",
                                                             rosterPeriod === "monthly" ? "p-1 min-w-0" : "p-2 min-w-[140px]",
                                                             formatDate(d) === formatDate(new Date()) ? "bg-[hsl(var(--brand-light))]/5" : "",
-                                                            isPast ? "bg-[hsl(var(--muted))]/30 opacity-40 grayscale pointer-events-auto" : "hover:bg-[hsl(var(--brand))]/5",
+                                                            isPast ? "bg-[hsl(var(--muted))]/15 opacity-85 pointer-events-auto" : "hover:bg-[hsl(var(--brand))]/5",
                                                             "transition-opacity"
                                                         )}
                                                         onClick={() => !isPast && rosterPeriod !== "monthly" && openAddShift(dateStr, emp.employee_id)}
@@ -1461,8 +1506,9 @@ export default function OwnerRosterPage() {
                                                             )}>
                                                                 {dayShifts.map((s: any) => {
                                                                     const isPublished = s.shift_status === 'published';
-                                                                    const startTimeStr = new Date(s.start_time).toLocaleTimeString("en-AU", { hour: "numeric", hour12: true }).replace(" ", "").toLowerCase();
-                                                                    const endTimeStr = new Date(s.end_time).toLocaleTimeString("en-AU", { hour: "numeric", hour12: true }).replace(" ", "").toLowerCase();
+                                                                    // Extract time directly from ISO string to avoid timezone conversion
+                                                                    const startTimeStr = s.start_time?.split('T')[1]?.substring(0, 5) || "00:00";
+                                                                    const endTimeStr = s.end_time?.split('T')[1]?.substring(0, 5) || "00:00";
 
                                                                     return (
                                                                         <div
@@ -1470,9 +1516,9 @@ export default function OwnerRosterPage() {
                                                                             className={cn(
                                                                                 "rounded-lg px-2 py-1.5 font-bold mb-1 transition-all cursor-pointer border relative group/shift overflow-hidden flex flex-col h-full min-h-[64px] shadow-sm",
                                                                                 isPublished
-                                                                                    ? "bg-[#E8F5E9] border-[#C8E6C9] text-green-900"
-                                                                                    : "bg-[#F5F5F5] border-[#E0E0E0] text-gray-700",
-                                                                                isPast ? "opacity-60 grayscale-[0.5]" : "hover:shadow-md hover:-translate-y-0.5"
+                                                                                    ? isPast ? "bg-[#C8E6C9]/70 border-[#A5D6A7] text-green-900 opacity-90" : "bg-[#E8F5E9] border-[#C8E6C9] text-green-900"
+                                                                                    : isPast ? "bg-[#EEEEEE] border-[#BDBDBD] text-gray-800 opacity-90" : "bg-[#F5F5F5] border-[#E0E0E0] text-gray-700",
+                                                                                !isPast && "hover:shadow-md hover:-translate-y-0.5"
                                                                             )}
                                                                             onClick={(e) => {
                                                                                 e.stopPropagation();
@@ -1495,7 +1541,7 @@ export default function OwnerRosterPage() {
                                                                             {/* Bottom Accent Bar as requested in reference image */}
                                                                             <div className={cn(
                                                                                 "absolute bottom-0 left-0 right-0 h-1.5",
-                                                                                isPublished ? "bg-green-500" : "bg-red-500"
+                                                                                isPast ? "bg-slate-400" : isPublished ? "bg-green-500" : "bg-red-500"
                                                                             )} />
                                                                         </div>
                                                                     );
@@ -1618,29 +1664,83 @@ export default function OwnerRosterPage() {
                         />
 
                         <div className="grid grid-cols-2 gap-3">
-                            <div className="space-y-1.5">
+                            <div className="space-y-1.5 relative">
                                 <label className="text-sm font-medium">Start Time</label>
-                                <select
-                                    value={shiftStart}
-                                    onChange={(e) => setShiftStart(e.target.value)}
-                                    className="flex h-10 w-full rounded-lg border border-[hsl(var(--input))] bg-transparent px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]/20 focus:border-[hsl(var(--brand))]"
+                                <button
+                                    type="button"
+                                    onClick={() => setIsStartDropdownOpen(!isStartDropdownOpen)}
+                                    className="flex h-10 w-full rounded-lg border border-[hsl(var(--input))] bg-transparent px-3 py-2 text-sm items-center justify-between focus:outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]/20 focus:border-[hsl(var(--brand))]"
                                 >
-                                    {TIME_OPTIONS.map(time => (
-                                        <option key={time} value={time}>{time}</option>
-                                    ))}
-                                </select>
+                                    <span>{shiftStart}</span>
+                                    <Clock size={14} className="text-[hsl(var(--muted-foreground))]" />
+                                </button>
+
+                                {isStartDropdownOpen && (
+                                    <>
+                                        <div className="fixed inset-0 z-60" onClick={() => setIsStartDropdownOpen(false)} />
+                                        <div className="absolute top-full mb-2 left-0 w-full bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-xl shadow-2xl z-61 max-h-48 overflow-y-auto animate-in slide-in-from-bottom-2 duration-200">
+                                            <div className="p-1">
+                                                {TIME_OPTIONS.map(time => (
+                                                    <button
+                                                        key={time}
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setShiftStart(time);
+                                                            setIsStartDropdownOpen(false);
+                                                        }}
+                                                        className={cn(
+                                                            "w-full text-left px-3 py-2 text-xs rounded-lg transition-colors",
+                                                            shiftStart === time
+                                                                ? "bg-[hsl(var(--brand))] text-white"
+                                                                : "hover:bg-[hsl(var(--muted))] text-[hsl(var(--foreground))]"
+                                                        )}
+                                                    >
+                                                        {time}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </>
+                                )}
                             </div>
-                            <div className="space-y-1.5">
+                            <div className="space-y-1.5 relative">
                                 <label className="text-sm font-medium">End Time</label>
-                                <select
-                                    value={shiftEnd}
-                                    onChange={(e) => setShiftEnd(e.target.value)}
-                                    className="flex h-10 w-full rounded-lg border border-[hsl(var(--input))] bg-transparent px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]/20 focus:border-[hsl(var(--brand))]"
+                                <button
+                                    type="button"
+                                    onClick={() => setIsEndDropdownOpen(!isEndDropdownOpen)}
+                                    className="flex h-10 w-full rounded-lg border border-[hsl(var(--input))] bg-transparent px-3 py-2 text-sm items-center justify-between focus:outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]/20 focus:border-[hsl(var(--brand))]"
                                 >
-                                    {TIME_OPTIONS.map(time => (
-                                        <option key={time} value={time}>{time}</option>
-                                    ))}
-                                </select>
+                                    <span>{shiftEnd}</span>
+                                    <Clock size={14} className="text-[hsl(var(--muted-foreground))]" />
+                                </button>
+
+                                {isEndDropdownOpen && (
+                                    <>
+                                        <div className="fixed inset-0 z-60" onClick={() => setIsEndDropdownOpen(false)} />
+                                        <div className="absolute top-full mb-2 left-0 w-full bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-xl shadow-2xl z-61 max-h-48 overflow-y-auto animate-in slide-in-from-bottom-2 duration-200">
+                                            <div className="p-1">
+                                                {TIME_OPTIONS.map(time => (
+                                                    <button
+                                                        key={time}
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setShiftEnd(time);
+                                                            setIsEndDropdownOpen(false);
+                                                        }}
+                                                        className={cn(
+                                                            "w-full text-left px-3 py-2 text-xs rounded-lg transition-colors",
+                                                            shiftEnd === time
+                                                                ? "bg-[hsl(var(--brand))] text-white"
+                                                                : "hover:bg-[hsl(var(--muted))] text-[hsl(var(--foreground))]"
+                                                        )}
+                                                    >
+                                                        {time}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </>
+                                )}
                             </div>
                         </div>
 
@@ -1668,6 +1768,17 @@ export default function OwnerRosterPage() {
                             )}
                         </div>
                         <div className="flex items-center gap-2">
+                            {editingShiftId && shifts.find((s: any) => s.shift_id === editingShiftId)?.shift_status === 'draft' && (
+                                <Button
+                                    variant="outline"
+                                    className="border-[hsl(var(--brand))] text-[hsl(var(--brand))] hover:bg-[hsl(var(--brand))]/10"
+                                    onClick={() => notifyShiftMutation.mutate(editingShiftId)}
+                                    loading={notifyShiftMutation.isPending}
+                                    disabled={notifyShiftMutation.isPending}
+                                >
+                                    Publish Shift
+                                </Button>
+                            )}
                             <Button variant="outline" onClick={() => setAddShiftOpen(false)}>Cancel</Button>
                             <Button
                                 onClick={handleAddShift}
@@ -1858,13 +1969,16 @@ export default function OwnerRosterPage() {
                                     let payload: any = null;
 
                                     if (isAdvancedCopy) {
-                                        const sourceOpt = periodOptions.find(o => o.offset === sourceOffset);
-                                        const targetOpt = periodOptions.find(o => o.offset === targetOffset);
-                                        if (sourceOpt && targetOpt) {
+                                        // Calculate source and target dates directly from offsets instead of searching periodOptions
+                                        // This ensures we handle any offset value, not just those in the predefined periodOptions array
+                                        const sourceDates = getRosterDates(sourceOffset, rosterPeriod);
+                                        const targetDates = getRosterDates(targetOffset, rosterPeriod);
+
+                                        if (sourceDates.length > 0 && targetDates.length > 0) {
                                             payload = {
-                                                source_from: sourceOpt.start,
-                                                source_to: sourceOpt.end,
-                                                target_start: targetOpt.start
+                                                source_from: formatDate(sourceDates[0]),
+                                                source_to: formatDate(sourceDates[sourceDates.length - 1]),
+                                                target_start: formatDate(targetDates[0])
                                             };
                                         }
                                     } else if (copyOption === 'next_week') {

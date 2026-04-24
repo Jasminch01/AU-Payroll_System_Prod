@@ -148,13 +148,14 @@ export default function ManagerRosterPage() {
     const [shiftType, setShiftType] = useState("morning");
     const [initialFormState, setInitialFormState] = useState<any>(null);
 
-    // Auto-detect shift type when start time changes
+    // Auto-detect shift type when start time changes (works for both new and editing shifts)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     useEffect(() => {
-        if (!editingShiftId && shiftStart) {
+        if (shiftStart) {
             const detectedType = getShiftTypeFromTime(shiftStart);
             setShiftType(detectedType);
         }
-    }, [shiftStart, editingShiftId, shiftType]);
+    }, [shiftStart]);
 
     // Reset form when dialog closes
     useEffect(() => {
@@ -358,7 +359,7 @@ export default function ManagerRosterPage() {
         onMutate: async (shiftId) => {
             await queryClient.cancelQueries({ queryKey: ["shifts", rangeStart, rangeEnd] });
             const previousShifts = queryClient.getQueryData(["shifts", rangeStart, rangeEnd]);
-            queryClient.setQueryData(["shifts", rangeStart, rangeEnd], (old: any[] = []) => 
+            queryClient.setQueryData(["shifts", rangeStart, rangeEnd], (old: any[] = []) =>
                 old.filter((s: any) => s.shift_id !== shiftId)
             );
             return { previousShifts };
@@ -397,7 +398,7 @@ export default function ManagerRosterPage() {
         onMutate: async (shiftId) => {
             await queryClient.cancelQueries({ queryKey: ["shifts", rangeStart, rangeEnd] });
             const previousShifts = queryClient.getQueryData(["shifts", rangeStart, rangeEnd]);
-            queryClient.setQueryData(["shifts", rangeStart, rangeEnd], (old: any[] = []) => 
+            queryClient.setQueryData(["shifts", rangeStart, rangeEnd], (old: any[] = []) =>
                 old.map((s: any) => s.shift_id === shiftId ? { ...s, status: 'published' } : s)
             );
             return { previousShifts };
@@ -459,7 +460,7 @@ export default function ManagerRosterPage() {
         onMutate: async (updatedShift) => {
             await queryClient.cancelQueries({ queryKey: ["shifts", rangeStart, rangeEnd] });
             const previousShifts = queryClient.getQueryData(["shifts", rangeStart, rangeEnd]);
-            queryClient.setQueryData(["shifts", rangeStart, rangeEnd], (old: any[] = []) => 
+            queryClient.setQueryData(["shifts", rangeStart, rangeEnd], (old: any[] = []) =>
                 old.map((s: any) => s.shift_id === editingShiftId ? { ...s, ...updatedShift } : s)
             );
             return { previousShifts };
@@ -485,7 +486,7 @@ export default function ManagerRosterPage() {
         onMutate: async () => {
             await queryClient.cancelQueries({ queryKey: ["shifts", rangeStart, rangeEnd] });
             const previousShifts = queryClient.getQueryData(["shifts", rangeStart, rangeEnd]);
-            queryClient.setQueryData(["shifts", rangeStart, rangeEnd], (old: any[] = []) => 
+            queryClient.setQueryData(["shifts", rangeStart, rangeEnd], (old: any[] = []) =>
                 old.map((s: any) => (s.status === 'draft' || !s.status) ? { ...s, status: 'published' } : s)
             );
             return { previousShifts };
@@ -518,16 +519,38 @@ export default function ManagerRosterPage() {
             return;
         }
 
+        // Ensure time format has leading zeros and proper mm format
+        const formatTimeForPayload = (timeStr: string): string => {
+            if (!timeStr) return "09:00";
+            const parts = timeStr.split(':');
+            if (parts.length >= 2) {
+                const hrs = String(parseInt(parts[0]) || 0).padStart(2, '0');
+                const mins = String(parseInt(parts[1]) || 0).padStart(2, '0');
+                return `${hrs}:${mins}`;
+            }
+            return timeStr;
+        };
+
+        const formattedStart = formatTimeForPayload(shiftStart);
+        const formattedEnd = formatTimeForPayload(shiftEnd);
+
+        console.log('[handleAddShift] Input times - shiftStart:', shiftStart, 'shiftEnd:', shiftEnd);
+        console.log('[handleAddShift] Formatted times - formattedStart:', formattedStart, 'formattedEnd:', formattedEnd);
+
         const payload = {
             employee_id: shiftEmployee,
             shift_date: selectedDate,
-            start_time: `${selectedDate}T${shiftStart}:00`,
-            end_time: `${selectedDate}T${shiftEnd}:00`,
+            start_time: `${selectedDate}T${formattedStart}:00`,
+            end_time: `${selectedDate}T${formattedEnd}:00`,
             shift_type: shiftType,
             roster_start: rangeStart,
             roster_end: rangeEnd,
             notify,
         };
+
+        console.log('[handleAddShift] Final payload - start_time:', payload.start_time, 'end_time:', payload.end_time);
+
+        console.log('[handleAddShift] Payload times - Start:', payload.start_time, 'End:', payload.end_time);
 
         // Check for expansion
         if (currentRoster) {
@@ -577,25 +600,35 @@ export default function ManagerRosterPage() {
             const parseTime = (timeStr: string) => {
                 if (!timeStr) return "09:00";
                 if (timeStr.includes("T")) {
-                    return new Date(timeStr).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+                    // Extract time directly from ISO string to avoid timezone conversion
+                    // Format: 2026-03-10T14:30:00 -> 14:30
+                    const extracted = timeStr.split('T')[1]?.substring(0, 5) || "09:00";
+                    console.log('[parseTime] Input:', timeStr, '-> Extracted:', extracted);
+                    return extracted;
                 }
                 // If it's already HH:mm or HH:mm:ss, return first 5 chars
-                return timeStr.substring(0, 5);
+                const result = timeStr.substring(0, 5);
+                console.log('[parseTime] Direct format:', timeStr, '-> Result:', result);
+                return result;
             };
 
             const startTime = parseTime(shift.start_time);
             const endTime = parseTime(shift.end_time);
+            console.log('[openAddShift] Parsed times - Start:', startTime, 'End:', endTime);
+
+            // Auto-detect the shift type based on start time (not the old type from DB)
+            const autoDetectedType = getShiftTypeFromTime(startTime);
 
             setShiftStart(startTime);
             setShiftEnd(endTime);
-            setShiftType(shift.shift_type);
+            setShiftType(autoDetectedType);
 
             setInitialFormState({
                 employee_id: empId,
                 shift_date: date,
                 start_time: startTime,
                 end_time: endTime,
-                shift_type: shift.shift_type
+                shift_type: autoDetectedType
             });
         } else {
             setEditingShiftId(null);
@@ -661,6 +694,7 @@ export default function ManagerRosterPage() {
         let published = 0;
         let drafts = 0;
         let total = 0;
+        let totalPublishedHours = 0;
 
         for (const s of shifts) {
             const d = s.shift_date?.split('T')[0] || s.shift_date;
@@ -669,6 +703,12 @@ export default function ManagerRosterPage() {
             total++;
             if (s.shift_status === 'published') {
                 published++;
+                if (s.start_time && s.end_time) {
+                    const start = new Date(s.start_time).getTime();
+                    const end = new Date(s.end_time).getTime();
+                    const hours = (end - start) / (1000 * 60 * 60);
+                    if (hours > 0) totalPublishedHours += hours;
+                }
             } else {
                 drafts++;
             }
@@ -678,7 +718,8 @@ export default function ManagerRosterPage() {
             published,
             drafts,
             modified: 0,
-            allPublished: total > 0 && total === published
+            allPublished: total > 0 && total === published,
+            totalPublishedHours
         };
     }, [shifts, rangeStart, rangeEnd]);
 
@@ -853,7 +894,7 @@ export default function ManagerRosterPage() {
                             }}
                         />
                     </div>
-                    
+
                     <div className="flex items-center gap-2 shrink-0">
                         {/* Role Filter */}
                         <DropdownMenu>
@@ -868,8 +909,8 @@ export default function ManagerRosterPage() {
                                 <DropdownMenuItem onClick={() => { setRoleFilter("all"); setCurrentPage(1); }} className={cn("cursor-pointer font-medium text-xs rounded-lg py-2 transition-all", roleFilter === "all" && "bg-[hsl(var(--brand-light))]/50 text-[hsl(var(--brand))]")}>All Roles</DropdownMenuItem>
                                 <DropdownMenuSeparator className="my-1" />
                                 {roles.map(r => (
-                                    <DropdownMenuItem 
-                                        key={r} 
+                                    <DropdownMenuItem
+                                        key={r}
                                         onClick={() => { setRoleFilter(r.toLowerCase()); setCurrentPage(1); }}
                                         className={cn(
                                             "cursor-pointer font-medium text-xs rounded-lg py-2 transition-all",
@@ -881,6 +922,12 @@ export default function ManagerRosterPage() {
                                 ))}
                             </DropdownMenuContent>
                         </DropdownMenu>
+
+                        {/* Weekly Published Hours Widget */}
+                        <div className="hidden sm:flex flex-col justify-center h-10 px-4 bg-emerald-50 border border-emerald-200 rounded-xl">
+                            <span className="text-[9px] font-black uppercase text-emerald-600 tracking-widest leading-tight">Total Hours</span>
+                            <span className="text-xs font-black text-emerald-900 leading-tight block -mt-0.5">{statusSummary.totalPublishedHours.toFixed(1)} hrs</span>
+                        </div>
                     </div>
                 </div>
 
@@ -952,7 +999,7 @@ export default function ManagerRosterPage() {
                                         )}
                                     </div>
                                     <span className="text-[10px] text-[hsl(var(--muted-foreground))] uppercase tracking-wider font-medium mt-1">
-                                        {statusSummary.published} of {statusSummary.total} shifts notified
+                                        {statusSummary.published} of {statusSummary.total} shifts notified • {statusSummary.totalPublishedHours.toFixed(1)} hrs published
                                     </span>
                                 </div>
                             </div>
@@ -978,25 +1025,25 @@ export default function ManagerRosterPage() {
                     <div className="flex flex-col h-[75vh] sm:h-[700px] relative">
                         {/* Integrated Mobile Calendar Header */}
                         <div className="bg-white px-3 pt-3 flex items-center justify-between border-b border-[hsl(var(--border))]">
-                            <button 
+                            <button
                                 onClick={() => setIsCalendarExpanded(!isCalendarExpanded)}
                                 className="flex items-center gap-2 py-2 px-1 active:opacity-60 transition-opacity"
                             >
                                 <span className="text-xl font-black text-[hsl(var(--foreground))] tracking-tight">
                                     {format(rosterDates[selectedDayIndex], "EEE, d MMM")}
                                 </span>
-                                <ChevronRight 
-                                    size={18} 
+                                <ChevronRight
+                                    size={18}
                                     className={cn(
                                         "text-[hsl(var(--muted-foreground))] transition-transform duration-300",
                                         isCalendarExpanded ? "rotate-90" : "rotate-0"
-                                    )} 
+                                    )}
                                 />
                             </button>
                             <div className="flex items-center gap-1">
-                                <Button 
-                                    variant="ghost" 
-                                    size="icon" 
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
                                     className={cn("h-10 w-10 text-[hsl(var(--muted-foreground))]", isCalendarExpanded && "text-[hsl(var(--brand))] bg-[hsl(var(--brand-light))]/30")}
                                     onClick={() => setIsCalendarExpanded(!isCalendarExpanded)}
                                 >
@@ -1011,7 +1058,7 @@ export default function ManagerRosterPage() {
                         {/* Expandable Month Calendar */}
                         <AnimatePresence>
                             {isCalendarExpanded && (
-                                <motion.div 
+                                <motion.div
                                     initial={{ height: 0, opacity: 0 }}
                                     animate={{ height: "auto", opacity: 1 }}
                                     exit={{ height: 0, opacity: 0 }}
@@ -1060,7 +1107,7 @@ export default function ManagerRosterPage() {
                                                     const isSelected = isSameDay(day, rosterDates[selectedDayIndex]);
                                                     const isCurrentMonth = isSameMonth(day, monthStart);
                                                     const isToday = isSameDay(day, new Date());
-                                                    
+
                                                     // Find if this day exists in current roster range
                                                     const rosterIndex = rosterDates.findIndex(rd => isSameDay(rd, day));
 
@@ -1081,10 +1128,10 @@ export default function ManagerRosterPage() {
                                                             }}
                                                             className={cn(
                                                                 "h-10 w-full flex items-center justify-center rounded-lg text-sm transition-all",
-                                                                isSelected 
-                                                                    ? "bg-[hsl(var(--brand))] text-white font-bold shadow-sm" 
-                                                                    : isToday 
-                                                                        ? "text-[hsl(var(--brand))] font-bold bg-[hsl(var(--brand-light))]/20" 
+                                                                isSelected
+                                                                    ? "bg-[hsl(var(--brand))] text-white font-bold shadow-sm"
+                                                                    : isToday
+                                                                        ? "text-[hsl(var(--brand))] font-bold bg-[hsl(var(--brand-light))]/20"
                                                                         : isCurrentMonth ? "text-[hsl(var(--foreground))]" : "text-[hsl(var(--muted-foreground))]/40",
                                                                 rosterIndex === -1 && isCurrentMonth && "opacity-40"
                                                             )}
@@ -1121,8 +1168,8 @@ export default function ManagerRosterPage() {
                                             onClick={() => setSelectedDayIndex(i)}
                                             className={cn(
                                                 "flex flex-col items-center justify-center min-w-[56px] h-14 rounded-xl transition-all border shrink-0",
-                                                isSelected 
-                                                    ? "bg-[hsl(var(--brand))] text-white border-[hsl(var(--brand))] shadow-md shadow-[hsl(var(--brand))]/20 scale-105" 
+                                                isSelected
+                                                    ? "bg-[hsl(var(--brand))] text-white border-[hsl(var(--brand))] shadow-md shadow-[hsl(var(--brand))]/20 scale-105"
                                                     : "bg-white text-[hsl(var(--muted-foreground))] border-[hsl(var(--border))] hover:border-[hsl(var(--brand))]/30",
                                                 isToday && !isSelected && "ring-2 ring-[hsl(var(--brand))]/30"
                                             )}
@@ -1140,9 +1187,9 @@ export default function ManagerRosterPage() {
                             {(() => {
                                 const selectedDateStr = formatDate(rosterDates[selectedDayIndex]);
                                 const today = new Date();
-                                today.setHours(0,0,0,0);
+                                today.setHours(0, 0, 0, 0);
                                 const selectedDateObj = new Date(rosterDates[selectedDayIndex]);
-                                selectedDateObj.setHours(0,0,0,0);
+                                selectedDateObj.setHours(0, 0, 0, 0);
                                 const isPastDay = selectedDateObj < today;
 
                                 // Filter employees based on search/role (already handled by paginatedEmployees)
@@ -1161,8 +1208,8 @@ export default function ManagerRosterPage() {
                                                 {activeEmployees.length} {activeEmployees.length === 1 ? 'Employee' : 'Employees'} in List
                                             </h3>
                                             {dayDrafts > 0 && !isPastDay && (
-                                                <Button 
-                                                    size="sm" 
+                                                <Button
+                                                    size="sm"
                                                     className="h-7 text-[10px] font-black uppercase tracking-wider px-2 bg-green-600 hover:bg-green-700 text-white"
                                                     onClick={() => publishRosterMutation.mutate(currentRoster.roster_id)}
                                                 >
@@ -1192,9 +1239,9 @@ export default function ManagerRosterPage() {
                                                                     <span className="text-[10px] uppercase font-bold tracking-widest text-[hsl(var(--muted-foreground))]">{emp.role_title}</span>
                                                                 </div>
                                                             </div>
-                                                            <Button 
-                                                                variant="ghost" 
-                                                                size="icon" 
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="icon"
                                                                 className="h-8 w-8 rounded-full text-[hsl(var(--brand))] hover:bg-[hsl(var(--brand))]/10"
                                                                 onClick={() => openAddShift(selectedDateStr, emp.employee_id)}
                                                             >
@@ -1212,8 +1259,8 @@ export default function ManagerRosterPage() {
                                                                             onClick={() => openAddShift(selectedDateStr, emp.employee_id, s)}
                                                                             className={cn(
                                                                                 "p-3 rounded-xl border transition-all active:scale-[0.98] relative overflow-hidden flex items-center justify-between shadow-sm",
-                                                                                isPublished 
-                                                                                    ? "bg-[#F1F8E9] border-[#C5E1A5] text-green-900" 
+                                                                                isPublished
+                                                                                    ? "bg-[#F1F8E9] border-[#C5E1A5] text-green-900"
                                                                                     : "bg-white border-[hsl(var(--border))] text-[hsl(var(--foreground))]",
                                                                                 isPastDay && "opacity-60 grayscale-[0.2]"
                                                                             )}
@@ -1222,9 +1269,9 @@ export default function ManagerRosterPage() {
                                                                                 <div className="flex items-center gap-2">
                                                                                     <Clock size={12} className={cn("opacity-60", isPublished ? "text-green-700" : "text-[hsl(var(--brand))]")} />
                                                                                     <span className="text-sm font-black tracking-tight tabular-nums">
-                                                                                        {new Date(s.start_time).toLocaleTimeString("en-AU", { hour: "numeric", minute: "2-digit", hour12: true })}
+                                                                                        {s.start_time?.split('T')[1]?.substring(0, 5)}
                                                                                         {" – "}
-                                                                                        {new Date(s.end_time).toLocaleTimeString("en-AU", { hour: "numeric", minute: "2-digit", hour12: true })}
+                                                                                        {s.end_time?.split('T')[1]?.substring(0, 5)}
                                                                                     </span>
                                                                                 </div>
                                                                                 <Badge variant="secondary" className={cn(
@@ -1244,7 +1291,7 @@ export default function ManagerRosterPage() {
                                                                     );
                                                                 })
                                                             ) : (
-                                                                <div 
+                                                                <div
                                                                     onClick={() => openAddShift(selectedDateStr, emp.employee_id)}
                                                                     className="p-3 rounded-xl border border-dashed border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))] text-[10px] font-bold italic flex items-center justify-center gap-2 hover:bg-[hsl(var(--brand))]/5 transition-colors cursor-pointer bg-white/50"
                                                                 >
@@ -1264,7 +1311,7 @@ export default function ManagerRosterPage() {
 
                         {/* Floating Action Button (FAB) for adding shifts */}
                         <div className="absolute bottom-6 right-6">
-                            <Button 
+                            <Button
                                 size="icon"
                                 onClick={() => openAddShift(formatDate(rosterDates[selectedDayIndex]), "")}
                                 className="h-14 w-14 rounded-2xl bg-[hsl(var(--brand))] text-white shadow-xl shadow-[hsl(var(--brand))]/30 hover:scale-105 transition-transform"
@@ -1279,267 +1326,268 @@ export default function ManagerRosterPage() {
                         "overflow-y-auto w-full max-h-[calc(100vh-320px)] scrollbar-thin",
                         (rosterPeriod === "monthly" || rosterPeriod === "fortnightly") ? "overflow-x-hidden" : "overflow-x-auto"
                     )}>
-                    <table className={cn(
-                        "w-full text-sm border-separate border-spacing-0",
-                        (rosterPeriod === "monthly" || rosterPeriod === "fortnightly") ? "table-fixed" : ""
-                    )}>
-                        <thead className="sticky top-0 z-40">
-                            <tr className="bg-[hsl(var(--muted))]">
-                                <th className={cn(
-                                    "sticky left-0 top-0 z-50 bg-[hsl(var(--muted))] py-4 font-bold text-[hsl(var(--muted-foreground))] border-b border-r border-[hsl(var(--border))] shadow-[inset_-1px_-1px_0_hsl(var(--border))] text-center",
-                                    rosterPeriod === "monthly" ? "w-14 min-w-14 px-1" : "w-48 min-w-48 px-4"
-                                )}>
-                                    <Users size={16} className="mx-auto opacity-70" />
-                                </th>
-                                {rosterDates.map((d, i) => {
-                                    const isToday = formatDate(d) === formatDate(new Date());
-                                    const today = new Date();
-                                    today.setHours(0, 0, 0, 0);
-                                    const dMidnight = new Date(d);
-                                    dMidnight.setHours(0, 0, 0, 0);
-                                    const isPast = dMidnight < today;
-                                    const dayName = d.toLocaleDateString("en-AU", { weekday: "short" });
+                        <table className={cn(
+                            "w-full text-sm border-separate border-spacing-0",
+                            (rosterPeriod === "monthly" || rosterPeriod === "fortnightly") ? "table-fixed" : ""
+                        )}>
+                            <thead className="sticky top-0 z-40">
+                                <tr className="bg-[hsl(var(--muted))]">
+                                    <th className={cn(
+                                        "sticky left-0 top-0 z-50 bg-[hsl(var(--muted))] py-4 font-bold text-[hsl(var(--muted-foreground))] border-b border-r border-[hsl(var(--border))] shadow-[inset_-1px_-1px_0_hsl(var(--border))] text-center",
+                                        rosterPeriod === "monthly" ? "w-14 min-w-14 px-1" : "w-48 min-w-48 px-4"
+                                    )}>
+                                        <Users size={16} className="mx-auto opacity-70" />
+                                    </th>
+                                    {rosterDates.map((d, i) => {
+                                        const isToday = formatDate(d) === formatDate(new Date());
+                                        const today = new Date();
+                                        today.setHours(0, 0, 0, 0);
+                                        const dMidnight = new Date(d);
+                                        dMidnight.setHours(0, 0, 0, 0);
+                                        const isPast = dMidnight < today;
+                                        const dayName = d.toLocaleDateString("en-AU", { weekday: "short" });
 
-                                    return (
-                                        <th
-                                            key={i}
-                                            className={cn(
-                                                "px-1 py-4 text-center font-bold border-b border-l border-[hsl(var(--border))] first:border-l-0 last:border-r-0 transition-colors",
-                                                isToday ? "text-[hsl(var(--brand))] bg-[hsl(var(--brand-light))]/30" : (isPast ? "text-[hsl(var(--muted-foreground))] bg-[hsl(var(--muted))]/30" : "text-[hsl(var(--muted-foreground))]")
-                                            )}
-                                            style={{
-                                                minWidth: (rosterPeriod === "monthly" || rosterPeriod === "fortnightly") ? "0" : "140px",
-                                                width: (rosterPeriod === "monthly" || rosterPeriod === "fortnightly") ? `${100 / (rosterDates.length + 2)}%` : "auto"
-                                            }}
-                                        >
-                                            {(rosterPeriod === "monthly" || rosterPeriod === "fortnightly") ? (
-                                                <div className="flex flex-col items-center">
-                                                    <div className="text-[9px] uppercase tracking-tighter opacity-50 font-black">{dayName}</div>
-                                                    <div className="text-[11px] font-black">{d.getDate()}</div>
-                                                </div>
-                                            ) : (
-                                                <>
-                                                    <div className="text-[10px] uppercase tracking-wider opacity-60 mb-0.5">{dayName}</div>
-                                                    <div className="text-sm font-black">{d.getDate()}</div>
-                                                </>
-                                            )}
-                                        </th>
-                                    );
-                                })}
-                            </tr>
-                        </thead>
-                        <Reorder.Group
-                            as="tbody"
-                            axis="y"
-                            values={paginatedEmployees.map(e => e.employee_id)}
-                            onReorder={(newOrder) => {
-                                // Update only the current page's order in the main list
-                                const start = (currentPage - 1) * pageSize;
-                                const updated = [...orderedEmployeeIds];
-                                // This is a bit complex for partial lists, but since orderedEmployeeIds 
-                                // matches the current filtered state, we can just replace the segment
-                                // Finding where the paginated items are in the target list
-                                const pageIds = paginatedEmployees.map(e => e.employee_id);
-                                const firstIndex = updated.indexOf(pageIds[0]);
-                                if (firstIndex !== -1) {
-                                    updated.splice(firstIndex, pageIds.length, ...newOrder);
-                                    setOrderedEmployeeIds(updated);
-                                }
-                            }}
-                            className="relative"
-                        >
-                            {paginatedEmployees.length === 0 ? (
-                                <tr>
-                                    <td colSpan={rosterDates.length + 1} className="px-4 py-12 text-center text-[hsl(var(--muted-foreground))] bg-white">
-                                        No employees found matching your filters.
-                                    </td>
-                                </tr>
-                            ) : (
-                                paginatedEmployees.map((emp: any) => (
-                                    <Reorder.Item
-                                        as="tr"
-                                        key={emp.employee_id}
-                                        value={emp.employee_id}
-                                        dragListener={true}
-                                        className="border-b border-[hsl(var(--border))] hover:bg-[hsl(var(--muted))]/30 transition-colors bg-white group"
-                                    >
-                                        <td className={cn(
-                                            "sticky left-0 z-30 bg-white group-hover:bg-[hsl(var(--muted))]/30 py-3 border-r border-[hsl(var(--border))] shadow-[inset_-1px_0_0_hsl(var(--border))]",
-                                            rosterPeriod === "monthly" ? "w-14 px-0.5" : "px-4"
-                                        )}>
-                                            <div className={cn(
-                                                "flex items-center group/profile gap-2",
-                                                rosterPeriod === "monthly" ? "justify-center relative" : ""
-                                            )}>
-                                                {/* Grip Icon (Only for non-monthly) */}
-                                                {rosterPeriod !== "monthly" && (
-                                                    <div className="cursor-grab active:cursor-grabbing text-[hsl(var(--muted-foreground))] opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-                                                        <GripVertical size={14} />
-                                                    </div>
+                                        return (
+                                            <th
+                                                key={i}
+                                                className={cn(
+                                                    "px-1 py-4 text-center font-bold border-b border-l border-[hsl(var(--border))] first:border-l-0 last:border-r-0 transition-colors",
+                                                    isToday ? "text-[hsl(var(--brand))] bg-[hsl(var(--brand-light))]/30" : (isPast ? "text-[hsl(var(--muted-foreground))] bg-[hsl(var(--muted))]/30" : "text-[hsl(var(--muted-foreground))]")
                                                 )}
-
-                                                {/* Profile Avatar */}
-                                                <div className={cn(
-                                                    "shrink-0 items-center justify-center rounded-full bg-[hsl(var(--brand-light))] text-[hsl(var(--brand))] font-bold shadow-sm flex transition-all",
-                                                    rosterPeriod === "monthly" ? "h-9 w-9 text-xs" : "h-8 w-8 text-xs"
-                                                )}>
-                                                    {emp.first_name?.[0]}{emp.last_name?.[0]}
-                                                </div>
-
-                                                {/* Name and Role (Identification Message Bubble - Reveals strictly on profile hover) */}
-                                                <div className={cn(
-                                                    "flex flex-col min-w-0 transition-all",
-                                                    rosterPeriod === "monthly"
-                                                        ? "absolute left-[calc(100%-14px)] z-50 bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-2xl shadow-2xl p-3 px-4 opacity-0 group-hover/profile:opacity-100 group-hover/profile:visible pointer-events-none scale-90 group-hover/profile:scale-100 transform origin-left min-w-[160px] invisible animate-in fade-in slide-in-from-left-2 duration-200"
-                                                        : ""
-                                                )}>
-                                                    {/* Message bubble tail (carets) */}
-                                                    {rosterPeriod === "monthly" && (
-                                                        <div className="absolute top-1/2 -left-2 -translate-y-1/2 w-4 h-4 bg-[hsl(var(--card))] border-l border-b border-[hsl(var(--border))] rotate-45 rounded-sm" />
-                                                    )}
-
-                                                    <span className={cn(
-                                                        "font-bold truncate text-[hsl(var(--foreground))] relative z-10",
-                                                        rosterPeriod === "monthly" ? "text-xs mb-0.5" : "text-sm"
-                                                    )}>{emp.first_name} {emp.last_name}</span>
-                                                    <span className={cn(
-                                                        "font-black uppercase tracking-widest relative z-10",
-                                                        rosterPeriod === "monthly" ? "text-[8px] text-[hsl(var(--brand))]" : "text-[10px] text-[hsl(var(--muted-foreground))]"
-                                                    )}>{emp.role === 'manager' ? 'Manager' : 'Staff'}</span>
-                                                </div>
-
-                                                {/* Actions Menu - Always on hover, kept compact within column */}
-                                                <div className={cn(
-                                                    "shrink-0",
-                                                    rosterPeriod === "monthly" ? "absolute right-0 z-10" : ""
-                                                )}>
-                                                    <DropdownMenu>
-                                                        <DropdownMenuTrigger asChild>
-                                                            <Button
-                                                                variant="ghost"
-                                                                size="icon"
-                                                                className={cn(
-                                                                    "h-7 w-7 rounded-full transition-all opacity-0 group-hover/profile:opacity-100 ring-2 ring-transparent group-hover/profile:ring-[hsl(var(--brand))]/10 hover:bg-transparent hover:text-blue-600",
-                                                                    rosterPeriod === "monthly" && "h-5 w-5"
-                                                                )}
-                                                            >
-                                                                <MoreHorizontal size={rosterPeriod === "monthly" ? 12 : 14} className="text-[hsl(var(--muted-foreground))] hover:text-blue-600" />
-                                                            </Button>
-                                                        </DropdownMenuTrigger>
-                                                        <DropdownMenuContent
-                                                            align="end"
-                                                            side="bottom"
-                                                            sideOffset={8}
-                                                            className="min-w-[140px] p-1 bg-white/95 backdrop-blur-md border-[hsl(var(--border))] rounded-2xl shadow-2xl animate-in fade-in zoom-in-95 duration-200"
-                                                        >
-                                                            <DropdownMenuItem asChild className="focus:bg-transparent focus:text-blue-600 data-highlighted:bg-transparent data-highlighted:text-blue-600">
-                                                                <Link
-                                                                    href={`/manager/team/${emp.employee_id}`}
-                                                                    className="font-bold text-[10px] uppercase tracking-[0.15em] cursor-pointer w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl hover:text-blue-600 transition-all group/action"
-                                                                >
-                                                                    View Profile
-                                                                    <div className="opacity-0 group-hover/action:opacity-100 -translate-x-2 group-hover/action:translate-x-0 transition-all">
-                                                                        →
-                                                                    </div>
-                                                                </Link>
-                                                            </DropdownMenuItem>
-                                                        </DropdownMenuContent>
-                                                    </DropdownMenu>
-                                                </div>
-                                            </div>
+                                                style={{
+                                                    minWidth: (rosterPeriod === "monthly" || rosterPeriod === "fortnightly") ? "0" : "140px",
+                                                    width: (rosterPeriod === "monthly" || rosterPeriod === "fortnightly") ? `${100 / (rosterDates.length + 2)}%` : "auto"
+                                                }}
+                                            >
+                                                {(rosterPeriod === "monthly" || rosterPeriod === "fortnightly") ? (
+                                                    <div className="flex flex-col items-center">
+                                                        <div className="text-[9px] uppercase tracking-tighter opacity-50 font-black">{dayName}</div>
+                                                        <div className="text-[11px] font-black">{d.getDate()}</div>
+                                                    </div>
+                                                ) : (
+                                                    <>
+                                                        <div className="text-[10px] uppercase tracking-wider opacity-60 mb-0.5">{dayName}</div>
+                                                        <div className="text-sm font-black">{d.getDate()}</div>
+                                                    </>
+                                                )}
+                                            </th>
+                                        );
+                                    })}
+                                </tr>
+                            </thead>
+                            <Reorder.Group
+                                as="tbody"
+                                axis="y"
+                                values={paginatedEmployees.map(e => e.employee_id)}
+                                onReorder={(newOrder) => {
+                                    // Update only the current page's order in the main list
+                                    const start = (currentPage - 1) * pageSize;
+                                    const updated = [...orderedEmployeeIds];
+                                    // This is a bit complex for partial lists, but since orderedEmployeeIds 
+                                    // matches the current filtered state, we can just replace the segment
+                                    // Finding where the paginated items are in the target list
+                                    const pageIds = paginatedEmployees.map(e => e.employee_id);
+                                    const firstIndex = updated.indexOf(pageIds[0]);
+                                    if (firstIndex !== -1) {
+                                        updated.splice(firstIndex, pageIds.length, ...newOrder);
+                                        setOrderedEmployeeIds(updated);
+                                    }
+                                }}
+                                className="relative"
+                            >
+                                {paginatedEmployees.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={rosterDates.length + 1} className="px-4 py-12 text-center text-[hsl(var(--muted-foreground))] bg-white">
+                                            No employees found matching your filters.
                                         </td>
-                                        {rosterDates.map((d, i) => {
-                                            const dateStr = formatDate(d);
-                                            const dayShifts = shiftGrid[emp.employee_id]?.[dateStr] || [];
-                                            const today = new Date();
-                                            today.setHours(0, 0, 0, 0);
-                                            const dMidnight = new Date(d);
-                                            dMidnight.setHours(0, 0, 0, 0);
-                                            const isPast = dMidnight < today;
-
-                                            return (
-                                                <td
-                                                    key={dateStr}
-                                                    className={cn(
-                                                        "border-b border-l border-[hsl(var(--border))] align-top transition-colors relative group/cell",
-                                                        rosterPeriod === "monthly" ? "p-1 min-w-0" : "p-2 min-w-[140px]",
-                                                        formatDate(d) === formatDate(new Date()) ? "bg-[hsl(var(--brand-light))]/5" : "",
-                                                        isPast ? "bg-[hsl(var(--muted))]/10" : "hover:bg-[hsl(var(--brand))]/5"
-                                                    )}
-                                                    onClick={() => !isPast && rosterPeriod !== "monthly" && openAddShift(dateStr, emp.employee_id)}
-                                                >
-                                                    {/* Hover Plus Icon for Quick Add - Only for empty cells */}
-                                                    {!isPast && dayShifts.length === 0 && (
-                                                        <button
-                                                            className="absolute top-1 right-1 z-10 p-0.5 rounded-md bg-[hsl(var(--brand))] text-white opacity-0 group-hover/cell:opacity-100 transition-opacity shadow-sm hover:scale-110 active:scale-95"
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                openAddShift(dateStr, emp.employee_id);
-                                                            }}
-                                                        >
-                                                            <Plus size={10} strokeWidth={4} />
-                                                        </button>
-                                                    )}
-
-                                                    {dayShifts.length > 0 && (
-                                                        <div className={cn(
-                                                            "flex flex-col gap-1 w-full h-full py-1",
-                                                            rosterPeriod === "monthly" ? "min-h-[64px]" : "min-h-[72px]"
-                                                        )}>
-                                                            {dayShifts.map((s: any) => {
-                                                                const isPublished = s.shift_status === 'published';
-                                                                const startTimeStr = new Date(s.start_time).toLocaleTimeString("en-AU", { hour: "numeric", hour12: true }).replace(" ", "").toLowerCase();
-                                                                const endTimeStr = new Date(s.end_time).toLocaleTimeString("en-AU", { hour: "numeric", hour12: true }).replace(" ", "").toLowerCase();
-
-                                                                return (
-                                                                    <div
-                                                                        key={s.shift_id}
-                                                                        className={cn(
-                                                                            "rounded-lg px-2 py-1.5 font-bold mb-1 transition-all cursor-pointer border relative group/shift overflow-hidden flex flex-col h-full min-h-[64px] shadow-sm",
-                                                                            isPublished
-                                                                                ? "bg-[#E8F5E9] border-[#C8E6C9] text-green-900"
-                                                                                : "bg-[#F5F5F5] border-[#E0E0E0] text-gray-700",
-                                                                            isPast ? "opacity-60 grayscale-[0.5]" : "hover:shadow-md hover:-translate-y-0.5"
-                                                                        )}
-                                                                        onClick={(e) => {
-                                                                            e.stopPropagation();
-                                                                            openAddShift(dateStr, emp.employee_id, s);
-                                                                        }}
-                                                                    >
-                                                                        <div className="flex flex-col gap-0.5">
-                                                                            <span className="text-[10px] leading-none uppercase tabular-nums">
-                                                                                {startTimeStr}
-                                                                            </span>
-                                                                            <span className="text-[10px] leading-none uppercase tabular-nums">
-                                                                                {endTimeStr}
-                                                                            </span>
-                                                                        </div>
-                                                                        <div className="mt-auto pt-1">
-                                                                            <span className="text-[9px] font-black uppercase tracking-tighter truncate block opacity-80">
-                                                                                {s.shift_type}
-                                                                            </span>
-                                                                        </div>
-                                                                        {/* Bottom Accent Bar as requested in reference image */}
-                                                                        <div className={cn(
-                                                                            "absolute bottom-0 left-0 right-0 h-1.5",
-                                                                            isPublished ? "bg-green-500" : "bg-red-500"
-                                                                        )} />
-                                                                    </div>
-                                                                );
-                                                            })}
+                                    </tr>
+                                ) : (
+                                    paginatedEmployees.map((emp: any) => (
+                                        <Reorder.Item
+                                            as="tr"
+                                            key={emp.employee_id}
+                                            value={emp.employee_id}
+                                            dragListener={true}
+                                            className="border-b border-[hsl(var(--border))] hover:bg-[hsl(var(--muted))]/30 transition-colors bg-white group"
+                                        >
+                                            <td className={cn(
+                                                "sticky left-0 z-30 bg-white group-hover:bg-[hsl(var(--muted))]/30 py-3 border-r border-[hsl(var(--border))] shadow-[inset_-1px_0_0_hsl(var(--border))]",
+                                                rosterPeriod === "monthly" ? "w-14 px-0.5" : "px-4"
+                                            )}>
+                                                <div className={cn(
+                                                    "flex items-center group/profile gap-2",
+                                                    rosterPeriod === "monthly" ? "justify-center relative" : ""
+                                                )}>
+                                                    {/* Grip Icon (Only for non-monthly) */}
+                                                    {rosterPeriod !== "monthly" && (
+                                                        <div className="cursor-grab active:cursor-grabbing text-[hsl(var(--muted-foreground))] opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                                                            <GripVertical size={14} />
                                                         </div>
                                                     )}
-                                                </td>
-                                            );
-                                        })}
-                                    </Reorder.Item>
-                                ))
-                            )}
-                        </Reorder.Group>
-                    </table>
-                </div>
+
+                                                    {/* Profile Avatar */}
+                                                    <div className={cn(
+                                                        "shrink-0 items-center justify-center rounded-full bg-[hsl(var(--brand-light))] text-[hsl(var(--brand))] font-bold shadow-sm flex transition-all",
+                                                        rosterPeriod === "monthly" ? "h-9 w-9 text-xs" : "h-8 w-8 text-xs"
+                                                    )}>
+                                                        {emp.first_name?.[0]}{emp.last_name?.[0]}
+                                                    </div>
+
+                                                    {/* Name and Role (Identification Message Bubble - Reveals strictly on profile hover) */}
+                                                    <div className={cn(
+                                                        "flex flex-col min-w-0 transition-all",
+                                                        rosterPeriod === "monthly"
+                                                            ? "absolute left-[calc(100%-14px)] z-50 bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-2xl shadow-2xl p-3 px-4 opacity-0 group-hover/profile:opacity-100 group-hover/profile:visible pointer-events-none scale-90 group-hover/profile:scale-100 transform origin-left min-w-[160px] invisible animate-in fade-in slide-in-from-left-2 duration-200"
+                                                            : ""
+                                                    )}>
+                                                        {/* Message bubble tail (carets) */}
+                                                        {rosterPeriod === "monthly" && (
+                                                            <div className="absolute top-1/2 -left-2 -translate-y-1/2 w-4 h-4 bg-[hsl(var(--card))] border-l border-b border-[hsl(var(--border))] rotate-45 rounded-sm" />
+                                                        )}
+
+                                                        <span className={cn(
+                                                            "font-bold truncate text-[hsl(var(--foreground))] relative z-10",
+                                                            rosterPeriod === "monthly" ? "text-xs mb-0.5" : "text-sm"
+                                                        )}>{emp.first_name} {emp.last_name}</span>
+                                                        <span className={cn(
+                                                            "font-black uppercase tracking-widest relative z-10",
+                                                            rosterPeriod === "monthly" ? "text-[8px] text-[hsl(var(--brand))]" : "text-[10px] text-[hsl(var(--muted-foreground))]"
+                                                        )}>{emp.role === 'manager' ? 'Manager' : 'Staff'}</span>
+                                                    </div>
+
+                                                    {/* Actions Menu - Always on hover, kept compact within column */}
+                                                    <div className={cn(
+                                                        "shrink-0",
+                                                        rosterPeriod === "monthly" ? "absolute right-0 z-10" : ""
+                                                    )}>
+                                                        <DropdownMenu>
+                                                            <DropdownMenuTrigger asChild>
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="icon"
+                                                                    className={cn(
+                                                                        "h-7 w-7 rounded-full transition-all opacity-0 group-hover/profile:opacity-100 ring-2 ring-transparent group-hover/profile:ring-[hsl(var(--brand))]/10 hover:bg-transparent hover:text-blue-600",
+                                                                        rosterPeriod === "monthly" && "h-5 w-5"
+                                                                    )}
+                                                                >
+                                                                    <MoreHorizontal size={rosterPeriod === "monthly" ? 12 : 14} className="text-[hsl(var(--muted-foreground))] hover:text-blue-600" />
+                                                                </Button>
+                                                            </DropdownMenuTrigger>
+                                                            <DropdownMenuContent
+                                                                align="end"
+                                                                side="bottom"
+                                                                sideOffset={8}
+                                                                className="min-w-[140px] p-1 bg-white/95 backdrop-blur-md border-[hsl(var(--border))] rounded-2xl shadow-2xl animate-in fade-in zoom-in-95 duration-200"
+                                                            >
+                                                                <DropdownMenuItem asChild className="focus:bg-transparent focus:text-blue-600 data-highlighted:bg-transparent data-highlighted:text-blue-600">
+                                                                    <Link
+                                                                        href={`/manager/team/${emp.employee_id}`}
+                                                                        className="font-bold text-[10px] uppercase tracking-[0.15em] cursor-pointer w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl hover:text-blue-600 transition-all group/action"
+                                                                    >
+                                                                        View Profile
+                                                                        <div className="opacity-0 group-hover/action:opacity-100 -translate-x-2 group-hover/action:translate-x-0 transition-all">
+                                                                            →
+                                                                        </div>
+                                                                    </Link>
+                                                                </DropdownMenuItem>
+                                                            </DropdownMenuContent>
+                                                        </DropdownMenu>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            {rosterDates.map((d, i) => {
+                                                const dateStr = formatDate(d);
+                                                const dayShifts = shiftGrid[emp.employee_id]?.[dateStr] || [];
+                                                const today = new Date();
+                                                today.setHours(0, 0, 0, 0);
+                                                const dMidnight = new Date(d);
+                                                dMidnight.setHours(0, 0, 0, 0);
+                                                const isPast = dMidnight < today;
+
+                                                return (
+                                                    <td
+                                                        key={dateStr}
+                                                        className={cn(
+                                                            "border-b border-l border-[hsl(var(--border))] align-top transition-colors relative group/cell",
+                                                            rosterPeriod === "monthly" ? "p-1 min-w-0" : "p-2 min-w-[140px]",
+                                                            formatDate(d) === formatDate(new Date()) ? "bg-[hsl(var(--brand-light))]/5" : "",
+                                                            isPast ? "bg-[hsl(var(--muted))]/10" : "hover:bg-[hsl(var(--brand))]/5"
+                                                        )}
+                                                        onClick={() => !isPast && rosterPeriod !== "monthly" && openAddShift(dateStr, emp.employee_id)}
+                                                    >
+                                                        {/* Hover Plus Icon for Quick Add - Only for empty cells */}
+                                                        {!isPast && dayShifts.length === 0 && (
+                                                            <button
+                                                                className="absolute top-1 right-1 z-10 p-0.5 rounded-md bg-[hsl(var(--brand))] text-white opacity-0 group-hover/cell:opacity-100 transition-opacity shadow-sm hover:scale-110 active:scale-95"
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    openAddShift(dateStr, emp.employee_id);
+                                                                }}
+                                                            >
+                                                                <Plus size={10} strokeWidth={4} />
+                                                            </button>
+                                                        )}
+
+                                                        {dayShifts.length > 0 && (
+                                                            <div className={cn(
+                                                                "flex flex-col gap-1 w-full h-full py-1",
+                                                                rosterPeriod === "monthly" ? "min-h-[64px]" : "min-h-[72px]"
+                                                            )}>
+                                                                {dayShifts.map((s: any) => {
+                                                                    const isPublished = s.shift_status === 'published';
+                                                                    // Extract time directly from ISO string to avoid timezone conversion
+                                                                    const startTimeStr = s.start_time?.split('T')[1]?.substring(0, 5) || "00:00";
+                                                                    const endTimeStr = s.end_time?.split('T')[1]?.substring(0, 5) || "00:00";
+
+                                                                    return (
+                                                                        <div
+                                                                            key={s.shift_id}
+                                                                            className={cn(
+                                                                                "rounded-lg px-2 py-1.5 font-bold mb-1 transition-all cursor-pointer border relative group/shift overflow-hidden flex flex-col h-full min-h-[64px] shadow-sm",
+                                                                                isPublished
+                                                                                    ? "bg-[#E8F5E9] border-[#C8E6C9] text-green-900"
+                                                                                    : "bg-[#F5F5F5] border-[#E0E0E0] text-gray-700",
+                                                                                isPast ? "opacity-60 grayscale-[0.5]" : "hover:shadow-md hover:-translate-y-0.5"
+                                                                            )}
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                openAddShift(dateStr, emp.employee_id, s);
+                                                                            }}
+                                                                        >
+                                                                            <div className="flex flex-col gap-0.5">
+                                                                                <span className="text-[10px] leading-none uppercase tabular-nums">
+                                                                                    {startTimeStr}
+                                                                                </span>
+                                                                                <span className="text-[10px] leading-none uppercase tabular-nums">
+                                                                                    {endTimeStr}
+                                                                                </span>
+                                                                            </div>
+                                                                            <div className="mt-auto pt-1">
+                                                                                <span className="text-[9px] font-black uppercase tracking-tighter truncate block opacity-80">
+                                                                                    {s.shift_type}
+                                                                                </span>
+                                                                            </div>
+                                                                            {/* Bottom Accent Bar as requested in reference image */}
+                                                                            <div className={cn(
+                                                                                "absolute bottom-0 left-0 right-0 h-1.5",
+                                                                                isPublished ? "bg-green-500" : "bg-red-500"
+                                                                            )} />
+                                                                        </div>
+                                                                    );
+                                                                })}
+                                                            </div>
+                                                        )}
+                                                    </td>
+                                                );
+                                            })}
+                                        </Reorder.Item>
+                                    ))
+                                )}
+                            </Reorder.Group>
+                        </table>
+                    </div>
                 )}
-                
+
                 {/* Pagination Controls */}
                 {totalPages > 1 && (
                     <div className="flex flex-col sm:flex-row items-center justify-between px-6 py-4 bg-[hsl(var(--muted))]/20 border-t border-[hsl(var(--border))] gap-4 sm:gap-0">
@@ -1672,8 +1720,19 @@ export default function ManagerRosterPage() {
                             )}
                         </div>
                         <div className="flex items-center gap-2">
+                            {editingShiftId && shifts.find((s: any) => s.shift_id === editingShiftId)?.shift_status === 'draft' && (
+                                <Button
+                                    variant="outline"
+                                    className="border-[hsl(var(--brand))] text-[hsl(var(--brand))] hover:bg-[hsl(var(--brand))]/10"
+                                    onClick={() => notifyShiftMutation.mutate(editingShiftId)}
+                                    loading={notifyShiftMutation.isPending}
+                                    disabled={notifyShiftMutation.isPending}
+                                >
+                                    Publish Shift
+                                </Button>
+                            )}
                             <Button variant="outline" onClick={() => setAddShiftOpen(false)}>Cancel</Button>
-                            
+
                             {!editingShiftId ? (
                                 <>
                                     <Button
@@ -1879,13 +1938,16 @@ export default function ManagerRosterPage() {
                                     let payload: any = null;
 
                                     if (isAdvancedCopy) {
-                                        const sourceOpt = periodOptions.find(o => o.offset === sourceOffset);
-                                        const targetOpt = periodOptions.find(o => o.offset === targetOffset);
-                                        if (sourceOpt && targetOpt) {
+                                        // Calculate source and target dates directly from offsets instead of searching periodOptions
+                                        // This ensures we handle any offset value, not just those in the predefined periodOptions array
+                                        const sourceDates = getRosterDates(sourceOffset, rosterPeriod);
+                                        const targetDates = getRosterDates(targetOffset, rosterPeriod);
+
+                                        if (sourceDates.length > 0 && targetDates.length > 0) {
                                             payload = {
-                                                source_from: sourceOpt.start,
-                                                source_to: sourceOpt.end,
-                                                target_start: targetOpt.start
+                                                source_from: formatDate(sourceDates[0]),
+                                                source_to: formatDate(sourceDates[sourceDates.length - 1]),
+                                                target_start: formatDate(targetDates[0])
                                             };
                                         }
                                     } else if (copyOption === 'next_week') {

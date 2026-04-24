@@ -91,7 +91,9 @@ export async function POST(request: NextRequest) {
         const overlaps: string[] = [];
 
         for (const s of sourceShifts) {
-            const oldDate = new Date(s.shift_date + 'T00:00:00Z');
+            // Extract just the date part in case shift_date includes a timestamp
+            const dateOnlyStr = s.shift_date.split('T')[0];
+            const oldDate = new Date(dateOnlyStr + 'T00:00:00Z');
             const newDate = new Date(oldDate.getTime());
             newDate.setUTCDate(newDate.getUTCDate() + offsetDays);
             const newDateStr = newDate.toISOString().split('T')[0];
@@ -99,6 +101,9 @@ export async function POST(request: NextRequest) {
             // Timestamps: stitch original time to new date
             const oldStartTimePart = s.start_time.split('T')[1];
             const oldEndTimePart = s.end_time.split('T')[1];
+            
+            // If target roster is published, inherit its published status
+            const inheritedStatus = targetRoster.status === 'published' ? 'published' : 'draft';
             
             const ns = {
                 business_id: authUser.business_id,
@@ -108,7 +113,7 @@ export async function POST(request: NextRequest) {
                 start_time: `${newDateStr}T${oldStartTimePart}`,
                 end_time: `${newDateStr}T${oldEndTimePart}`,
                 shift_type: s.shift_type,
-                shift_status: 'draft',
+                shift_status: inheritedStatus,
             };
 
             // Check for overlap

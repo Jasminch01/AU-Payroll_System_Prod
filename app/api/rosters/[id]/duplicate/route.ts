@@ -70,7 +70,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         if (original.Shift && original.Shift.length > 0) {
             const newShifts = original.Shift.map((s: any) => {
                 // Shift Date: Move exactly by 'offsetDays'
-                const oldDate = new Date(s.shift_date + 'T00:00:00Z');
+                // Extract just the date part in case shift_date includes a timestamp
+                const dateOnlyStr = s.shift_date.split('T')[0];
+                const oldDate = new Date(dateOnlyStr + 'T00:00:00Z');
                 const newDate = new Date(oldDate.getTime());
                 newDate.setUTCDate(newDate.getUTCDate() + offsetDays);
 
