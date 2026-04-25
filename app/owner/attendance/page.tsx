@@ -363,13 +363,13 @@ export default function OwnerAttendancePage() {
             key: "override",
             label: "Status",
             render: (row) => {
-                if (!row.is_manual) return <StatusBadge status="auto" label="Auto" />;
+                if (!row.is_manual) return <StatusBadge status="auto" label="Auto" ghost />;
                 return (
                     <div className="flex flex-col gap-0.5">
-                        <StatusBadge status="manual" label="Manual" />
+                        <StatusBadge status="manual" label="Manual" ghost />
                         {row.override_reason && (
                             <p
-                                className="text-[10px] text-[hsl(var(--muted-foreground))] italic truncate max-w-30"
+                                className="text-[10px] text-[hsl(var(--muted-foreground))] italic truncate max-w-[80px]"
                                 title={row.override_reason}
                             >
                                 {row.override_reason}
@@ -379,6 +379,29 @@ export default function OwnerAttendancePage() {
                 );
             },
         },
+        {
+            key: "actions",
+            label: "Edit",
+            render: (row) => (
+                <button
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        // Open the session editor
+                        setEditingLog({
+                            ...row.raw_logs[0], // Start with the first log
+                            all_logs: row.raw_logs,
+                            Employee: row.Employee,
+                            session_id: row.id
+                        });
+                        setIsEditModalOpen(true);
+                    }}
+                    className="p-2 rounded-lg bg-[hsl(var(--warning-light))] text-[hsl(var(--warning))] hover:bg-[hsl(var(--warning))] hover:text-white transition-all shadow-sm active:scale-90"
+                    title="Edit Session"
+                >
+                    <Edit2 size={14} />
+                </button>
+            ),
+        }
     ];
 
     /* ── Summary stats ── */
@@ -643,29 +666,13 @@ export default function OwnerAttendancePage() {
                                                                 )}
                                                             />
                                                             {formatTime(s.clock_in, businessTimezone)}
-                                                            {s.clock_in && (
-                                                                <button
-                                                                    onClick={(e) => {
-                                                                        e.stopPropagation();
-                                                                        const log = detailRow.raw_logs.find(rx => rx.timestamp === s.clock_in && rx.event_type === 'CLOCK_IN');
-                                                                        if (log) {
-                                                                            setEditingLog({ ...log, Employee: detailRow.Employee });
-                                                                            setIsEditModalOpen(true);
-                                                                        }
-                                                                    }}
-                                                                    className="ml-auto p-1 rounded-md text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--brand))] hover:bg-[hsl(var(--brand-light))] transition-colors"
-                                                                    title="Edit Clock In"
-                                                                >
-                                                                    <Edit2 size={12} />
-                                                                </button>
-                                                            )}
                                                         </p>
                                                     </div>
                                                     <div>
                                                         <p className="text-[10px] uppercase tracking-wider text-[hsl(var(--muted-foreground))] font-medium">
                                                             Out
                                                         </p>
-                                                        <p className="font-semibold flex items-center gap-1">
+                                                        <div className="flex items-center gap-1">
                                                             <ArrowUpCircle
                                                                 size={12}
                                                                 className={cn(
@@ -674,24 +681,10 @@ export default function OwnerAttendancePage() {
                                                                         : "text-[hsl(var(--muted-foreground))]/40"
                                                                 )}
                                                             />
-                                                            {formatTime(s.clock_out, businessTimezone)}
-                                                            {s.clock_out && (
-                                                                <button
-                                                                    onClick={(e) => {
-                                                                        e.stopPropagation();
-                                                                        const log = detailRow.raw_logs.find(rx => rx.timestamp === s.clock_out && rx.event_type === 'CLOCK_OUT');
-                                                                        if (log) {
-                                                                            setEditingLog({ ...log, Employee: detailRow.Employee });
-                                                                            setIsEditModalOpen(true);
-                                                                        }
-                                                                    }}
-                                                                    className="ml-auto p-1 rounded-md text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--brand))] hover:bg-[hsl(var(--brand-light))] transition-colors"
-                                                                    title="Edit Clock Out"
-                                                                >
-                                                                    <Edit2 size={12} />
-                                                                </button>
-                                                            )}
-                                                        </p>
+                                                            <span className="font-semibold text-sm">
+                                                                {formatTime(s.clock_out, businessTimezone)}
+                                                            </span>
+                                                        </div>
                                                     </div>
                                                     <div>
                                                         <p className="text-[10px] uppercase tracking-wider text-[hsl(var(--muted-foreground))] font-medium">

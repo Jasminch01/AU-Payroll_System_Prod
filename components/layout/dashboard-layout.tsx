@@ -8,6 +8,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { cn } from "@/lib/utils";
 
 import { MobileNav } from "./mobile-nav";
+import { usePathname } from "next/navigation";
 
 interface DashboardLayoutProps {
     children: React.ReactNode;
@@ -26,11 +27,40 @@ export function DashboardLayout({
     pageDescription,
     businessName,
     actions,
-    defaultCollapsed = false,
+    defaultCollapsed = true,
 }: DashboardLayoutProps) {
     const { user } = useAuth();
+    const pathname = usePathname();
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-    const [isCollapsed, setIsCollapsed] = useState(defaultCollapsed);
+    
+    // Check if we're on a roster route
+    const isRosterRoute = pathname?.includes('/roster');
+    
+    // Use localStorage to persist the user's preference
+    const [isCollapsed, setIsCollapsed] = useState(() => {
+        if (typeof window !== 'undefined') {
+            const saved = localStorage.getItem('sidebar-collapsed');
+            if (saved !== null) return saved === 'true';
+        }
+        return defaultCollapsed || isRosterRoute;
+    });
+
+    // Save preference when manually changed
+    const handleToggleCollapse = () => {
+        const newState = !isCollapsed;
+        setIsCollapsed(newState);
+        localStorage.setItem('sidebar-collapsed', newState.toString());
+    };
+
+    // Only force-collapse when navigating TO a roster route from a non-roster route
+    const lastPathRef = React.useRef(pathname);
+    React.useEffect(() => {
+        const wasRoster = lastPathRef.current?.includes('/roster');
+        if (isRosterRoute && !wasRoster) {
+            setIsCollapsed(true);
+        }
+        lastPathRef.current = pathname;
+    }, [pathname, isRosterRoute]);
 
     return (
         <div className="flex min-h-screen bg-[hsl(var(--background))]">
@@ -40,7 +70,7 @@ export function DashboardLayout({
                     role={role}
                     businessName={businessName || user?.business?.business_name}
                     isCollapsed={isCollapsed}
-                    onToggleCollapse={() => setIsCollapsed(!isCollapsed)}
+                    onToggleCollapse={handleToggleCollapse}
                 />
             </div>
 
