@@ -11,7 +11,7 @@ import {
     Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter
 } from "@/components/ui/dialog";
 import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/api-client";
-import { getShiftTypeFromTime } from "@/lib/shift-utils";
+import { getShiftTypeFromTime, calculateShiftDuration } from "@/lib/shift-utils";
 import { EmployeeSearchPicker } from "@/components/roster/employee-search-picker";
 import { useEffect } from "react";
 import { toast } from "sonner";
@@ -261,17 +261,27 @@ export default function OwnerRosterPage() {
     }, [filteredEmployees, currentPage, pageSize]);
 
     const totalPages = Math.ceil(filteredEmployees.length / pageSize);
+    
+    const { data: shifts = [], isLoading, isFetching } = useQuery({
+        queryKey: ["shifts", rangeStart, rangeEnd],
+        queryFn: () => apiGet<any[]>("/shift", { from: rangeStart, to: rangeEnd }),
+    });
+
+    const isEditingShiftLocked = useMemo(() => {
+        if (!editingShiftId) return false;
+        const shift = shifts.find((s: any) => s.shift_id === editingShiftId);
+        if (!shift) return false;
+        // Draft shifts are NEVER locked by time
+        if (shift.shift_status === 'draft') return false;
+        // Published shifts are locked if they have already started
+        return new Date() >= new Date(shift.start_time);
+    }, [editingShiftId, shifts]);
 
     // Get unique roles for filter
     const roles = useMemo(() => {
         const allRoles = employees.map((e: any) => e.role).filter(Boolean);
         return Array.from(new Set(allRoles));
     }, [employees]);
-
-    const { data: shifts = [], isLoading, isFetching } = useQuery({
-        queryKey: ["shifts", rangeStart, rangeEnd],
-        queryFn: () => apiGet<any[]>("/shift", { from: rangeStart, to: rangeEnd }),
-    });
 
     const { data: rosters = [], isFetching: isFetchingRosters } = useQuery({
         queryKey: ["rosters"],
@@ -653,6 +663,7 @@ export default function OwnerRosterPage() {
         let total = 0;
         let totalHours = 0;
         let totalPublishedHours = 0;
+        let totalDraftHours = 0;
 
         for (const s of shifts) {
             const d = s.shift_date?.split('T')[0] || s.shift_date;
@@ -669,6 +680,8 @@ export default function OwnerRosterPage() {
                     totalHours += hours;
                     if (s.shift_status === 'published') {
                         totalPublishedHours += hours;
+                    } else {
+                        totalDraftHours += hours;
                     }
                 }
             }
@@ -686,7 +699,8 @@ export default function OwnerRosterPage() {
             modified: 0,
             allPublished: total > 0 && total === published,
             totalHours,
-            totalPublishedHours
+            totalPublishedHours,
+            totalDraftHours
         };
     }, [shifts, rangeStart, rangeEnd]);
 
@@ -891,10 +905,20 @@ export default function OwnerRosterPage() {
                             </DropdownMenuContent>
                         </DropdownMenu>
 
-                        {/* Weekly Published Hours Widget */}
-                        <div className="hidden sm:flex flex-col justify-center h-10 px-4 bg-[hsl(var(--brand-light))]/10 border border-[hsl(var(--brand))]/20 rounded-xl">
-                            <span className="text-[9px] font-black uppercase text-[hsl(var(--brand))] tracking-widest leading-tight">Total Rostered</span>
-                            <span className="text-xs font-black text-[hsl(var(--foreground))] leading-tight block -mt-0.5">{statusSummary.totalHours.toFixed(1)} hrs</span>
+                        {/* Weekly Hours Widget */}
+                        <div className="hidden sm:flex items-center gap-2 h-10 px-3 bg-white border border-[hsl(var(--border))] rounded-xl shadow-sm">
+                            <div className="flex flex-col justify-center border-r border-[hsl(var(--border))] pr-3">
+                                <span className="text-[8px] font-black uppercase text-emerald-600 tracking-widest leading-tight">Published</span>
+                                <span className="text-[11px] font-black text-emerald-900 leading-tight block">{statusSummary.totalPublishedHours.toFixed(1)}h</span>
+                            </div>
+                            <div className="flex flex-col justify-center pr-3 border-r border-[hsl(var(--border))]">
+                                <span className="text-[8px] font-black uppercase text-orange-600 tracking-widest leading-tight">Draft</span>
+                                <span className="text-[11px] font-black text-orange-900 leading-tight block">{statusSummary.totalDraftHours.toFixed(1)}h</span>
+                            </div>
+                            <div className="flex flex-col justify-center">
+                                <span className="text-[8px] font-black uppercase text-[hsl(var(--brand))] tracking-widest leading-tight">Total</span>
+                                <span className="text-[11px] font-black text-[hsl(var(--foreground))] leading-tight block">{statusSummary.totalHours.toFixed(1)}h</span>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -967,7 +991,7 @@ export default function OwnerRosterPage() {
                                         )}
                                     </div>
                                     <span className="text-[10px] text-[hsl(var(--muted-foreground))] uppercase tracking-wider font-medium mt-1">
-                                        {statusSummary.published} of {statusSummary.total} shifts notified • {statusSummary.totalHours.toFixed(1)} hrs total rostered
+                                        {statusSummary.published} published ({statusSummary.totalPublishedHours.toFixed(1)}h) • {statusSummary.drafts} drafts ({statusSummary.totalDraftHours.toFixed(1)}h)
                                     </span>
                                 </div>
                             </div>
@@ -1532,6 +1556,9 @@ export default function OwnerRosterPage() {
                                                                                 <span className="text-[10px] leading-none uppercase tabular-nums">
                                                                                     {endTimeStr}
                                                                                 </span>
+                                                                                <span className="text-[9px] font-black mt-1 text-[hsl(var(--muted-foreground))]">
+                                                                                    ({calculateShiftDuration(startTimeStr, endTimeStr).toFixed(1)}h)
+                                                                                </span>
                                                                             </div>
                                                                             <div className="mt-auto pt-1">
                                                                                 <span className="text-[9px] font-black uppercase tracking-tighter truncate block opacity-80">
@@ -1641,7 +1668,7 @@ export default function OwnerRosterPage() {
                         <DialogTitle>{editingShiftId ? 'Edit Shift' : 'Add Shift'}</DialogTitle>
                         <DialogDescription>
                             {editingShiftId ? (
-                                new Date() >= (new Date((shifts.find((s: any) => s.shift_id === editingShiftId) || {}).start_time))
+                                isEditingShiftLocked
                                     ? "This shift has already started and cannot be modified."
                                     : "Modify shift details or remove it"
                             ) : `Assign a shift for ${selectedDate ? new Date(selectedDate + "T00:00:00").toLocaleDateString("en-AU", { weekday: "long", month: "short", day: "numeric" }) : ""}`}
@@ -1654,13 +1681,13 @@ export default function OwnerRosterPage() {
                             type="date"
                             value={selectedDate}
                             onChange={(e) => setSelectedDate(e.target.value)}
-                            disabled={editingShiftId ? new Date() >= (new Date((shifts.find((s: any) => s.shift_id === editingShiftId) || {}).start_time)) : false}
+                            disabled={isEditingShiftLocked}
                         />
                         <EmployeeSearchPicker
                             employees={activeEmployees}
                             value={shiftEmployee}
                             onChange={(id) => setShiftEmployee(id)}
-                            disabled={editingShiftId ? new Date() >= (new Date((shifts.find((s: any) => s.shift_id === editingShiftId) || {}).start_time)) : false}
+                            disabled={isEditingShiftLocked}
                         />
 
                         <div className="grid grid-cols-2 gap-3">
@@ -1668,8 +1695,12 @@ export default function OwnerRosterPage() {
                                 <label className="text-sm font-medium">Start Time</label>
                                 <button
                                     type="button"
-                                    onClick={() => setIsStartDropdownOpen(!isStartDropdownOpen)}
-                                    className="flex h-10 w-full rounded-lg border border-[hsl(var(--input))] bg-transparent px-3 py-2 text-sm items-center justify-between focus:outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]/20 focus:border-[hsl(var(--brand))]"
+                                    onClick={() => !isEditingShiftLocked && setIsStartDropdownOpen(!isStartDropdownOpen)}
+                                    disabled={isEditingShiftLocked}
+                                    className={cn(
+                                        "flex h-10 w-full rounded-lg border border-[hsl(var(--input))] bg-transparent px-3 py-2 text-sm items-center justify-between focus:outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]/20 focus:border-[hsl(var(--brand))]",
+                                        isEditingShiftLocked && "opacity-50 cursor-not-allowed"
+                                    )}
                                 >
                                     <span>{shiftStart}</span>
                                     <Clock size={14} className="text-[hsl(var(--muted-foreground))]" />
@@ -1707,8 +1738,12 @@ export default function OwnerRosterPage() {
                                 <label className="text-sm font-medium">End Time</label>
                                 <button
                                     type="button"
-                                    onClick={() => setIsEndDropdownOpen(!isEndDropdownOpen)}
-                                    className="flex h-10 w-full rounded-lg border border-[hsl(var(--input))] bg-transparent px-3 py-2 text-sm items-center justify-between focus:outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]/20 focus:border-[hsl(var(--brand))]"
+                                    onClick={() => !isEditingShiftLocked && setIsEndDropdownOpen(!isEndDropdownOpen)}
+                                    disabled={isEditingShiftLocked}
+                                    className={cn(
+                                        "flex h-10 w-full rounded-lg border border-[hsl(var(--input))] bg-transparent px-3 py-2 text-sm items-center justify-between focus:outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]/20 focus:border-[hsl(var(--brand))]",
+                                        isEditingShiftLocked && "opacity-50 cursor-not-allowed"
+                                    )}
                                 >
                                     <span>{shiftEnd}</span>
                                     <Clock size={14} className="text-[hsl(var(--muted-foreground))]" />
@@ -1744,11 +1779,20 @@ export default function OwnerRosterPage() {
                             </div>
                         </div>
 
-                        <div className="space-y-1.5 bg-[hsl(var(--brand-light))]/10 p-3 rounded-xl border border-[hsl(var(--brand))]/10">
-                            <label className="text-[10px] font-black uppercase text-[hsl(var(--muted-foreground))] tracking-widest block mb-1">Shift Type</label>
-                            <div className="flex items-center gap-2">
-                                <Clock size={14} className="text-[hsl(var(--brand))]" />
-                                <span className="text-sm font-bold capitalize text-[hsl(var(--foreground))]">{shiftType}</span>
+                        <div className="grid grid-cols-2 gap-3 items-center">
+                            <div className="space-y-1.5 bg-[hsl(var(--brand-light))]/10 p-3 rounded-xl border border-[hsl(var(--brand))]/10">
+                                <label className="text-[10px] font-black uppercase text-[hsl(var(--muted-foreground))] tracking-widest block mb-1">Shift Type</label>
+                                <div className="flex items-center gap-2">
+                                    <Clock size={14} className="text-[hsl(var(--brand))]" />
+                                    <span className="text-sm font-bold capitalize text-[hsl(var(--foreground))]">{shiftType}</span>
+                                </div>
+                            </div>
+                            <div className="space-y-1.5 bg-[hsl(var(--muted))]/30 p-3 rounded-xl border border-[hsl(var(--border))]">
+                                <label className="text-[10px] font-black uppercase text-[hsl(var(--muted-foreground))] tracking-widest block mb-1">Total Hours</label>
+                                <div className="flex items-center gap-2">
+                                    <FileText size={14} className="text-[hsl(var(--muted-foreground))]" />
+                                    <span className="text-sm font-bold text-[hsl(var(--foreground))]">{calculateShiftDuration(shiftStart, shiftEnd).toFixed(1)}h</span>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -1758,7 +1802,7 @@ export default function OwnerRosterPage() {
                             {editingShiftId && (
                                 <Button
                                     variant="outline"
-                                    disabled={new Date() >= (new Date((shifts.find((s: any) => s.shift_id === editingShiftId) || {}).start_time))}
+                                    disabled={isEditingShiftLocked}
                                     className="text-[hsl(var(--danger))] border-[hsl(var(--danger))]/20 hover:bg-[hsl(var(--danger))]/10 disabled:opacity-30"
                                     onClick={() => setDeleteConfirmOpen(true)}
                                     loading={deleteShiftMutation.isPending}
@@ -1783,7 +1827,7 @@ export default function OwnerRosterPage() {
                             <Button
                                 onClick={handleAddShift}
                                 loading={createShiftMutation.isPending || updateShiftMutation.isPending}
-                                disabled={editingShiftId ? (!isDirty || (new Date() >= (new Date((shifts.find((s: any) => s.shift_id === editingShiftId) || {}).start_time)))) : false}
+                                disabled={editingShiftId ? (!isDirty || isEditingShiftLocked) : false}
                             >
                                 {editingShiftId ? 'Update Shift' : (
                                     <>
