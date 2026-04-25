@@ -653,6 +653,7 @@ export default function OwnerRosterPage() {
         let total = 0;
         let totalHours = 0;
         let totalPublishedHours = 0;
+        let totalDraftHours = 0;
 
         for (const s of shifts) {
             const d = s.shift_date?.split('T')[0] || s.shift_date;
@@ -669,6 +670,8 @@ export default function OwnerRosterPage() {
                     totalHours += hours;
                     if (s.shift_status === 'published') {
                         totalPublishedHours += hours;
+                    } else {
+                        totalDraftHours += hours;
                     }
                 }
             }
@@ -686,7 +689,8 @@ export default function OwnerRosterPage() {
             modified: 0,
             allPublished: total > 0 && total === published,
             totalHours,
-            totalPublishedHours
+            totalPublishedHours,
+            totalDraftHours
         };
     }, [shifts, rangeStart, rangeEnd]);
 
@@ -891,10 +895,20 @@ export default function OwnerRosterPage() {
                             </DropdownMenuContent>
                         </DropdownMenu>
 
-                        {/* Weekly Published Hours Widget */}
-                        <div className="hidden sm:flex flex-col justify-center h-10 px-4 bg-[hsl(var(--brand-light))]/10 border border-[hsl(var(--brand))]/20 rounded-xl">
-                            <span className="text-[9px] font-black uppercase text-[hsl(var(--brand))] tracking-widest leading-tight">Total Rostered</span>
-                            <span className="text-xs font-black text-[hsl(var(--foreground))] leading-tight block -mt-0.5">{statusSummary.totalHours.toFixed(1)} hrs</span>
+                        {/* Weekly Hours Widget */}
+                        <div className="hidden sm:flex items-center gap-2 h-10 px-3 bg-white border border-[hsl(var(--border))] rounded-xl shadow-sm">
+                            <div className="flex flex-col justify-center border-r border-[hsl(var(--border))] pr-3">
+                                <span className="text-[8px] font-black uppercase text-emerald-600 tracking-widest leading-tight">Published</span>
+                                <span className="text-[11px] font-black text-emerald-900 leading-tight block">{statusSummary.totalPublishedHours.toFixed(1)}h</span>
+                            </div>
+                            <div className="flex flex-col justify-center pr-3 border-r border-[hsl(var(--border))]">
+                                <span className="text-[8px] font-black uppercase text-orange-600 tracking-widest leading-tight">Draft</span>
+                                <span className="text-[11px] font-black text-orange-900 leading-tight block">{statusSummary.totalDraftHours.toFixed(1)}h</span>
+                            </div>
+                            <div className="flex flex-col justify-center">
+                                <span className="text-[8px] font-black uppercase text-[hsl(var(--brand))] tracking-widest leading-tight">Total</span>
+                                <span className="text-[11px] font-black text-[hsl(var(--foreground))] leading-tight block">{statusSummary.totalHours.toFixed(1)}h</span>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -967,7 +981,7 @@ export default function OwnerRosterPage() {
                                         )}
                                     </div>
                                     <span className="text-[10px] text-[hsl(var(--muted-foreground))] uppercase tracking-wider font-medium mt-1">
-                                        {statusSummary.published} of {statusSummary.total} shifts notified • {statusSummary.totalHours.toFixed(1)} hrs total rostered
+                                        {statusSummary.published} published ({statusSummary.totalPublishedHours.toFixed(1)}h) • {statusSummary.drafts} drafts ({statusSummary.totalDraftHours.toFixed(1)}h)
                                     </span>
                                 </div>
                             </div>

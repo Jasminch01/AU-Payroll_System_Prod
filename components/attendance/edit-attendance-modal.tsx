@@ -25,11 +25,11 @@ const EVENT_TYPES: { value: EventType; label: string }[] = [
 ];
 
 const TIME_OPTIONS = [
-    ...Array.from({ length: 23 * 4 }, (_, i) => {
-        // Start from 01:00 and end at 23:45 (remove 00:xx hour)
-        const totalIntervals = (i + 4);
-        const hours = Math.floor(totalIntervals / 4).toString().padStart(2, "0");
-        const minutes = ((totalIntervals % 4) * 15).toString().padStart(2, "0");
+    ...Array.from({ length: 23 * 60 }, (_, i) => {
+        // Start from 01:00 and end at 23:59
+        const totalMinutes = (i + 60);
+        const hours = Math.floor(totalMinutes / 60).toString().padStart(2, "0");
+        const minutes = (totalMinutes % 60).toString().padStart(2, "0");
         return `${hours}:${minutes}`;
     }),
     "24:00"
