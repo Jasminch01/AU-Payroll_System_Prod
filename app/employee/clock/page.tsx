@@ -10,9 +10,11 @@ import { AnimatePresence, motion } from "framer-motion";
 import { CheckCircle, Clock, LogIn, LogOut } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { useBusinessTimezone } from "@/lib/timezone-context";
 
 export default function EmployeeClockPage() {
     const [lastAction, setLastAction] = useState<{ type: string; time: string } | null>(null);
+    const { businessTimezone } = useBusinessTimezone();
     
     const { data: profile } = useQuery({
         queryKey: ["profile"],
@@ -38,7 +40,7 @@ export default function EmployeeClockPage() {
                 hour: "2-digit",
                 minute: "2-digit",
                 hour12: true,
-                timeZone: "Australia/Sydney"
+                timeZone: businessTimezone
             }).format(new Date());
             
             const actionLabel = data.event_type.replace(/_/g, ' ').toLowerCase();

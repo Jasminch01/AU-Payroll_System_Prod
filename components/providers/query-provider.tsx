@@ -2,6 +2,7 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState } from "react";
+import { BusinessTimezoneProvider } from "@/lib/timezone-context";
 
 export function QueryProvider({ children }: { children: React.ReactNode }) {
     const [queryClient] = useState(
@@ -22,7 +23,9 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
 
     return (
         <QueryClientProvider client={queryClient}>
-            {children}
+            <BusinessTimezoneProvider>
+                {children}
+            </BusinessTimezoneProvider>
         </QueryClientProvider>
     );
 }

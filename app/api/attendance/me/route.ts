@@ -1,35 +1,12 @@
 import { NextRequest } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { getAuthUser } from '@/lib/auth';
+import { getAuthUser, getBusinessTimezone } from '@/lib/auth';
 import { successResponse, errorResponse } from '@/lib/api-helpers';
 import { getNextAttendanceEvent, validateAttendanceTransition } from '@/lib/attendance-logic';
 import { EventType } from '@/types/database';
 import { notifyAttendanceEvent } from '@/lib/attendance-notifications';
 
-/**
- * Get today's date in Australian timezone (Sydney)
- */
-function getTodayAustralian(): { start: string; end: string } {
-    // Format today's date in Sydney timezone
-    const formatter = new Intl.DateTimeFormat('en-AU', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        timeZone: 'Australia/Sydney'
-    });
-
-    const parts = formatter.formatToParts(new Date());
-    const year = parts.find(p => p.type === 'year')?.value;
-    const month = parts.find(p => p.type === 'month')?.value;
-    const day = parts.find(p => p.type === 'day')?.value;
-
-    const dateStr = `${year}-${month}-${day}`;
-
-    return {
-        start: `${dateStr}T00:00:00Z`,
-        end: `${dateStr}T23:59:59Z`
-    };
-}
+import { getTodayRangeInTimezone } from '@/lib/timezone-utils';
 
 /**
  * GET /api/attendance/me
@@ -46,8 +23,9 @@ export async function GET(request: NextRequest) {
 
         const supabase = await createClient();
 
-        // Get today's date range in Australian timezone
-        const { start, end } = getTodayAustralian();
+        // Get today's date range in the business timezone
+        const timezone = await getBusinessTimezone(authUser.business_id);
+        const { start, end } = getTodayRangeInTimezone(timezone);
 
         const { data: logs, error } = await supabase
             .from('AttendanceLog')

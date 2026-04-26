@@ -144,9 +144,9 @@ export default function ManagerDashboardPage() {
                                     </h3>
                                     <p className="text-lg font-medium text-[hsl(var(--muted-foreground))] flex items-center gap-2">
                                         <Clock size={18} />
-                                        {new Date(nextShift.start_time).toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit", hour12: true })}
-                                        {" – "}
-                                        {new Date(nextShift.end_time).toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit", hour12: true })}
+                                        {new Date(nextShift.start_time).toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit", hour12: false })}
+                                        {" - "}
+                                        {new Date(nextShift.end_time).toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit", hour12: false })}
                                     </p>
                                 </div>
                             </div>

@@ -1,4 +1,5 @@
 import { AttendanceLog } from '@/types/database';
+import { getDateInTimezone } from '@/lib/timezone-utils';
 
 export type AttendanceLogWithEmployee = AttendanceLog & {
   Employee?: {
@@ -40,10 +41,12 @@ export interface GroupedAttendanceSession {
  * CLOCK_OUT can be on the next day (cross-midnight)
  * 
  * @param logs - Raw attendance logs (sorted by timestamp)
+ * @param timezone - Business timezone for correct date boundaries
  * @returns Grouped work sessions by employee and clock-in date
  */
 export function groupAttendanceIntoSessions(
-  logs: AttendanceLogWithEmployee[]
+  logs: AttendanceLogWithEmployee[],
+  timezone?: string
 ): GroupedAttendanceSession[] {
   // 1. Group logs by employee first to avoid interference
   const logsByEmployee: Record<string, AttendanceLogWithEmployee[]> = {};
@@ -65,7 +68,7 @@ export function groupAttendanceIntoSessions(
 
     console.log(`[GROUPER] Processing employee ${employeeId}:`, {
       total_logs: sorted.length,
-      log_types: sorted.map(l => `${l.event_type}@${getDateFromTimestamp(l.timestamp)}`),
+      log_types: sorted.map(l => `${l.event_type}@${getDateInTimezone(l.timestamp, timezone)}`),
       timestamps: sorted.map(l => l.timestamp)
     });
 
@@ -76,11 +79,12 @@ export function groupAttendanceIntoSessions(
     for (const log of sorted) {
       if (log.event_type === 'CLOCK_IN') {
         if (activeSession && !activeSession.clock_out) {
+          if (activeSession.clock_in) usedClockInIds.add(activeSession.clock_in.log_id);
           sessions.push(activeSession as WorkSession);
         }
 
         activeSession = {
-          clock_in_date: getDateFromTimestamp(log.timestamp),
+          clock_in_date: getDateInTimezone(log.timestamp, timezone),
           clock_in: log,
           clock_out: null,
           breaks: [],
@@ -94,7 +98,8 @@ export function groupAttendanceIntoSessions(
           activeSession.clock_out = log;
           activeSession.all_logs!.push(log);
 
-          if (activeSession.clock_in && log) {
+          if (activeSession.clock_in) {
+            usedClockInIds.add(activeSession.clock_in.log_id);
             const inMs = new Date(activeSession.clock_in.timestamp).getTime();
             const outMs = new Date(log.timestamp).getTime();
             activeSession.duration_minutes = (outMs - inMs) / 60000;
@@ -104,13 +109,13 @@ export function groupAttendanceIntoSessions(
           activeSession = null;
         } else if (!activeSession) {
           // Case 2: Orphan CLOCK_OUT (manual entry after CLOCK_IN ended)
-          const clockOutDate = getDateFromTimestamp(log.timestamp);
+          const clockOutDate = getDateInTimezone(log.timestamp, timezone);
           let matchedClockIn: AttendanceLogWithEmployee | null = null;
 
           // Find ANY unpaired CLOCK_IN on the same date
           for (const possibleClockIn of sorted) {
             if (possibleClockIn.event_type === 'CLOCK_IN') {
-              const clockInDate = getDateFromTimestamp(possibleClockIn.timestamp);
+              const clockInDate = getDateInTimezone(possibleClockIn.timestamp, timezone);
               if (clockInDate === clockOutDate && !usedClockInIds.has(possibleClockIn.log_id)) {
                 matchedClockIn = possibleClockIn;
                 usedClockInIds.add(possibleClockIn.log_id);
@@ -176,12 +181,7 @@ export function groupAttendanceIntoSessions(
   return result;
 }
 
-/**
- * Extract date portion (YYYY-MM-DD) from ISO timestamp
- */
-function getDateFromTimestamp(timestamp: string): string {
-  return timestamp.split('T')[0];
-}
+
 
 /**
  * Calculate total hours from work sessions

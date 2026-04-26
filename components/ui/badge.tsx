@@ -19,6 +19,8 @@ const badgeVariants = cva(
                     "bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))]",
                 outline:
                     "border border-[hsl(var(--border))] text-[hsl(var(--foreground))]",
+                ghost:
+                    "bg-transparent border-none px-0",
             },
         },
         defaultVariants: {
@@ -40,7 +42,7 @@ function Badge({ className, variant, ...props }: BadgeProps) {
 /**
  * Helper: Map common status strings to badge variants
  */
-function StatusBadge({ status, label, className }: { status: string; label?: string; className?: string }) {
+function StatusBadge({ status, label, className, ghost }: { status: string; label?: string; className?: string; ghost?: boolean }) {
     const statusMap: Record<string, { variant: BadgeProps["variant"]; label: string }> = {
         active: { variant: "success", label: "Active" },
         inactive: { variant: "secondary", label: "Inactive" },
@@ -75,7 +77,22 @@ function StatusBadge({ status, label, className }: { status: string; label?: str
 
     const config = statusMap[status?.toLowerCase()] || { variant: "secondary" as const, label: status };
 
-    return <Badge variant={config.variant} className={className}>{label || config.label}</Badge>;
+    const colorMap: Record<string, string> = {
+        success: "text-[hsl(var(--success))]",
+        warning: "text-[hsl(var(--warning))]",
+        danger: "text-[hsl(var(--danger))]",
+        default: "text-[hsl(var(--brand))]",
+        secondary: "text-[hsl(var(--muted-foreground))]",
+    };
+
+    return (
+        <Badge
+            variant={ghost ? "ghost" : config.variant}
+            className={cn(ghost && `${colorMap[config.variant as string] || 'text-[hsl(var(--foreground))]'} font-bold`, className)}
+        >
+            {label || config.label}
+        </Badge>
+    );
 }
 
 export { Badge, badgeVariants, StatusBadge };

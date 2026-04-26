@@ -20,20 +20,12 @@ export function getNextAttendanceEvent(
 ): EventType {
     if (!lastLog) return 'CLOCK_IN';
 
-    const lastTime = new Date(lastLog.timestamp).getTime();
-    const now = new Date(currentTime).getTime();
-    const hoursSinceLast = (now - lastTime) / (1000 * 60 * 60);
-
-    // If it's been more than 16 hours since the last action, 
-    // we assume it's a new day and always start with CLOCK_IN.
-    if (hoursSinceLast > 16) return 'CLOCK_IN';
-
     // State machine logic
     if (lastLog.event_type === 'CLOCK_IN') return 'CLOCK_OUT';
     if (lastLog.event_type === 'BREAK_START') return 'BREAK_END';
     if (lastLog.event_type === 'BREAK_END') return 'CLOCK_OUT';
     
-    // Default to CLOCK_IN if they are out
+    // If the last thing they did was CLOCK_OUT, they must CLOCK_IN next.
     return 'CLOCK_IN';
 }
 
@@ -43,18 +35,34 @@ export function getNextAttendanceEvent(
 export function getAvailableActions(
     lastLog: { event_type: EventType; timestamp: string } | null
 ): { type: EventType; label: string; variant: 'default' | 'outline' | 'destructive' }[] {
-    if (!lastLog) return [{ type: 'CLOCK_IN', label: 'Clock In', variant: 'default' }];
+    // 1. No history? Always Clock In.
+    if (!lastLog) {
+        return [{ type: 'CLOCK_IN', label: 'Clock In', variant: 'default' }];
+    }
 
     const lastTime = new Date(lastLog.timestamp).getTime();
     const now = Date.now();
     const hoursSinceLast = (now - lastTime) / (1000 * 60 * 60);
 
-    // Reset to Clock In if it's been a long time
-    if (hoursSinceLast > 16 || lastLog.event_type === 'CLOCK_OUT') {
+    // 2. Logic for when they are currently CLOCKED OUT
+    if (lastLog.event_type === 'CLOCK_OUT') {
         return [{ type: 'CLOCK_IN', label: 'Clock In', variant: 'default' }];
     }
 
+    // 3. Logic for when they are currently CLOCKED IN or on BREAK
+    // We allow Clock Out even if it's been a long time (to handle long shifts/forgotten clock outs)
+    // but if it's been more than 24 hours, something is wrong, and we might want to suggest Clock In 
+    // to start a new session. However, to keep it simple and fix the user's issue, 
+    // we prioritize showing the "Clock Out" if they are currently "In".
+    
     if (lastLog.event_type === 'CLOCK_IN' || lastLog.event_type === 'BREAK_END') {
+        // If they've been clocked in for more than 20 hours without any action, 
+        // it's almost certainly a forgotten clock out from a previous day.
+        // We offer Clock In to start a fresh day.
+        if (hoursSinceLast > 20) {
+            return [{ type: 'CLOCK_IN', label: 'Clock In (New Shift)', variant: 'default' }];
+        }
+
         return [
             { type: 'CLOCK_OUT', label: 'Clock Out', variant: 'destructive' },
             { type: 'BREAK_START', label: 'Take Break', variant: 'outline' }

@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { requireRole } from '@/lib/auth';
+import { requireRole, getBusinessTimezone } from '@/lib/auth';
+import { createBusinessTimestamp } from '@/lib/timezone-utils';
 import { successResponse, errorResponse } from '@/lib/api-helpers';
 import { EventType } from '@/types/database';
 import { validateAttendanceTransition } from '@/lib/attendance-logic';
@@ -38,7 +39,8 @@ export async function GET(request: NextRequest) {
             // Expand date range by ±1 day to capture cross-midnight work sessions
             // E.g. if querying 2026-03-31, include logs from 2026-03-30 onwards
             // This ensures we get CLOCK_OUT that happens on 2026-04-01 if CLOCK_IN is 2026-03-31
-            
+
+            const timezone = await getBusinessTimezone(authUser.business_id);
             let startDate = from;
             let endDate = to;
 
@@ -46,30 +48,20 @@ export async function GET(request: NextRequest) {
                 const fromDate = new Date(from);
                 fromDate.setDate(fromDate.getDate() - 1);
                 startDate = fromDate.toISOString().split('T')[0];
-                query = query.gte('timestamp', `${startDate}T00:00:00Z`);
+                query = query.gte('timestamp', createBusinessTimestamp(startDate, '00:00', timezone));
             }
 
             if (to) {
                 const toDate = new Date(to);
                 toDate.setDate(toDate.getDate() + 1);
                 endDate = toDate.toISOString().split('T')[0];
-                query = query.lte('timestamp', `${endDate}T23:59:59Z`);
+                query = query.lte('timestamp', createBusinessTimestamp(endDate, '23:59', timezone).replace(':00.000Z', ':59.999Z'));
             }
         }
 
         const { data: logs, error } = await query;
 
         if (error) return errorResponse(error.message, 400);
-
-        console.log('[ATTENDANCE GET]', {
-            business_id: authUser.business_id,
-            employee_id,
-            from,
-            to,
-            logsReturned: logs?.length || 0,
-            eventTypes: logs?.map(l => l.event_type) || []
-        });
-
         return successResponse(logs);
     } catch (err) {
         console.error('List attendance error:', err);
@@ -121,14 +113,7 @@ export async function POST(request: NextRequest) {
             return errorResponse(`Manual entry error: ${transitionError}`, 400);
         }
 
-        const now = new Date();
-        const year = now.getFullYear();
-        const month = String(now.getMonth() + 1).padStart(2, '0');
-        const day = String(now.getDate()).padStart(2, '0');
-        const hours = String(now.getHours()).padStart(2, '0');
-        const minutes = String(now.getMinutes()).padStart(2, '0');
-        const seconds = String(now.getSeconds()).padStart(2, '0');
-        const localTimestamp = `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
+        const localTimestamp = new Date().toISOString();
 
         // Build insert object with optional override_by
         const insertData: any = {
@@ -157,12 +142,6 @@ export async function POST(request: NextRequest) {
             return errorResponse('Employee not found', 404);
         }
 
-        console.log('Employee validation passed:', {
-            employee_id: employee.employee_id,
-            employee_business_id: employee.business_id,
-            request_business_id: insertData.business_id,
-            match: employee.business_id === insertData.business_id
-        });
 
         // Validate business exists
         const { data: business, error: bizError } = await supabase
@@ -205,14 +184,6 @@ export async function POST(request: NextRequest) {
             return errorResponse(error.message, 400);
         }
 
-        console.log('Manual attendance entry saved successfully:', {
-            log_id: log.log_id,
-            employee_id: log.employee_id,
-            event_type: log.event_type,
-            timestamp: log.timestamp,
-            business_id: log.business_id,
-            override_by: log.override_by
-        });
 
         // Now verify it can be retrieved
         const { data: verification, error: verifyError } = await supabase

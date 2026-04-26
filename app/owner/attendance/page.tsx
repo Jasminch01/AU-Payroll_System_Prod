@@ -20,10 +20,13 @@ import {
     ChevronRight,
     Plus,
     Edit2,
+    Coffee,
+    ArrowRight
 } from "lucide-react";
 import type { AttendanceLog } from "@/types/database";
 import { cn } from "@/lib/utils";
 import { EditAttendanceModal } from "@/components/attendance/edit-attendance-modal";
+import { useBusinessTimezone } from "@/lib/timezone-context";
 
 /* ===== Types ===== */
 
@@ -37,6 +40,7 @@ interface AttendanceRecord extends AttendanceLog {
 
 /** A single clock-in → clock-out pair */
 interface Session {
+    breaks: any;
     clock_in: string | null;
     clock_out: string | null;
     duration_minutes: number | null; // null when session is still open
@@ -78,23 +82,23 @@ function formatDuration(totalMinutes: number): string {
     return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }
 
-function formatTime(iso: string | null) {
+function formatTime(iso: string | null, timezone: string) {
     if (!iso) return "--:--";
     const date = new Date(iso);
     if (isNaN(date.getTime())) return "--:--";
 
-    // Use Sydney timezone to ensure consistent Australian time display
     return new Intl.DateTimeFormat("en-AU", {
         hour: "2-digit",
         minute: "2-digit",
-        hour12: true,
-        timeZone: 'Australia/Sydney'
+        hour12: false,
+        timeZone: timezone
     }).format(date);
 }
 
 /* ===== Component ===== */
 
 export default function OwnerAttendancePage() {
+    const { businessTimezone } = useBusinessTimezone();
     const today = todayDateString();
     const [fromDate, setFromDate] = useState<string>(today);
     const [toDate, setToDate] = useState<string>(today);
@@ -121,7 +125,7 @@ export default function OwnerAttendancePage() {
     /* ── Session-aware grouping ── */
     const groupedRecords = useMemo(() => {
         // Use the new cross-midnight aware grouping function
-        const groupedSessions = groupAttendanceIntoSessions(records);
+        const groupedSessions = groupAttendanceIntoSessions(records, businessTimezone);
 
         // Filter logic: only show records where clock_in_date is within the selected date range
         const filteredSessions = groupedSessions.filter((group) => {
@@ -155,6 +159,7 @@ export default function OwnerAttendancePage() {
                         ]
                             .filter(Boolean)
                             .join(", "),
+                        breaks: undefined
                     };
 
                     const totalMinutes = session.duration_minutes ?? 0;
@@ -281,7 +286,7 @@ export default function OwnerAttendancePage() {
                                 : "text-[hsl(var(--muted-foreground))]/50"
                         )}
                     >
-                        {formatTime(row.first_in)}
+                        {formatTime(row.first_in, businessTimezone)}
                     </span>
                 </div>
             ),
@@ -307,7 +312,7 @@ export default function OwnerAttendancePage() {
                                 : "text-[hsl(var(--muted-foreground))]/50"
                         )}
                     >
-                        {formatTime(row.last_out)}
+                        {formatTime(row.last_out, businessTimezone)}
                     </span>
                 </div>
             ),
@@ -358,13 +363,13 @@ export default function OwnerAttendancePage() {
             key: "override",
             label: "Status",
             render: (row) => {
-                if (!row.is_manual) return <StatusBadge status="auto" label="Auto" />;
+                if (!row.is_manual) return <StatusBadge status="auto" label="Auto" ghost />;
                 return (
                     <div className="flex flex-col gap-0.5">
-                        <StatusBadge status="manual" label="Manual" />
+                        <StatusBadge status="manual" label="Manual" ghost />
                         {row.override_reason && (
                             <p
-                                className="text-[10px] text-[hsl(var(--muted-foreground))] italic truncate max-w-30"
+                                className="text-[10px] text-[hsl(var(--muted-foreground))] italic truncate max-w-[80px]"
                                 title={row.override_reason}
                             >
                                 {row.override_reason}
@@ -374,6 +379,29 @@ export default function OwnerAttendancePage() {
                 );
             },
         },
+        {
+            key: "actions",
+            label: "Edit",
+            render: (row) => (
+                <button
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        // Open the session editor
+                        setEditingLog({
+                            ...row.raw_logs[0], // Start with the first log
+                            all_logs: row.raw_logs,
+                            Employee: row.Employee,
+                            session_id: row.id
+                        });
+                        setIsEditModalOpen(true);
+                    }}
+                    className="p-2 rounded-lg bg-[hsl(var(--warning-light))] text-[hsl(var(--warning))] hover:bg-[hsl(var(--warning))] hover:text-white transition-all shadow-sm active:scale-90"
+                    title="Edit Session"
+                >
+                    <Edit2 size={14} />
+                </button>
+            ),
+        }
     ];
 
     /* ── Summary stats ── */
@@ -552,11 +580,11 @@ export default function OwnerAttendancePage() {
                         <div className="flex items-center gap-4">
                             <div className="flex items-center gap-1.5 text-xs text-[hsl(var(--success))] font-bold bg-[hsl(var(--success-light))]/20 px-2 py-1 rounded-lg">
                                 <ArrowDownCircle size={12} />
-                                {formatTime(row.first_in)}
+                                {formatTime(row.first_in, businessTimezone)}
                             </div>
                             <div className="flex items-center gap-1.5 text-xs text-[hsl(var(--warning))] font-bold bg-[hsl(var(--warning-light))]/20 px-2 py-1 rounded-lg">
                                 <ArrowUpCircle size={12} />
-                                {formatTime(row.last_out)}
+                                {formatTime(row.last_out, businessTimezone)}
                             </div>
                             {row.is_manual && <StatusBadge status="manual" className="scale-75 origin-left" />}
                         </div>
@@ -571,7 +599,7 @@ export default function OwnerAttendancePage() {
                     onClick={() => setDetailRow(null)}
                 >
                     <div
-                        className="relative w-full max-w-lg mx-4 rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-2xl animate-in zoom-in-95"
+                        className="relative w-full max-w-2xl mx-4 rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-2xl animate-in zoom-in-95 overflow-hidden"
                         onClick={(e) => e.stopPropagation()}
                     >
                         {/* Header */}
@@ -610,86 +638,112 @@ export default function OwnerAttendancePage() {
                                         <div
                                             key={i}
                                             className={cn(
-                                                "flex items-center gap-4 p-3 rounded-xl border transition-colors",
+                                                "flex flex-col gap-4 p-4 rounded-xl border transition-colors",
                                                 isIncomplete
-                                                    ? "border-[hsl(var(--warning))]/30 bg-[hsl(var(--warning-light))]/30"
-                                                    : "border-[hsl(var(--border))] bg-[hsl(var(--muted))]/50"
+                                                    ? "border-[hsl(var(--warning))]/30 bg-[hsl(var(--warning-light))]/10"
+                                                    : "border-[hsl(var(--border))] bg-[hsl(var(--muted))]/30"
                                             )}
                                         >
-                                            {/* Session number */}
-                                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[hsl(var(--brand-light))] text-[hsl(var(--brand))] text-xs font-bold">
-                                                {i + 1}
+                                            <div className="flex items-center gap-4">
+                                                {/* Session number */}
+                                                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[hsl(var(--brand-light))] text-[hsl(var(--brand))] text-xs font-bold">
+                                                    {i + 1}
+                                                </div>
+
+                                                {/* Times */}
+                                                <div className="flex-1 grid grid-cols-3 gap-2 text-sm">
+                                                    <div>
+                                                        <p className="text-[10px] uppercase tracking-wider text-[hsl(var(--muted-foreground))] font-medium">
+                                                            In
+                                                        </p>
+                                                        <p className="font-semibold flex items-center gap-1">
+                                                            <ArrowDownCircle
+                                                                size={12}
+                                                                className={cn(
+                                                                    s.clock_in
+                                                                        ? "text-[hsl(var(--success))]"
+                                                                        : "text-[hsl(var(--muted-foreground))]/40"
+                                                                )}
+                                                            />
+                                                            {formatTime(s.clock_in, businessTimezone)}
+                                                        </p>
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-[10px] uppercase tracking-wider text-[hsl(var(--muted-foreground))] font-medium">
+                                                            Out
+                                                        </p>
+                                                        <div className="flex items-center gap-1">
+                                                            <ArrowUpCircle
+                                                                size={12}
+                                                                className={cn(
+                                                                    s.clock_out
+                                                                        ? "text-[hsl(var(--warning))]"
+                                                                        : "text-[hsl(var(--muted-foreground))]/40"
+                                                                )}
+                                                            />
+                                                            <span className="font-semibold text-sm">
+                                                                {formatTime(s.clock_out, businessTimezone)}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-[10px] uppercase tracking-wider text-[hsl(var(--muted-foreground))] font-medium">
+                                                            Duration
+                                                        </p>
+                                                        <p className="font-semibold tabular-nums">
+                                                            {s.duration_minutes != null
+                                                                ? formatDuration(s.duration_minutes)
+                                                                : "—"}
+                                                        </p>
+                                                    </div>
+                                                </div>
+
                                             </div>
 
-                                            {/* Times */}
-                                            <div className="flex-1 grid grid-cols-3 gap-2 text-sm">
-                                                <div>
-                                                    <p className="text-[10px] uppercase tracking-wider text-[hsl(var(--muted-foreground))] font-medium">
-                                                        In
+                                            {/* Breaks Section */}
+                                            {s.breaks && s.breaks.length > 0 && (
+                                                <div className="mt-2 pt-3 border-t border-[hsl(var(--border))]/50">
+                                                    <p className="text-[10px] uppercase tracking-wider text-[hsl(var(--muted-foreground))] font-bold mb-2 flex items-center gap-1.5">
+                                                        <Coffee size={12} className="text-[hsl(var(--brand))]" />
+                                                        Breaks ({s.breaks.length / 2 | 0})
                                                     </p>
-                                                    <p className="font-semibold flex items-center gap-1">
-                                                        <ArrowDownCircle
-                                                            size={12}
-                                                            className={cn(
-                                                                s.clock_in
-                                                                    ? "text-[hsl(var(--success))]"
-                                                                    : "text-[hsl(var(--muted-foreground))]/40"
-                                                            )}
-                                                        />
-                                                        {formatTime(s.clock_in)}
-                                                    </p>
+                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
+                                                        {(() => {
+                                                            const pairs = [];
+                                                            for (let b = 0; b < s.breaks.length; b++) {
+                                                                if (s.breaks[b].event_type === 'BREAK_START') {
+                                                                    const end = s.breaks.find((bx: any, idx: number) => idx > b && bx.event_type === 'BREAK_END');
+                                                                    pairs.push({ start: s.breaks[b], end });
+                                                                }
+                                                            }
+                                                            return pairs.map((pair, idx) => (
+                                                                <div key={idx} className="flex items-center justify-between text-xs bg-[hsl(var(--background))] px-2.5 py-1.5 rounded-lg border border-[hsl(var(--border))]/50">
+                                                                    <div className="flex items-center gap-3">
+                                                                        <span className="text-[hsl(var(--muted-foreground))] font-medium">#{idx + 1}</span>
+                                                                        <div className="flex items-center gap-2">
+                                                                            <span className="font-semibold text-[hsl(var(--foreground))]">{formatTime(pair.start.timestamp, businessTimezone)}</span>
+                                                                            <ArrowRight size={10} className="text-[hsl(var(--muted-foreground))]" />
+                                                                            <span className="font-semibold text-[hsl(var(--foreground))]">{pair.end ? formatTime(pair.end.timestamp, businessTimezone) : '—'}</span>
+                                                                        </div>
+                                                                    </div>
+                                                                    {pair.start && (
+                                                                        <button
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                setEditingLog({ ...pair.start, Employee: detailRow.Employee });
+                                                                                setIsEditModalOpen(true);
+                                                                            }}
+                                                                            className="p-1 rounded hover:bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--brand))]"
+                                                                        >
+                                                                            <Edit2 size={10} />
+                                                                        </button>
+                                                                    )}
+                                                                </div>
+                                                            ));
+                                                        })()}
+                                                    </div>
                                                 </div>
-                                                <div>
-                                                    <p className="text-[10px] uppercase tracking-wider text-[hsl(var(--muted-foreground))] font-medium">
-                                                        Out
-                                                    </p>
-                                                    <p className="font-semibold flex items-center gap-1">
-                                                        <ArrowUpCircle
-                                                            size={12}
-                                                            className={cn(
-                                                                s.clock_out
-                                                                    ? "text-[hsl(var(--warning))]"
-                                                                    : "text-[hsl(var(--muted-foreground))]/40"
-                                                            )}
-                                                        />
-                                                        {formatTime(s.clock_out)}
-                                                    </p>
-                                                </div>
-                                                <div>
-                                                    <p className="text-[10px] uppercase tracking-wider text-[hsl(var(--muted-foreground))] font-medium">
-                                                        Duration
-                                                    </p>
-                                                    <p className="font-semibold tabular-nums">
-                                                        {s.duration_minutes != null
-                                                            ? formatDuration(s.duration_minutes)
-                                                            : "—"}
-                                                    </p>
-                                                </div>
-                                            </div>
-
-                                            {/* Badges & Actions */}
-                                            <div className="flex flex-col items-end gap-2 shrink-0">
-                                                <button
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        const rawLog = detailRow.raw_logs.find(rx => rx.timestamp === s.clock_in || rx.timestamp === s.clock_out);
-                                                        if (rawLog) {
-                                                            setEditingLog({ ...rawLog, Employee: detailRow.Employee });
-                                                            setIsEditModalOpen(true);
-                                                        }
-                                                    }}
-                                                    className="p-1.5 rounded-lg text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--brand))] hover:bg-[hsl(var(--brand-light))] transition-colors"
-                                                    title="Edit Record"
-                                                >
-                                                    <Edit2 size={14} />
-                                                </button>
-                                                {s.is_manual && <StatusBadge status="manual" label="Manual" />}
-                                                {isIncomplete && (
-                                                    <span className="text-[10px] font-medium text-[hsl(var(--warning))] uppercase tracking-tighter">
-                                                        Incomplete
-                                                    </span>
-                                                )}
-                                            </div>
+                                            )}
                                         </div>
                                     );
                                 })}
