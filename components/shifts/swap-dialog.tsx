@@ -43,7 +43,7 @@ export function ShiftSwapDialog({ open, onOpenChange, shift, role }: ShiftSwapDi
         queryKey: ["available-colleagues", shift?.shift_id, offerType],
         queryFn: () => {
             const onlyWithShifts = offerType === "swap" ? "&only_with_shifts=true" : "";
-            return apiGet<any[]>(`/employees?status=active&exclude_conflicts_for_shift=${shift?.shift_id}&exclude_self=true${onlyWithShifts}`);
+            return apiGet<any[]>(`/employees?status=active&role=${role === 'manager' ? 'manager' : 'employee'}&exclude_conflicts_for_shift=${shift?.shift_id}&exclude_self=true${onlyWithShifts}`);
         },
         enabled: !!shift?.shift_id && open && (offerType === "transfer" || offerType === "swap"),
     });

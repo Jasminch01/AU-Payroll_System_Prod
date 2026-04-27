@@ -76,7 +76,26 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
             if (isPoolClaim && action === 'accept') {
                 if (!employeeId) return errorResponse('Valid employee profile required to claim shifts.', 401);
 
-                // Role Check Removed: Anyone can claim any pooled shift in the business
+                // 1. Role Check
+                const { data: requesterEmp, error: reqEmpError } = await supabase
+                    .from('Employee')
+                    .select('user_id')
+                    .eq('employee_id', swapRequest.requester_id)
+                    .single();
+                
+                let reqRole = 'employee';
+                if (requesterEmp?.user_id) {
+                    const { data: userData } = await supabase
+                        .from('User')
+                        .select('role')
+                        .eq('user_id', requesterEmp.user_id)
+                        .single();
+                    if (userData) reqRole = userData.role;
+                }
+
+                if (reqRole !== authUser.role) {
+                    return errorResponse(`Only ${reqRole}s can claim this shift.`, 403);
+                }
 
                 // 2. Overlap Check (Safety Rail)
                 const { data: conflicts } = await supabase
