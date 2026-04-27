@@ -1,11 +1,9 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiPatch, apiPost, apiDelete } from "@/lib/api-client";
-import { EventType, AttendanceLog } from "@/types/database";
+import { apiPatch, apiPost } from "@/lib/api-client";
 import { X, AlertCircle, CheckCircle, Clock, Save, PlusCircle } from "lucide-react";
-import { cn } from "@/lib/utils";
 import { createBusinessTimestamp, getDateTimeForInput } from "@/lib/timezone-utils";
 import { useBusinessTimezone } from "@/lib/timezone-context";
 
@@ -18,13 +16,11 @@ interface EditAttendanceModalProps {
 }
 
 const TIME_OPTIONS = [
-    ...Array.from({ length: 23 * 60 }, (_, i) => {
-        const totalMinutes = (i + 60);
-        const hours = Math.floor(totalMinutes / 60).toString().padStart(2, "0");
-        const minutes = (totalMinutes % 60).toString().padStart(2, "0");
+    ...Array.from({ length: 24 * 60 }, (_, i) => {
+        const hours = Math.floor(i / 60).toString().padStart(2, "0");
+        const minutes = (i % 60).toString().padStart(2, "0");
         return `${hours}:${minutes}`;
-    }),
-    "24:00"
+    })
 ];
 
 export function EditAttendanceModal({
@@ -50,8 +46,9 @@ export function EditAttendanceModal({
     const [overrideReason, setOverrideReason] = useState(log?.override_reason || "");
     const [error, setError] = useState("");
     const [success, setSuccess] = useState("");
-    
+
     const [activeDropdown, setActiveDropdown] = useState<'in' | 'out' | null>(null);
+    const [timeSearch, setTimeSearch] = useState("");
 
     const mutation = useMutation({
         mutationFn: async () => {
@@ -124,17 +121,17 @@ export function EditAttendanceModal({
                 </div>
 
                 <form onSubmit={handleSubmit} className="p-6 space-y-6">
-                    {error && <div className="p-3 bg-red-50 text-red-700 rounded-lg text-xs flex items-center gap-2"><AlertCircle size={14}/>{error}</div>}
-                    {success && <div className="p-3 bg-green-50 text-green-700 rounded-lg text-xs flex items-center gap-2"><CheckCircle size={14}/>{success}</div>}
+                    {error && <div className="p-3 bg-red-50 text-red-700 rounded-lg text-xs flex items-center gap-2"><AlertCircle size={14} />{error}</div>}
+                    {success && <div className="p-3 bg-green-50 text-green-700 rounded-lg text-xs flex items-center gap-2"><CheckCircle size={14} />{success}</div>}
 
                     {/* Clock In Section */}
                     <div className="space-y-3">
                         <label className="text-[10px] font-black uppercase text-[hsl(var(--muted-foreground))] tracking-widest">Clock In Time</label>
                         <div className="flex gap-2">
-                            <input 
-                                type="date" 
-                                value={inForm.date} 
-                                onChange={e => setInForm({...inForm, date: e.target.value})}
+                            <input
+                                type="date"
+                                value={inForm.date}
+                                onChange={e => setInForm({ ...inForm, date: e.target.value })}
                                 className="flex-1 h-11 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-3 text-sm focus:ring-2 focus:ring-[hsl(var(--brand))]/20"
                             />
                             <div className="relative w-32">
@@ -147,11 +144,26 @@ export function EditAttendanceModal({
                                     <Clock size={14} className="opacity-40" />
                                 </button>
                                 {activeDropdown === 'in' && (
-                                    <div className="absolute top-12 right-0 w-32 bg-[hsl(var(--card))] border rounded-lg shadow-xl z-50 max-h-48 overflow-y-auto">
-                                        {TIME_OPTIONS.map(t => (
-                                            <button key={t} type="button" onClick={() => { setInForm({...inForm, time: t}); setActiveDropdown(null); }} className="w-full text-left px-4 py-2 text-sm hover:bg-[hsl(var(--muted))]">{t}</button>
-                                        ))}
-                                    </div>
+                                    <>
+                                        <div className="fixed inset-0 z-40" onClick={() => setActiveDropdown(null)} />
+                                        <div className="absolute top-12 right-0 w-40 bg-[hsl(var(--card))] border rounded-lg shadow-xl z-50 overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-100">
+                                            <div className="p-2 border-b bg-[hsl(var(--muted))]/30 sticky top-0">
+                                                <input
+                                                    autoFocus
+                                                    type="text"
+                                                    placeholder="Search..."
+                                                    value={timeSearch}
+                                                    onChange={e => setTimeSearch(e.target.value)}
+                                                    className="w-full h-8 px-2 text-[10px] rounded-md border bg-[hsl(var(--background))]"
+                                                />
+                                            </div>
+                                            <div className="max-h-36 overflow-y-auto p-1">
+                                                {TIME_OPTIONS.filter(t => t.includes(timeSearch)).map(t => (
+                                                    <button key={t} type="button" onClick={() => { setInForm({ ...inForm, time: t }); setActiveDropdown(null); setTimeSearch(""); }} className="w-full text-left px-4 py-2 text-sm hover:bg-[hsl(var(--muted))] rounded-md">{t}</button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </>
                                 )}
                             </div>
                         </div>
@@ -164,10 +176,10 @@ export function EditAttendanceModal({
                             {!outForm.exists && <span className="text-[10px] font-bold text-orange-600 bg-orange-50 px-2 py-0.5 rounded-full">Missing</span>}
                         </div>
                         <div className="flex gap-2">
-                            <input 
-                                type="date" 
-                                value={outForm.date} 
-                                onChange={e => setOutForm({...outForm, date: e.target.value})}
+                            <input
+                                type="date"
+                                value={outForm.date}
+                                onChange={e => setOutForm({ ...outForm, date: e.target.value })}
                                 className="flex-1 h-11 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-3 text-sm focus:ring-2 focus:ring-[hsl(var(--brand))]/20"
                             />
                             <div className="relative w-32">
@@ -180,11 +192,26 @@ export function EditAttendanceModal({
                                     {outForm.exists ? <Clock size={14} className="opacity-40" /> : <PlusCircle size={14} className="text-orange-500" />}
                                 </button>
                                 {activeDropdown === 'out' && (
-                                    <div className="absolute top-12 right-0 w-32 bg-[hsl(var(--card))] border rounded-lg shadow-xl z-50 max-h-48 overflow-y-auto">
-                                        {TIME_OPTIONS.map(t => (
-                                            <button key={t} type="button" onClick={() => { setOutForm({...outForm, time: t}); setActiveDropdown(null); }} className="w-full text-left px-4 py-2 text-sm hover:bg-[hsl(var(--muted))]">{t}</button>
-                                        ))}
-                                    </div>
+                                    <>
+                                        <div className="fixed inset-0 z-40" onClick={() => setActiveDropdown(null)} />
+                                        <div className="absolute top-12 right-0 w-40 bg-[hsl(var(--card))] border rounded-lg shadow-xl z-50 overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-100">
+                                            <div className="p-2 border-b bg-[hsl(var(--muted))]/30 sticky top-0">
+                                                <input
+                                                    autoFocus
+                                                    type="text"
+                                                    placeholder="Search..."
+                                                    value={timeSearch}
+                                                    onChange={e => setTimeSearch(e.target.value)}
+                                                    className="w-full h-8 px-2 text-[10px] rounded-md border bg-[hsl(var(--background))]"
+                                                />
+                                            </div>
+                                            <div className="max-h-36 overflow-y-auto p-1">
+                                                {TIME_OPTIONS.filter(t => t.includes(timeSearch)).map(t => (
+                                                    <button key={t} type="button" onClick={() => { setOutForm({ ...outForm, time: t }); setActiveDropdown(null); setTimeSearch(""); }} className="w-full text-left px-4 py-2 text-sm hover:bg-[hsl(var(--muted))] rounded-md">{t}</button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </>
                                 )}
                             </div>
                         </div>
@@ -192,8 +219,8 @@ export function EditAttendanceModal({
 
                     <div className="space-y-2">
                         <label className="text-[10px] font-black uppercase text-[hsl(var(--muted-foreground))] tracking-widest">Override Reason <span className="text-red-500">*</span></label>
-                        <textarea 
-                            value={overrideReason} 
+                        <textarea
+                            value={overrideReason}
                             onChange={e => setOverrideReason(e.target.value)}
                             placeholder="Reason for editing this session..."
                             className="w-full p-3 rounded-xl border bg-[hsl(var(--card))] text-sm focus:ring-2 focus:ring-[hsl(var(--brand))]/20"
@@ -206,7 +233,7 @@ export function EditAttendanceModal({
                         disabled={mutation.isPending}
                         className="w-full h-12 rounded-xl bg-[hsl(var(--warning))] text-[hsl(var(--warning-foreground))] font-bold shadow-lg hover:brightness-105 transition-all flex items-center justify-center gap-2"
                     >
-                        {mutation.isPending ? "Saving Changes..." : <><Save size={18}/> Update Session</>}
+                        {mutation.isPending ? "Saving Changes..." : <><Save size={18} /> Update Session</>}
                     </button>
                 </form>
             </div>

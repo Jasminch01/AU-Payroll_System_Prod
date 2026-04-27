@@ -39,6 +39,7 @@ interface DataTableProps<T> {
     onPageChange?: (page: number) => void;
     onSearch?: (search: string) => void;
     onSort?: (key: string, dir: "asc" | "desc") => void;
+    onSearchChange?: (search: string) => void;
     maxHeight?: string; // e.g. "calc(100vh - 300px)"
 }
 
@@ -63,6 +64,7 @@ export function DataTable<T extends Record<string, any>>({
     onPageChange,
     onSearch,
     onSort,
+    onSearchChange,
     maxHeight,
 }: DataTableProps<T>) {
     const isMobile = useIsMobile();
@@ -79,7 +81,10 @@ export function DataTable<T extends Record<string, any>>({
         if (!serverPagination) {
             setCurrentPage(1);
         }
-    }, [search, sortKey, sortDir, serverPagination]);
+        if (onSearchChange) {
+            onSearchChange(search);
+        }
+    }, [search, sortKey, sortDir, serverPagination, onSearchChange]);
 
     // Handle debounced search for server pagination
     React.useEffect(() => {

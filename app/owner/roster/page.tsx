@@ -35,14 +35,11 @@ import {
 type RosterPeriod = "weekly" | "fortnightly" | "monthly";
 
 const TIME_OPTIONS = [
-    ...Array.from({ length: 23 * 4 }, (_, i) => {
-        // Start from 01:00 and end at 23:45 (remove 00:xx hour)
-        const totalIntervals = (i + 4);
-        const hours = Math.floor(totalIntervals / 4).toString().padStart(2, "0");
-        const minutes = ((totalIntervals % 4) * 15).toString().padStart(2, "0");
+    ...Array.from({ length: 24 * 4 }, (_, i) => {
+        const hours = Math.floor(i / 4).toString().padStart(2, "0");
+        const minutes = ((i % 4) * 15).toString().padStart(2, "0");
         return `${hours}:${minutes}`;
-    }),
-    "24:00"
+    })
 ];
 
 function getRosterDates(offset: number, period: RosterPeriod): Date[] {
@@ -135,6 +132,7 @@ export default function OwnerRosterPage() {
     const [viewDate, setViewDate] = useState(new Date());
     const [isStartDropdownOpen, setIsStartDropdownOpen] = useState(false);
     const [isEndDropdownOpen, setIsEndDropdownOpen] = useState(false);
+    const [timeSearch, setTimeSearch] = useState("");
 
     const rosterDates = useMemo(() => getRosterDates(offset, rosterPeriod), [offset, rosterPeriod]);
     const rangeStart = formatDate(rosterDates[0]);
@@ -665,7 +663,13 @@ export default function OwnerRosterPage() {
         let totalPublishedHours = 0;
         let totalDraftHours = 0;
 
+        // Create a Set of filtered employee IDs for faster lookups
+        const filteredIds = new Set(filteredEmployees.map((e: any) => e.employee_id));
+
         for (const s of shifts) {
+            // Only include shifts for employees currently in the filtered list
+            if (!filteredIds.has(s.employee_id)) continue;
+
             const d = s.shift_date?.split('T')[0] || s.shift_date;
             if (d < rangeStart || d > rangeEnd) continue;
 
@@ -673,9 +677,10 @@ export default function OwnerRosterPage() {
             
             // Calculate hours for ALL shifts in range
             if (s.start_time && s.end_time) {
-                const start = new Date(s.start_time).getTime();
-                const end = new Date(s.end_time).getTime();
-                const hours = (end - start) / (1000 * 60 * 60);
+                const startTimeStr = s.start_time?.split('T')[1]?.substring(0, 5) || (typeof s.start_time === 'string' && s.start_time.length === 5 ? s.start_time : "00:00");
+                const endTimeStr = s.end_time?.split('T')[1]?.substring(0, 5) || (typeof s.end_time === 'string' && s.end_time.length === 5 ? s.end_time : "00:00");
+                
+                const hours = calculateShiftDuration(startTimeStr, endTimeStr);
                 if (hours > 0) {
                     totalHours += hours;
                     if (s.shift_status === 'published') {
@@ -702,7 +707,7 @@ export default function OwnerRosterPage() {
             totalPublishedHours,
             totalDraftHours
         };
-    }, [shifts, rangeStart, rangeEnd]);
+    }, [shifts, rangeStart, rangeEnd, filteredEmployees]);
 
     const [calendarMonth, setCalendarMonth] = useState(new Date());
     const [isCalendarOpen, setIsCalendarOpen] = useState(false);
@@ -1709,15 +1714,26 @@ export default function OwnerRosterPage() {
                                 {isStartDropdownOpen && (
                                     <>
                                         <div className="fixed inset-0 z-60" onClick={() => setIsStartDropdownOpen(false)} />
-                                        <div className="absolute top-full mb-2 left-0 w-full bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-xl shadow-2xl z-61 max-h-48 overflow-y-auto animate-in slide-in-from-bottom-2 duration-200">
-                                            <div className="p-1">
-                                                {TIME_OPTIONS.map(time => (
+                                        <div className="absolute top-full mb-2 left-0 w-full bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-xl shadow-2xl z-61 overflow-hidden flex flex-col animate-in slide-in-from-bottom-2 duration-200">
+                                            <div className="p-2 border-b bg-[hsl(var(--muted))]/30 sticky top-0">
+                                                <input 
+                                                    autoFocus
+                                                    type="text" 
+                                                    placeholder="Search..." 
+                                                    value={timeSearch}
+                                                    onChange={e => setTimeSearch(e.target.value)}
+                                                    className="w-full h-8 px-2 text-[10px] rounded-md border bg-[hsl(var(--background))]"
+                                                />
+                                            </div>
+                                            <div className="max-h-48 overflow-y-auto p-1">
+                                                {TIME_OPTIONS.filter(t => t.includes(timeSearch)).map(time => (
                                                     <button
                                                         key={time}
                                                         type="button"
                                                         onClick={() => {
                                                             setShiftStart(time);
                                                             setIsStartDropdownOpen(false);
+                                                            setTimeSearch("");
                                                         }}
                                                         className={cn(
                                                             "w-full text-left px-3 py-2 text-xs rounded-lg transition-colors",
@@ -1752,15 +1768,26 @@ export default function OwnerRosterPage() {
                                 {isEndDropdownOpen && (
                                     <>
                                         <div className="fixed inset-0 z-60" onClick={() => setIsEndDropdownOpen(false)} />
-                                        <div className="absolute top-full mb-2 left-0 w-full bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-xl shadow-2xl z-61 max-h-48 overflow-y-auto animate-in slide-in-from-bottom-2 duration-200">
-                                            <div className="p-1">
-                                                {TIME_OPTIONS.map(time => (
+                                        <div className="absolute top-full mb-2 left-0 w-full bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-xl shadow-2xl z-61 overflow-hidden flex flex-col animate-in slide-in-from-bottom-2 duration-200">
+                                            <div className="p-2 border-b bg-[hsl(var(--muted))]/30 sticky top-0">
+                                                <input 
+                                                    autoFocus
+                                                    type="text" 
+                                                    placeholder="Search..." 
+                                                    value={timeSearch}
+                                                    onChange={e => setTimeSearch(e.target.value)}
+                                                    className="w-full h-8 px-2 text-[10px] rounded-md border bg-[hsl(var(--background))]"
+                                                />
+                                            </div>
+                                            <div className="max-h-48 overflow-y-auto p-1">
+                                                {TIME_OPTIONS.filter(t => t.includes(timeSearch)).map(time => (
                                                     <button
                                                         key={time}
                                                         type="button"
                                                         onClick={() => {
                                                             setShiftEnd(time);
                                                             setIsEndDropdownOpen(false);
+                                                            setTimeSearch("");
                                                         }}
                                                         className={cn(
                                                             "w-full text-left px-3 py-2 text-xs rounded-lg transition-colors",
