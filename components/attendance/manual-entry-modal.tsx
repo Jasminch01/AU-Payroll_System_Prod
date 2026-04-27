@@ -29,14 +29,11 @@ const EVENT_TYPES: { value: EventType; label: string }[] = [
 ];
 
 const TIME_OPTIONS = [
-    ...Array.from({ length: 23 * 60 }, (_, i) => {
-        // Start from 01:00 and end at 23:59
-        const totalMinutes = (i + 60);
-        const hours = Math.floor(totalMinutes / 60).toString().padStart(2, "0");
-        const minutes = (totalMinutes % 60).toString().padStart(2, "0");
+    ...Array.from({ length: 24 * 60 }, (_, i) => {
+        const hours = Math.floor(i / 60).toString().padStart(2, "0");
+        const minutes = (i % 60).toString().padStart(2, "0");
         return `${hours}:${minutes}`;
-    }),
-    "24:00"
+    })
 ];
 
 export function ManualEntryModal({
@@ -59,6 +56,8 @@ export function ManualEntryModal({
         time: "01:00",
         override_reason: "",
     });
+
+    const [timeSearch, setTimeSearch] = useState("");
 
     const [error, setError] = useState("");
     const [success, setSuccess] = useState("");
@@ -300,9 +299,19 @@ export function ManualEntryModal({
                                                 className="fixed inset-0 z-70"
                                                 onClick={() => setIsTimeDropdownOpen(false)}
                                             />
-                                            <div className="absolute  mb-2 -left-10 top-12 w-32 bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-lg shadow-xl z-71 max-h-48 overflow-y-auto animate-in slide-in-from-bottom-2 duration-200">
-                                                <div className="p-1">
-                                                    {TIME_OPTIONS.map(time => (
+                                            <div className="absolute mb-2 -left-20 top-12 w-40 bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-lg shadow-xl z-71 overflow-hidden animate-in slide-in-from-bottom-2 duration-200 flex flex-col">
+                                                <div className="p-2 border-b bg-[hsl(var(--muted))]/30 sticky top-0">
+                                                    <input
+                                                        autoFocus
+                                                        type="text"
+                                                        placeholder="Search time..."
+                                                        value={timeSearch}
+                                                        onChange={e => setTimeSearch(e.target.value)}
+                                                        className="w-full h-8 px-2 text-[10px] rounded-md border bg-[hsl(var(--background))] focus:ring-1 focus:ring-[hsl(var(--brand))]"
+                                                    />
+                                                </div>
+                                                <div className="max-h-36 overflow-y-auto p-1">
+                                                    {TIME_OPTIONS.filter(t => t.includes(timeSearch)).map(time => (
                                                         <button
                                                             key={time}
                                                             type="button"

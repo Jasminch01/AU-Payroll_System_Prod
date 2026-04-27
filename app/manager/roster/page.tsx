@@ -704,21 +704,40 @@ export default function ManagerRosterPage() {
         let published = 0;
         let drafts = 0;
         let total = 0;
+        let totalHours = 0;
         let totalPublishedHours = 0;
+        let totalDraftHours = 0;
+
+        // Create a Set of filtered employee IDs for faster lookups
+        const filteredIds = new Set(filteredEmployees.map((e: any) => e.employee_id));
 
         for (const s of shifts) {
+            // Only include shifts for employees currently in the filtered list
+            if (!filteredIds.has(s.employee_id)) continue;
+
             const d = s.shift_date?.split('T')[0] || s.shift_date;
             if (d < rangeStart || d > rangeEnd) continue;
 
             total++;
+            
+            // Calculate hours for ALL shifts in range
+            if (s.start_time && s.end_time) {
+                const startTimeStr = s.start_time?.split('T')[1]?.substring(0, 5) || (typeof s.start_time === 'string' && s.start_time.length === 5 ? s.start_time : "00:00");
+                const endTimeStr = s.end_time?.split('T')[1]?.substring(0, 5) || (typeof s.end_time === 'string' && s.end_time.length === 5 ? s.end_time : "00:00");
+                
+                const hours = calculateShiftDuration(startTimeStr, endTimeStr);
+                if (hours > 0) {
+                    totalHours += hours;
+                    if (s.shift_status === 'published') {
+                        totalPublishedHours += hours;
+                    } else {
+                        totalDraftHours += hours;
+                    }
+                }
+            }
+
             if (s.shift_status === 'published') {
                 published++;
-                if (s.start_time && s.end_time) {
-                    const start = new Date(s.start_time).getTime();
-                    const end = new Date(s.end_time).getTime();
-                    const hours = (end - start) / (1000 * 60 * 60);
-                    if (hours > 0) totalPublishedHours += hours;
-                }
             } else {
                 drafts++;
             }
@@ -729,9 +748,11 @@ export default function ManagerRosterPage() {
             drafts,
             modified: 0,
             allPublished: total > 0 && total === published,
-            totalPublishedHours
+            totalHours,
+            totalPublishedHours,
+            totalDraftHours
         };
-    }, [shifts, rangeStart, rangeEnd]);
+    }, [shifts, rangeStart, rangeEnd, filteredEmployees]);
 
     const [calendarMonth, setCalendarMonth] = useState(new Date());
     const [isCalendarOpen, setIsCalendarOpen] = useState(false);
@@ -933,10 +954,20 @@ export default function ManagerRosterPage() {
                             </DropdownMenuContent>
                         </DropdownMenu>
 
-                        {/* Weekly Published Hours Widget */}
-                        <div className="hidden sm:flex flex-col justify-center h-10 px-4 bg-emerald-50 border border-emerald-200 rounded-xl">
-                            <span className="text-[9px] font-black uppercase text-emerald-600 tracking-widest leading-tight">Total Hours</span>
-                            <span className="text-xs font-black text-emerald-900 leading-tight block -mt-0.5">{statusSummary.totalPublishedHours.toFixed(1)} hrs</span>
+                        {/* Weekly Hours Widget */}
+                        <div className="hidden sm:flex items-center gap-2 h-10 px-3 bg-white border border-[hsl(var(--border))] rounded-xl shadow-sm">
+                            <div className="flex flex-col justify-center border-r border-[hsl(var(--border))] pr-3">
+                                <span className="text-[8px] font-black uppercase text-emerald-600 tracking-widest leading-tight">Published</span>
+                                <span className="text-[11px] font-black text-emerald-900 leading-tight block">{statusSummary.totalPublishedHours.toFixed(1)}h</span>
+                            </div>
+                            <div className="flex flex-col justify-center pr-3 border-r border-[hsl(var(--border))]">
+                                <span className="text-[8px] font-black uppercase text-orange-600 tracking-widest leading-tight">Draft</span>
+                                <span className="text-[11px] font-black text-orange-900 leading-tight block">{statusSummary.totalDraftHours.toFixed(1)}h</span>
+                            </div>
+                            <div className="flex flex-col justify-center">
+                                <span className="text-[8px] font-black uppercase text-[hsl(var(--brand))] tracking-widest leading-tight">Total</span>
+                                <span className="text-[11px] font-black text-[hsl(var(--foreground))] leading-tight block">{statusSummary.totalHours.toFixed(1)}h</span>
+                            </div>
                         </div>
                     </div>
                 </div>

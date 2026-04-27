@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useState, useMemo, useCallback } from "react";
-import { useQuery } from "@tanstack/react-query";
+import React, { useState, useMemo, useCallback, useEffect } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { createClient } from "@/lib/supabase/client";
 import { DashboardLayout } from "@/components/layout";
 import { DataTable, Column } from "@/components/ui/data-table";
 import { StatusBadge } from "@/components/ui/badge";
@@ -105,6 +106,31 @@ export default function ManagerAttendancePage() {
     const [isManualEntryModalOpen, setIsManualEntryModalOpen] = useState(false);
     const [editingLog, setEditingLog] = useState<any | null>(null);
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+    const [searchQuery, setSearchQuery] = useState("");
+    const queryClient = useQueryClient();
+
+    // Supabase Realtime Subscription for live updates
+    useEffect(() => {
+        const supabase = createClient();
+        const channel = supabase
+            .channel('manager-attendance-updates')
+            .on(
+                'postgres_changes',
+                {
+                    event: '*',
+                    schema: 'public',
+                    table: 'AttendanceLog'
+                },
+                () => {
+                    queryClient.invalidateQueries({ queryKey: ["attendance-raw"] });
+                }
+            )
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [queryClient]);
 
     const { data: employees = [] } = useQuery({
         queryKey: ["employees-active"],
@@ -179,8 +205,19 @@ export default function ManagerAttendancePage() {
                 const dateB = new Date(b.first_in || b.date).getTime();
                 return dateB - dateA;
             });
-    }, [records]);
+    }, [records, businessTimezone]);
 
+    const filteredData = useMemo(() => {
+        if (!searchQuery) return groupedRecords;
+        
+        const q = searchQuery.toLowerCase();
+        return groupedRecords.filter(row => {
+            const firstName = row.Employee?.first_name?.toLowerCase() || "";
+            const lastName = row.Employee?.last_name?.toLowerCase() || "";
+            const fullName = `${firstName} ${lastName}`;
+            return fullName.includes(q) || firstName.includes(q) || lastName.includes(q);
+        });
+    }, [groupedRecords, searchQuery]);
     // Extract unique employees for manual entry modal
     const uniqueEmployees = useMemo(() => {
         const employees = new Map<string, { employee_id: string; first_name: string; last_name: string }>();
@@ -359,12 +396,12 @@ export default function ManagerAttendancePage() {
     ];
 
     /* ── Summary stats ── */
-    const totalSessions = groupedRecords.length;
-    const missingPunch = groupedRecords.filter(
+    const totalSessions = filteredData.length;
+    const missingPunch = filteredData.filter(
         (r) => r.sessions.some((s) => !s.clock_in || !s.clock_out)
     ).length;
-    const manualEntries = groupedRecords.filter((r) => r.is_manual).length;
-    const totalWorkedMinutes = groupedRecords.reduce(
+    const manualEntries = filteredData.filter((r) => r.is_manual).length;
+    const totalWorkedMinutes = filteredData.reduce(
         (sum, r) => sum + r.total_hours,
         0
     );
@@ -496,9 +533,9 @@ export default function ManagerAttendancePage() {
             {/* Table */}
             <DataTable
                 columns={columns}
-                data={groupedRecords}
+                data={filteredData}
                 searchable
-                searchKeys={["Employee.first_name", "Employee.last_name", "date"]}
+                onSearchChange={setSearchQuery}
                 searchPlaceholder="Search by employee or date..."
                 emptyMessage="No attendance records found for this period"
                 emptyIcon={<Clock size={40} />}

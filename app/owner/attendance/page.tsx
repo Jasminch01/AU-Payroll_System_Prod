@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState, useMemo, useCallback } from "react";
-import { useQuery } from "@tanstack/react-query";
+import React, { useState, useMemo, useCallback, useEffect } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { DashboardLayout } from "@/components/layout";
 import { DataTable, Column } from "@/components/ui/data-table";
 import { StatusBadge } from "@/components/ui/badge";
@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import type { AttendanceLog } from "@/types/database";
 import { cn } from "@/lib/utils";
+import { createClient } from "@/lib/supabase/client";
 import { EditAttendanceModal } from "@/components/attendance/edit-attendance-modal";
 import { useBusinessTimezone } from "@/lib/timezone-context";
 
@@ -106,6 +107,32 @@ export default function OwnerAttendancePage() {
     const [isManualEntryModalOpen, setIsManualEntryModalOpen] = useState(false);
     const [editingLog, setEditingLog] = useState<any | null>(null);
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+    const [searchQuery, setSearchQuery] = useState("");
+    const queryClient = useQueryClient();
+
+    // Supabase Realtime Subscription for live updates
+    useEffect(() => {
+        const supabase = createClient();
+        const channel = supabase
+            .channel('attendance-updates')
+            .on(
+                'postgres_changes',
+                {
+                    event: '*',
+                    schema: 'public',
+                    table: 'AttendanceLog'
+                },
+                () => {
+                    // Invalidate both current and broader query keys
+                    queryClient.invalidateQueries({ queryKey: ["attendance-raw"] });
+                }
+            )
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [queryClient]);
 
     const { data: employees = [] } = useQuery({
         queryKey: ["employees-active"],
@@ -220,6 +247,20 @@ export default function OwnerAttendancePage() {
             `${a.first_name} ${a.last_name}`.localeCompare(`${b.first_name} ${b.last_name}`)
         );
     }, [groupedRecords]);
+
+    const filteredData = useMemo(() => {
+        if (!searchQuery) return groupedRecords;
+
+        const q = searchQuery.toLowerCase();
+        return groupedRecords.filter(row => {
+            const firstName = row.Employee?.first_name?.toLowerCase() || "";
+            const lastName = row.Employee?.last_name?.toLowerCase() || "";
+            const searchDate = row.searchDate?.toLowerCase() || "";
+            const fullName = `${firstName} ${lastName}`;
+
+            return fullName.includes(q) || firstName.includes(q) || lastName.includes(q) || searchDate.includes(q);
+        });
+    }, [groupedRecords, searchQuery]);
 
     /* ── Table columns ── */
     const columns: Column<GroupedAttendance>[] = [
@@ -405,12 +446,12 @@ export default function OwnerAttendancePage() {
     ];
 
     /* ── Summary stats ── */
-    const totalSessions = groupedRecords.length;
-    const missingPunch = groupedRecords.filter(
+    const totalSessions = filteredData.length;
+    const missingPunch = filteredData.filter(
         (r) => r.sessions.some((s) => !s.clock_in || !s.clock_out)
     ).length;
-    const manualEntries = groupedRecords.filter((r) => r.is_manual).length;
-    const totalWorkedMinutes = groupedRecords.reduce(
+    const manualEntries = filteredData.filter((r) => r.is_manual).length;
+    const totalWorkedMinutes = filteredData.reduce(
         (sum, r) => sum + r.total_hours,
         0
     );
@@ -542,9 +583,9 @@ export default function OwnerAttendancePage() {
             {/* Table */}
             <DataTable
                 columns={columns}
-                data={groupedRecords}
+                data={filteredData}
                 searchable
-                searchKeys={["Employee.first_name", "Employee.last_name", "searchDate"]}
+                onSearchChange={setSearchQuery}
                 searchPlaceholder="Search by employee name or date (e.g., '20 Apr' or '2026-04-20')..."
                 emptyMessage="No attendance records found for this period"
                 emptyIcon={<Clock size={40} />}
