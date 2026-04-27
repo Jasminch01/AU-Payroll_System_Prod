@@ -111,29 +111,14 @@ export async function GET(request: NextRequest) {
 
         // Post-filter logic for Roles and Pool
         let finalSwaps = enrichedSwaps;
-        if (authUser.role === 'employee') {
+        if (authUser.role === 'employee' || authUser.role === 'manager') {
             const employeeId = authUser.employee_id;
             finalSwaps = enrichedSwaps.filter((swap: any) => {
                 const isPersonal = swap.requester_id === employeeId || swap.target_employee_id === employeeId;
                 const isOpenPool = !swap.target_employee_id && swap.status === 'pending_approval';
 
-                if (isOpenPool) {
-                    const requester = employees.get(swap.requester_id);
-                    const reqRole = requester?.user_id ? roleMap.get(requester.user_id) : 'employee';
-                    // We include own pool posts so they can see "Pooled" status and Undo them
-                    return reqRole === 'employee';
-                }
-                return isPersonal;
-            });
-        } else if (authUser.role === 'manager') {
-            const employeeId = authUser.employee_id;
-            finalSwaps = enrichedSwaps.filter((swap: any) => {
-                const requester = employees.get(swap.requester_id);
-                const reqRole = requester?.user_id ? roleMap.get(requester.user_id) : 'employee';
-                const isOwnSwap = employeeId && (swap.requester_id === employeeId || swap.target_employee_id === employeeId);
-                const isOpenForManagers = !swap.target_employee_id && reqRole === 'manager' && swap.requester_id !== employeeId;
-                
-                return reqRole === 'employee' || isOwnSwap || isOpenForManagers;
+                // Include all open pool shifts (regardless of requester role) and own requests
+                return isPersonal || isOpenPool;
             });
         }
 
@@ -218,13 +203,7 @@ export async function POST(request: NextRequest) {
                 if (userData) targetRole = userData.role;
             }
 
-            if (requesterRole === 'employee' && targetRole !== 'employee') {
-                return errorResponse('Employees can only swap shifts with other Employees.', 403);
-            }
-
-            if (requesterRole === 'manager' && targetRole !== 'manager') {
-                return errorResponse('Managers can only swap shifts with other Managers.', 403);
-            }
+            // Role validations removed: Anyone can swap with anyone
         }
         // ------------------------
 
