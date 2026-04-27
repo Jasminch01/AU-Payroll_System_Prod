@@ -73,17 +73,27 @@ export function groupAttendanceIntoSessions(
     });
 
     const sessions: WorkSession[] = [];
-    let activeSession: Partial<WorkSession> | null = null;
+    const activeSessions: Partial<WorkSession>[] = [];
     const usedClockInIds = new Set<string>();
 
+    const getSource = (l: AttendanceLog) => l.override_by || l.device_info || 'default';
+
     for (const log of sorted) {
+      const source = getSource(log);
+
       if (log.event_type === 'CLOCK_IN') {
-        if (activeSession && !activeSession.clock_out) {
-          if (activeSession.clock_in) usedClockInIds.add(activeSession.clock_in.log_id);
-          sessions.push(activeSession as WorkSession);
+        // Check if there is already an active session for this specific source
+        const sameSourceIndex = activeSessions.findIndex(s => s.clock_in && getSource(s.clock_in) === source);
+        
+        if (sameSourceIndex !== -1) {
+          // Close the previous session for this source as incomplete
+          const prev = activeSessions[sameSourceIndex];
+          if (prev.clock_in) usedClockInIds.add(prev.clock_in.log_id);
+          sessions.push(prev as WorkSession);
+          activeSessions.splice(sameSourceIndex, 1);
         }
 
-        activeSession = {
+        activeSessions.push({
           clock_in_date: getDateInTimezone(log.timestamp, timezone),
           clock_in: log,
           clock_out: null,
@@ -91,24 +101,32 @@ export function groupAttendanceIntoSessions(
           all_logs: [log],
           duration_minutes: null,
           has_overtime: false,
-        };
+        });
       } else if (log.event_type === 'CLOCK_OUT') {
-        if (activeSession && !activeSession.clock_out) {
-          // Case 1: Normal CLOCK_OUT with active CLOCK_IN
-          activeSession.clock_out = log;
-          activeSession.all_logs!.push(log);
+        // 1. Try to find an active session with the SAME source
+        let matchIndex = activeSessions.findIndex(s => s.clock_in && getSource(s.clock_in) === source);
+        
+        // 2. If no same source, take the most recent active session (any source)
+        if (matchIndex === -1 && activeSessions.length > 0) {
+          matchIndex = activeSessions.length - 1;
+        }
 
-          if (activeSession.clock_in) {
-            usedClockInIds.add(activeSession.clock_in.log_id);
-            const inMs = new Date(activeSession.clock_in.timestamp).getTime();
+        if (matchIndex !== -1) {
+          const matchedSession = activeSessions[matchIndex];
+          matchedSession.clock_out = log;
+          matchedSession.all_logs!.push(log);
+
+          if (matchedSession.clock_in) {
+            usedClockInIds.add(matchedSession.clock_in.log_id);
+            const inMs = new Date(matchedSession.clock_in.timestamp).getTime();
             const outMs = new Date(log.timestamp).getTime();
-            activeSession.duration_minutes = (outMs - inMs) / 60000;
+            matchedSession.duration_minutes = (outMs - inMs) / 60000;
           }
 
-          sessions.push(activeSession as WorkSession);
-          activeSession = null;
-        } else if (!activeSession) {
-          // Case 2: Orphan CLOCK_OUT (manual entry after CLOCK_IN ended)
+          sessions.push(matchedSession as WorkSession);
+          activeSessions.splice(matchIndex, 1);
+        } else {
+          // Case 2: Orphan CLOCK_OUT (manual entry after CLOCK_IN ended or no matching active session)
           const clockOutDate = getDateInTimezone(log.timestamp, timezone);
           let matchedClockIn: AttendanceLogWithEmployee | null = null;
 
@@ -148,15 +166,23 @@ export function groupAttendanceIntoSessions(
 
           sessions.push(orphanSession);
         }
-        // If activeSession exists but already has clock_out, ignore this CLOCK_OUT
-      } else if ((log.event_type === 'BREAK_START' || log.event_type === 'BREAK_END') && activeSession) {
-        activeSession.breaks!.push(log);
-        activeSession.all_logs!.push(log);
+      } else if (log.event_type === 'BREAK_START' || log.event_type === 'BREAK_END') {
+        // Pair breaks with the most appropriate active session
+        let matchIndex = activeSessions.findIndex(s => s.clock_in && getSource(s.clock_in) === source);
+        if (matchIndex === -1 && activeSessions.length > 0) {
+          matchIndex = activeSessions.length - 1;
+        }
+        
+        if (matchIndex !== -1) {
+          activeSessions[matchIndex].breaks!.push(log);
+          activeSessions[matchIndex].all_logs!.push(log);
+        }
       }
     }
 
-    if (activeSession) {
-      sessions.push(activeSession as WorkSession);
+    // Add any remaining active sessions as incomplete sessions
+    for (const remainingSession of activeSessions) {
+      sessions.push(remainingSession as WorkSession);
     }
 
     // Now group these results by date for this specific employee

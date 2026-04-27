@@ -829,6 +829,7 @@ export default function OwnerAttendancePage() {
                         setDetailRow(null);
                     }}
                     log={editingLog}
+                    role="owner"
                 />
             )}
         </DashboardLayout>
