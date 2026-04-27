@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useState, useMemo, useCallback } from "react";
-import { useQuery } from "@tanstack/react-query";
+import React, { useState, useMemo, useCallback, useEffect } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { createClient } from "@/lib/supabase/client";
 import { DashboardLayout } from "@/components/layout";
 import { DataTable, Column } from "@/components/ui/data-table";
 import { StatusBadge } from "@/components/ui/badge";
@@ -105,6 +106,31 @@ export default function ManagerAttendancePage() {
     const [isManualEntryModalOpen, setIsManualEntryModalOpen] = useState(false);
     const [editingLog, setEditingLog] = useState<any | null>(null);
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+    const [searchQuery, setSearchQuery] = useState("");
+    const queryClient = useQueryClient();
+
+    // Supabase Realtime Subscription for live updates
+    useEffect(() => {
+        const supabase = createClient();
+        const channel = supabase
+            .channel('manager-attendance-updates')
+            .on(
+                'postgres_changes',
+                {
+                    event: '*',
+                    schema: 'public',
+                    table: 'AttendanceLog'
+                },
+                () => {
+                    queryClient.invalidateQueries({ queryKey: ["attendance-raw"] });
+                }
+            )
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [queryClient]);
 
     const { data: employees = [] } = useQuery({
         queryKey: ["employees-active"],
@@ -179,8 +205,19 @@ export default function ManagerAttendancePage() {
                 const dateB = new Date(b.first_in || b.date).getTime();
                 return dateB - dateA;
             });
-    }, [records]);
+    }, [records, businessTimezone]);
 
+    const filteredData = useMemo(() => {
+        if (!searchQuery) return groupedRecords;
+        
+        const q = searchQuery.toLowerCase();
+        return groupedRecords.filter(row => {
+            const firstName = row.Employee?.first_name?.toLowerCase() || "";
+            const lastName = row.Employee?.last_name?.toLowerCase() || "";
+            const fullName = `${firstName} ${lastName}`;
+            return fullName.includes(q) || firstName.includes(q) || lastName.includes(q);
+        });
+    }, [groupedRecords, searchQuery]);
     // Extract unique employees for manual entry modal
     const uniqueEmployees = useMemo(() => {
         const employees = new Map<string, { employee_id: string; first_name: string; last_name: string }>();
@@ -356,15 +393,32 @@ export default function ManagerAttendancePage() {
                 );
             },
         },
+        {
+            key: "actions",
+            label: "Edit",
+            render: (row) => (
+                <button
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        setEditingLog({ ...row.raw_logs[0], all_logs: row.raw_logs, Employee: row.Employee });
+                        setIsEditModalOpen(true);
+                    }}
+                    className="p-2 rounded-lg text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--brand))] hover:bg-[hsl(var(--brand-light))] transition-all"
+                    title="Edit Session"
+                >
+                    <Edit2 size={16} />
+                </button>
+            ),
+        },
     ];
 
     /* ── Summary stats ── */
-    const totalSessions = groupedRecords.length;
-    const missingPunch = groupedRecords.filter(
+    const totalSessions = filteredData.length;
+    const missingPunch = filteredData.filter(
         (r) => r.sessions.some((s) => !s.clock_in || !s.clock_out)
     ).length;
-    const manualEntries = groupedRecords.filter((r) => r.is_manual).length;
-    const totalWorkedMinutes = groupedRecords.reduce(
+    const manualEntries = filteredData.filter((r) => r.is_manual).length;
+    const totalWorkedMinutes = filteredData.reduce(
         (sum, r) => sum + r.total_hours,
         0
     );
@@ -496,9 +550,9 @@ export default function ManagerAttendancePage() {
             {/* Table */}
             <DataTable
                 columns={columns}
-                data={groupedRecords}
+                data={filteredData}
                 searchable
-                searchKeys={["Employee.first_name", "Employee.last_name", "date"]}
+                onSearchChange={setSearchQuery}
                 searchPlaceholder="Search by employee or date..."
                 emptyMessage="No attendance records found for this period"
                 emptyIcon={<Clock size={40} />}
@@ -619,22 +673,6 @@ export default function ManagerAttendancePage() {
                                                                 )}
                                                             />
                                                             {formatTime(s.clock_in, businessTimezone)}
-                                                            {s.clock_in && (
-                                                                <button
-                                                                    onClick={(e) => {
-                                                                        e.stopPropagation();
-                                                                        const log = detailRow.raw_logs.find(rx => rx.timestamp === s.clock_in && rx.event_type === 'CLOCK_IN');
-                                                                        if (log) {
-                                                                            setEditingLog({ ...log, Employee: detailRow.Employee });
-                                                                            setIsEditModalOpen(true);
-                                                                        }
-                                                                    }}
-                                                                    className="ml-auto p-1 rounded-md text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--brand))] hover:bg-[hsl(var(--brand-light))] transition-colors"
-                                                                    title="Edit Clock In"
-                                                                >
-                                                                    <Edit2 size={12} />
-                                                                </button>
-                                                            )}
                                                         </p>
                                                     </div>
                                                     <div>
@@ -651,22 +689,6 @@ export default function ManagerAttendancePage() {
                                                                 )}
                                                             />
                                                             {formatTime(s.clock_out, businessTimezone)}
-                                                            {s.clock_out && (
-                                                                <button
-                                                                    onClick={(e) => {
-                                                                        e.stopPropagation();
-                                                                        const log = detailRow.raw_logs.find(rx => rx.timestamp === s.clock_out && rx.event_type === 'CLOCK_OUT');
-                                                                        if (log) {
-                                                                            setEditingLog({ ...log, Employee: detailRow.Employee });
-                                                                            setIsEditModalOpen(true);
-                                                                        }
-                                                                    }}
-                                                                    className="ml-auto p-1 rounded-md text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--brand))] hover:bg-[hsl(var(--brand-light))] transition-colors"
-                                                                    title="Edit Clock Out"
-                                                                >
-                                                                    <Edit2 size={12} />
-                                                                </button>
-                                                            )}
                                                         </p>
                                                     </div>
                                                     <div>
@@ -709,18 +731,6 @@ export default function ManagerAttendancePage() {
                                                                             <span className="font-semibold text-[hsl(var(--foreground))]">{pair.end ? formatTime(pair.end.timestamp, businessTimezone) : '—'}</span>
                                                                         </div>
                                                                     </div>
-                                                                    {pair.start && (
-                                                                        <button
-                                                                            onClick={(e) => {
-                                                                                e.stopPropagation();
-                                                                                setEditingLog({ ...pair.start, Employee: detailRow.Employee });
-                                                                                setIsEditModalOpen(true);
-                                                                            }}
-                                                                            className="p-1 rounded hover:bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--brand))]"
-                                                                        >
-                                                                            <Edit2 size={10} />
-                                                                        </button>
-                                                                    )}
                                                                 </div>
                                                             ));
                                                         })()}
@@ -773,6 +783,7 @@ export default function ManagerAttendancePage() {
                         setDetailRow(null);
                     }}
                     log={editingLog}
+                    role="manager"
                     fromDate={fromDate}
                     toDate={toDate}
                 />
