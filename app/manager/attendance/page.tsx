@@ -393,6 +393,23 @@ export default function ManagerAttendancePage() {
                 );
             },
         },
+        {
+            key: "actions",
+            label: "Edit",
+            render: (row) => (
+                <button
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        setEditingLog({ ...row.raw_logs[0], all_logs: row.raw_logs, Employee: row.Employee });
+                        setIsEditModalOpen(true);
+                    }}
+                    className="p-2 rounded-lg text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--brand))] hover:bg-[hsl(var(--brand-light))] transition-all"
+                    title="Edit Session"
+                >
+                    <Edit2 size={16} />
+                </button>
+            ),
+        },
     ];
 
     /* ── Summary stats ── */
@@ -656,22 +673,6 @@ export default function ManagerAttendancePage() {
                                                                 )}
                                                             />
                                                             {formatTime(s.clock_in, businessTimezone)}
-                                                            {s.clock_in && (
-                                                                <button
-                                                                    onClick={(e) => {
-                                                                        e.stopPropagation();
-                                                                        const log = detailRow.raw_logs.find(rx => rx.timestamp === s.clock_in && rx.event_type === 'CLOCK_IN');
-                                                                        if (log) {
-                                                                            setEditingLog({ ...log, Employee: detailRow.Employee });
-                                                                            setIsEditModalOpen(true);
-                                                                        }
-                                                                    }}
-                                                                    className="ml-auto p-1 rounded-md text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--brand))] hover:bg-[hsl(var(--brand-light))] transition-colors"
-                                                                    title="Edit Clock In"
-                                                                >
-                                                                    <Edit2 size={12} />
-                                                                </button>
-                                                            )}
                                                         </p>
                                                     </div>
                                                     <div>
@@ -688,22 +689,6 @@ export default function ManagerAttendancePage() {
                                                                 )}
                                                             />
                                                             {formatTime(s.clock_out, businessTimezone)}
-                                                            {s.clock_out && (
-                                                                <button
-                                                                    onClick={(e) => {
-                                                                        e.stopPropagation();
-                                                                        const log = detailRow.raw_logs.find(rx => rx.timestamp === s.clock_out && rx.event_type === 'CLOCK_OUT');
-                                                                        if (log) {
-                                                                            setEditingLog({ ...log, Employee: detailRow.Employee });
-                                                                            setIsEditModalOpen(true);
-                                                                        }
-                                                                    }}
-                                                                    className="ml-auto p-1 rounded-md text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--brand))] hover:bg-[hsl(var(--brand-light))] transition-colors"
-                                                                    title="Edit Clock Out"
-                                                                >
-                                                                    <Edit2 size={12} />
-                                                                </button>
-                                                            )}
                                                         </p>
                                                     </div>
                                                     <div>
@@ -746,18 +731,6 @@ export default function ManagerAttendancePage() {
                                                                             <span className="font-semibold text-[hsl(var(--foreground))]">{pair.end ? formatTime(pair.end.timestamp, businessTimezone) : '—'}</span>
                                                                         </div>
                                                                     </div>
-                                                                    {pair.start && (
-                                                                        <button
-                                                                            onClick={(e) => {
-                                                                                e.stopPropagation();
-                                                                                setEditingLog({ ...pair.start, Employee: detailRow.Employee });
-                                                                                setIsEditModalOpen(true);
-                                                                            }}
-                                                                            className="p-1 rounded hover:bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--brand))]"
-                                                                        >
-                                                                            <Edit2 size={10} />
-                                                                        </button>
-                                                                    )}
                                                                 </div>
                                                             ));
                                                         })()}
@@ -810,6 +783,7 @@ export default function ManagerAttendancePage() {
                         setDetailRow(null);
                     }}
                     log={editingLog}
+                    role="manager"
                     fromDate={fromDate}
                     toDate={toDate}
                 />

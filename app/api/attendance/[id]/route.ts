@@ -116,7 +116,7 @@ export async function DELETE(
     { params }: { params: Promise<{ id: string }> }
 ) {
     try {
-        const authUser = await requireRole('owner', 'manager');
+        const authUser = await requireRole('owner');
         if (!authUser) return errorResponse('Unauthorized', 401);
 
         const { id: log_id } = await params;
