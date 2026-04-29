@@ -46,6 +46,7 @@ const ownerNav: NavItem[] = [
     { label: "Payroll", href: "/owner/payroll", icon: <DollarSign size={20} /> },
     { label: "Analytics", href: "/owner/analytics", icon: <BarChart3 size={20} /> },
     { label: "Audit Log", href: "/owner/audit", icon: <ShieldCheck size={20} /> },
+    { label: "Settings", href: "/owner/settings", icon: <Settings size={20} /> },
 ];
 
 const managerNav: NavItem[] = [
@@ -57,6 +58,7 @@ const managerNav: NavItem[] = [
     { label: "Timesheets", href: "/manager/timesheets", icon: <FileText size={20} /> },
     { label: "Leave", href: "/manager/leave", icon: <Palmtree size={20} /> },
     { label: "Approvals", href: "/manager/approvals", icon: <ShieldCheck size={20} /> },
+    { label: "Settings", href: "/manager/settings", icon: <Settings size={20} /> },
 ];
 
 const employeeNav: NavItem[] = [

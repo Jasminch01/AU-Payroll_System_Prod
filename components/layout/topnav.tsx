@@ -61,7 +61,7 @@ export function TopNav({
     };
 
     return (
-        <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-[hsl(var(--border))] bg-[hsl(var(--card))]/80 px-6 backdrop-blur-md">
+        <header className="sticky top-0 z-100 flex h-16 items-center justify-between border-b border-[hsl(var(--border))] bg-[hsl(var(--card))]/80 px-6 backdrop-blur-md">
             {/* Left — Mobile Menu Toggle */}
             <div className="flex items-center">
                 <button
@@ -99,7 +99,7 @@ export function TopNav({
                                 animate={{ opacity: 1, y: 0, scale: 1 }}
                                 exit={{ opacity: 0, y: -4, scale: 0.97 }}
                                 transition={{ duration: 0.15, ease: [0.4, 0, 0.2, 1] }}
-                                className="absolute right-0 top-full mt-2 w-64 overflow-hidden rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-xl shadow-black/10"
+                                className="absolute right-0 top-full mt-2 w-64 overflow-hidden rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-xl shadow-black/10 z-150"
                             >
                                 {/* User Info Header */}
                                 <div className="border-b border-[hsl(var(--border))] px-4 py-3">

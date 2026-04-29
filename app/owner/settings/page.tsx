@@ -7,8 +7,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { apiGet, apiPost } from "@/lib/api-client";
 import { toast } from "sonner";
-import { Link2, CheckCircle, XCircle, MonitorSmartphone, Calendar } from "lucide-react";
+import { Link2, CheckCircle, XCircle, MonitorSmartphone, Calendar, Bell } from "lucide-react";
 import Link from "next/link";
+import { NotificationSettings } from "@/components/settings/notification-settings";
 
 export default function OwnerSettingsPage() {
     const queryClient = useQueryClient();
@@ -110,6 +111,11 @@ export default function OwnerSettingsPage() {
                     </div>
                 </CardContent>
             </Card>
+
+            {/* Notification Preferences */}
+            <div className="mb-6">
+                <NotificationSettings />
+            </div>
 
             {/* Public Holidays */}
             <Card className="mt-6">

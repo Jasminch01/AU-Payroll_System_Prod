@@ -39,6 +39,15 @@ export async function GET(request: NextRequest) {
         const excludeConflictsForShift = searchParams.get('exclude_conflicts_for_shift');
         const onlyWithShifts = searchParams.get('only_with_shifts') === 'true';
 
+        console.log('[Employees API] Request Params:', {
+            role: roleFilter,
+            status: statusFilter,
+            excludeSelf,
+            excludeConflictsForShift,
+            onlyWithShifts,
+            business_id: authUser.business_id
+        });
+
         // Calculate offset
         const from = (page - 1) * limit;
         const to = from + limit - 1;
@@ -57,9 +66,18 @@ export async function GET(request: NextRequest) {
             .from('Employee')
             .select(selectFields, isPaginated ? { count: 'exact' } : undefined)
             .eq('business_id', authUser.business_id);
+        
+        // Force 'active' status for Swap/Transfer/Pool related colleague lookups
+        if (excludeConflictsForShift || onlyWithShifts) {
+            query = query.eq('status', 'active');
+        }
 
         if (statusFilter && statusFilter !== 'all') {
-            query = query.eq('status', statusFilter);
+            if (statusFilter.includes(',')) {
+                query = query.in('status', statusFilter.split(','));
+            } else {
+                query = query.eq('status', statusFilter);
+            }
         }
 
         if (search) {
@@ -93,6 +111,8 @@ export async function GET(request: NextRequest) {
                 (overlappingShifts || []).forEach(s => {
                     if (s.employee_id) busyEmployeeIds.add(s.employee_id);
                 });
+
+                console.log('[Employees API] Busy employees (conflicts):', Array.from(busyEmployeeIds));
             }
         }
 
@@ -119,9 +139,11 @@ export async function GET(request: NextRequest) {
             ));
 
             if (eligibleEmployeeIds.length === 0) {
+                console.log('[Employees API] No eligible employees found for swap (onlyWithShifts)');
                 // Return empty if no one else has published shifts
                 return successResponse([], 'No colleagues with available shifts found');
             }
+            console.log('[Employees API] Eligible employees for swap:', eligibleEmployeeIds.length);
         }
 
         // First determine eligible employees if onlyWithShifts or excludeConflictsForShift
@@ -151,9 +173,12 @@ export async function GET(request: NextRequest) {
         }
 
         if (busyEmployeeIds.size > 0) {
-           // Wait, filter 'not.in' is supported in PostgREST but with limits.
-           // Since it's shift conflicts, it's safe to use not.in for a small team.
-           query = query.not('employee_id', 'in', `(${Array.from(busyEmployeeIds).join(',')})`);
+           // For Swaps (onlyWithShifts), we allow 'busy' employees to show up 
+           // because they will be giving up the overlapping shift anyway.
+           // We only strictly exclude busy employees for one-way Transfers.
+           if (!onlyWithShifts) {
+               query = query.filter('employee_id', 'not.in', `(${Array.from(busyEmployeeIds).join(',')})`);
+           }
         }
 
         // Apply server pagination only if requested
@@ -164,9 +189,11 @@ export async function GET(request: NextRequest) {
         const { data: employees, error, count } = await query;
 
         if (error) {
-            console.error('Employees API Query Error:', error);
+            console.error('[Employees API] Query Error:', error);
             return errorResponse(error.message, 400);
         }
+
+        console.log(`[Employees API] Database returned ${employees?.length || 0} potential candidates`);
 
         let filtered = employees || [];
 
@@ -227,6 +254,7 @@ export async function GET(request: NextRequest) {
         const totalItems = count || 0;
 
         if (isPaginated) {
+            console.log(`[Employees API] Returning ${filtered.length} employees (paginated)`);
             return successResponse({
                 employees: filtered,
                 meta: {
@@ -244,6 +272,11 @@ export async function GET(request: NextRequest) {
                 }
             }, `Found ${filtered.length} employee(s) page`);
         } else {
+            if (filtered.length > 0) {
+                console.log(`[Employees API] Success: ${filtered.length} available employees found`);
+            } else {
+                console.log('[Employees API] Notice: No available employees found after final filtering');
+            }
             return successResponse(filtered, `Found ${filtered.length} employee(s)`);
         }
     } catch (error) {

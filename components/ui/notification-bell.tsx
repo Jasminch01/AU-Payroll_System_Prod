@@ -109,7 +109,7 @@ export function NotificationBell() {
                 n.entity_id,
                 user.role as 'owner' | 'manager' | 'employee'
             );
-            
+
             if (route) {
                 router.push(route);
             }
@@ -140,13 +140,13 @@ export function NotificationBell() {
                         animate={{ opacity: 1, y: 0, scale: 1 }}
                         exit={{ opacity: 0, y: -4, scale: 0.97 }}
                         transition={{ duration: 0.15, ease: [0.4, 0, 0.2, 1] }}
-                        className="absolute right-0 top-full mt-2 w-80 overflow-hidden rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-xl shadow-black/10 origin-top-right z-50"
+                        className="absolute right-0 top-full mt-2 w-80 overflow-hidden rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-xl shadow-black/10 origin-top-right z-150"
                     >
                         {/* Header */}
                         <div className="flex items-center justify-between border-b border-[hsl(var(--border))] px-4 py-3">
                             <h3 className="font-semibold text-[hsl(var(--foreground))]">Notifications</h3>
                             {unreadCount > 0 && (
-                                <button 
+                                <button
                                     onClick={handleMarkAllRead}
                                     className="text-xs font-medium text-[hsl(var(--brand))] hover:underline"
                                     disabled={markAsReadMutation.isPending}
@@ -166,7 +166,7 @@ export function NotificationBell() {
                             ) : (
                                 <div className="flex flex-col">
                                     {notifications.map((notification) => (
-                                        <div 
+                                        <div
                                             key={notification.id}
                                             onClick={() => handleNotificationClick(notification)}
                                             className={cn(
@@ -175,22 +175,22 @@ export function NotificationBell() {
                                             )}
                                         >
                                             <div className="flex items-start justify-between gap-2">
-                                                 <div className="min-w-0 flex-1">
-                                                     <div className="flex items-start justify-between gap-4 mb-0.5">
-                                                         <p className={cn(
-                                                             "text-sm", 
-                                                             !notification.is_read ? "font-semibold text-[hsl(var(--foreground))]" : "font-medium text-[hsl(var(--foreground))]"
-                                                         )}>
-                                                             {notification.title}
-                                                         </p>
-                                                         <span className="text-[10px] text-[hsl(var(--muted-foreground))] whitespace-nowrap pt-0.5">
+                                                <div className="min-w-0 flex-1">
+                                                    <div className="flex items-start justify-between gap-4 mb-0.5">
+                                                        <p className={cn(
+                                                            "text-sm",
+                                                            !notification.is_read ? "font-semibold text-[hsl(var(--foreground))]" : "font-medium text-[hsl(var(--foreground))]"
+                                                        )}>
+                                                            {notification.title}
+                                                        </p>
+                                                        <span className="text-[10px] text-[hsl(var(--muted-foreground))] whitespace-nowrap pt-0.5">
                                                             {new Date(notification.created_at).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true })}
-                                                         </span>
-                                                     </div>
-                                                     <p className="text-xs text-[hsl(var(--muted-foreground))] line-clamp-2">
-                                                         {notification.message}
-                                                     </p>
-                                                 </div>
+                                                        </span>
+                                                    </div>
+                                                    <p className="text-xs text-[hsl(var(--muted-foreground))] line-clamp-2">
+                                                        {notification.message}
+                                                    </p>
+                                                </div>
                                                 {!notification.is_read && (
                                                     <div className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-[hsl(var(--brand))]" />
                                                 )}
