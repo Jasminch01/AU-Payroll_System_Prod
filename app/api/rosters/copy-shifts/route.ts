@@ -130,7 +130,7 @@ export async function POST(request: NextRequest) {
                 const empName = conflict.Employee ? `${conflict.Employee.first_name} ${conflict.Employee.last_name}` : 'Employee';
                 const d = new Date(conflict.start_time);
                 const dayStr = d.toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: 'short' });
-                const timeStr = `${d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })} to ${new Date(conflict.end_time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })}`;
+                const timeStr = `${d.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', hour12: false })} to ${new Date(conflict.end_time).toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', hour12: false })}`;
                 
                 overlaps.push(`Overlap detected! ${empName} already working on ${dayStr} ${timeStr}`);
             } else {

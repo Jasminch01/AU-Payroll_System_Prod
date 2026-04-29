@@ -34,6 +34,33 @@ import {
     isSameDay, addDays, differenceInWeeks, differenceInDays
 } from "date-fns";
 
+const TIME_OPTIONS = [
+    "00:00", "00:15", "00:30", "00:45",
+    "01:00", "01:15", "01:30", "01:45",
+    "02:00", "02:15", "02:30", "02:45",
+    "03:00", "03:15", "03:30", "03:45",
+    "04:00", "04:15", "04:30", "04:45",
+    "05:00", "05:15", "05:30", "05:45",
+    "06:00", "06:15", "06:30", "06:45",
+    "07:00", "07:15", "07:30", "07:45",
+    "08:00", "08:15", "08:30", "08:45",
+    "09:00", "09:15", "09:30", "09:45",
+    "10:00", "10:15", "10:30", "10:45",
+    "11:00", "11:15", "11:30", "11:45",
+    "12:00", "12:15", "12:30", "12:45",
+    "13:00", "13:15", "13:30", "13:45",
+    "14:00", "14:15", "14:30", "14:45",
+    "15:00", "15:15", "15:30", "15:45",
+    "16:00", "16:15", "16:30", "16:45",
+    "17:00", "17:15", "17:30", "17:45",
+    "18:00", "18:15", "18:30", "18:45",
+    "19:00", "19:15", "19:30", "19:45",
+    "20:00", "20:15", "20:30", "20:45",
+    "21:00", "21:15", "21:30", "21:45",
+    "22:00", "22:15", "22:30", "22:45",
+    "23:00", "23:15", "23:30", "23:45"
+];
+
 type RosterPeriod = "weekly" | "fortnightly" | "monthly";
 
 function getRosterDates(offset: number, period: RosterPeriod): Date[] {
@@ -147,6 +174,9 @@ export default function ManagerRosterPage() {
     const [shiftEnd, setShiftEnd] = useState("17:00");
     const [shiftType, setShiftType] = useState("morning");
     const [initialFormState, setInitialFormState] = useState<any>(null);
+    const [isStartDropdownOpen, setIsStartDropdownOpen] = useState(false);
+    const [isEndDropdownOpen, setIsEndDropdownOpen] = useState(false);
+    const [timeSearch, setTimeSearch] = useState("");
 
     // Auto-detect shift type when start time changes (works for both new and editing shifts)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -166,6 +196,9 @@ export default function ManagerRosterPage() {
             setShiftEnd("17:00");
             setShiftType("morning");
             setInitialFormState(null);
+            setIsStartDropdownOpen(false);
+            setIsEndDropdownOpen(false);
+            setTimeSearch("");
         }
     }, [addShiftOpen]);
 
@@ -1736,8 +1769,114 @@ export default function ManagerRosterPage() {
                         />
 
                         <div className="grid grid-cols-2 gap-3">
-                            <Input label="Start Time" type="time" value={shiftStart} onChange={(e) => setShiftStart(e.target.value)} disabled={isEditingShiftLocked} />
-                            <Input label="End Time" type="time" value={shiftEnd} onChange={(e) => setShiftEnd(e.target.value)} disabled={isEditingShiftLocked} />
+                            <div className="space-y-1.5 relative">
+                                <label className="text-sm font-medium">Start Time</label>
+                                <button
+                                    type="button"
+                                    onClick={() => !isEditingShiftLocked && setIsStartDropdownOpen(!isStartDropdownOpen)}
+                                    disabled={isEditingShiftLocked}
+                                    className={cn(
+                                        "flex h-10 w-full rounded-lg border border-[hsl(var(--input))] bg-transparent px-3 py-2 text-sm items-center justify-between focus:outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]/20 focus:border-[hsl(var(--brand))]",
+                                        isEditingShiftLocked && "opacity-50 cursor-not-allowed"
+                                    )}
+                                >
+                                    <span>{shiftStart}</span>
+                                    <Clock size={14} className="text-[hsl(var(--muted-foreground))]" />
+                                </button>
+
+                                {isStartDropdownOpen && (
+                                    <>
+                                        <div className="fixed inset-0 z-60" onClick={() => setIsStartDropdownOpen(false)} />
+                                        <div className="absolute top-full mb-2 left-0 w-full bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-xl shadow-2xl z-61 overflow-hidden flex flex-col animate-in slide-in-from-bottom-2 duration-200">
+                                            <div className="p-2 border-b bg-[hsl(var(--muted))]/30 sticky top-0">
+                                                <input 
+                                                    autoFocus
+                                                    type="text" 
+                                                    placeholder="Search..." 
+                                                    value={timeSearch}
+                                                    onChange={e => setTimeSearch(e.target.value)}
+                                                    className="w-full h-8 px-2 text-[10px] rounded-md border bg-[hsl(var(--background))]"
+                                                />
+                                            </div>
+                                            <div className="max-h-48 overflow-y-auto p-1">
+                                                {TIME_OPTIONS.filter(t => t.includes(timeSearch)).map(time => (
+                                                    <button
+                                                        key={time}
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setShiftStart(time);
+                                                            setIsStartDropdownOpen(false);
+                                                            setTimeSearch("");
+                                                        }}
+                                                        className={cn(
+                                                            "w-full text-left px-3 py-2 text-xs rounded-lg transition-colors",
+                                                            shiftStart === time
+                                                                ? "bg-[hsl(var(--brand))] text-white"
+                                                                : "hover:bg-[hsl(var(--muted))] text-[hsl(var(--foreground))]"
+                                                        )}
+                                                    >
+                                                        {time}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+                            <div className="space-y-1.5 relative">
+                                <label className="text-sm font-medium">End Time</label>
+                                <button
+                                    type="button"
+                                    onClick={() => !isEditingShiftLocked && setIsEndDropdownOpen(!isEndDropdownOpen)}
+                                    disabled={isEditingShiftLocked}
+                                    className={cn(
+                                        "flex h-10 w-full rounded-lg border border-[hsl(var(--input))] bg-transparent px-3 py-2 text-sm items-center justify-between focus:outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]/20 focus:border-[hsl(var(--brand))]",
+                                        isEditingShiftLocked && "opacity-50 cursor-not-allowed"
+                                    )}
+                                >
+                                    <span>{shiftEnd}</span>
+                                    <Clock size={14} className="text-[hsl(var(--muted-foreground))]" />
+                                </button>
+
+                                {isEndDropdownOpen && (
+                                    <>
+                                        <div className="fixed inset-0 z-60" onClick={() => setIsEndDropdownOpen(false)} />
+                                        <div className="absolute top-full mb-2 left-0 w-full bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-xl shadow-2xl z-61 overflow-hidden flex flex-col animate-in slide-in-from-bottom-2 duration-200">
+                                            <div className="p-2 border-b bg-[hsl(var(--muted))]/30 sticky top-0">
+                                                <input 
+                                                    autoFocus
+                                                    type="text" 
+                                                    placeholder="Search..." 
+                                                    value={timeSearch}
+                                                    onChange={e => setTimeSearch(e.target.value)}
+                                                    className="w-full h-8 px-2 text-[10px] rounded-md border bg-[hsl(var(--background))]"
+                                                />
+                                            </div>
+                                            <div className="max-h-48 overflow-y-auto p-1">
+                                                {TIME_OPTIONS.filter(t => t.includes(timeSearch)).map(time => (
+                                                    <button
+                                                        key={time}
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setShiftEnd(time);
+                                                            setIsEndDropdownOpen(false);
+                                                            setTimeSearch("");
+                                                        }}
+                                                        className={cn(
+                                                            "w-full text-left px-3 py-2 text-xs rounded-lg transition-colors",
+                                                            shiftEnd === time
+                                                                ? "bg-[hsl(var(--brand))] text-white"
+                                                                : "hover:bg-[hsl(var(--muted))] text-[hsl(var(--foreground))]"
+                                                        )}
+                                                    >
+                                                        {time}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </>
+                                )}
+                            </div>
                         </div>
 
                         <div className="grid grid-cols-2 gap-3 items-center">

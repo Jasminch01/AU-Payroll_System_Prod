@@ -162,7 +162,7 @@ export default function ManagerShiftsPage() {
     );
 
     const openPoolShifts = swapRequests.filter((sr: any) => 
-        !sr.target_employee_id && sr.status === 'pending_approval' && sr.requester_id !== user?.employee_id
+        !sr.target_employee_id && sr.status === 'pending_acceptance' && sr.requester_id !== user?.employee_id
     );
 
     const formatToDateString = (date: Date) => {
@@ -285,14 +285,14 @@ export default function ManagerShiftsPage() {
             {pendingIncomingSwaps.length > 0 && (
                 <div className="mb-8 p-4 bg-[hsl(var(--warning-light))] border border-[hsl(var(--warning))] rounded-xl">
                     <h2 className="text-lg font-semibold text-[hsl(var(--warning-foreground))] mb-3 flex items-center gap-2">
-                        <ArrowLeftRight size={18} /> Shift Swap Invitations
+                        <ArrowLeftRight size={18} /> Shift Requests
                     </h2>
                     <div className="space-y-3">
                         {pendingIncomingSwaps.map((sr: any) => (
                             <div key={sr.request_id} className="bg-white rounded-lg p-3 flex flex-wrap gap-4 items-center justify-between shadow-sm">
                                 <div>
                                     <p className="font-medium text-sm">
-                                        <span className="font-bold">{sr.Requester?.first_name} {sr.Requester?.last_name}</span> wants to swap their shift:
+                                        <span className="font-bold">{sr.Requester?.first_name} {sr.Requester?.last_name}</span> wants to {sr.target_shift_id ? "swap" : "transfer"} their shift:
                                     </p>
                                     <p className="text-sm text-[hsl(var(--muted-foreground))]">
                                         {new Date(sr.Shift?.start_time).toLocaleDateString("en-AU", { weekday: "short", month: "short", day: "numeric" })}

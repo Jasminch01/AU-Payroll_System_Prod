@@ -160,9 +160,9 @@ export default function EmployeeDashboardPage() {
                                     {new Date(nextShift.start_time).toLocaleDateString("en-AU", { weekday: "long", month: "short", day: "numeric" })}
                                 </p>
                                 <p className="text-[hsl(var(--muted-foreground))]">
-                                    {new Date(nextShift.start_time).toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit" })}
+                                    {new Date(nextShift.start_time).toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit", hour12: false })}
                                     {" – "}
-                                    {new Date(nextShift.end_time).toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit" })}
+                                    {new Date(nextShift.end_time).toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit", hour12: false })}
                                 </p>
                             </div>
                             <div className="ml-auto">
