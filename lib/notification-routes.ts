@@ -28,6 +28,14 @@ export function getNotificationRoute(
     return null;
   }
 
+  // Attendance Request notifications
+  if (type === 'ATTENDANCE_REQUESTED' || type === 'ATTENDANCE_APPROVED' || type === 'ATTENDANCE_REJECTED') {
+    if (userRole === 'owner' || userRole === 'manager') {
+      return '/manager/approvals?tab=attendance';
+    }
+    return '/employee/attendance';
+  }
+
   // Shift swap notifications
   if (type === 'SHIFT_SWAP_REQUESTED' || type === 'SHIFT_SWAP_ACCEPTED' || 
       type === 'SHIFT_SWAP_REJECTED' || type === 'SHIFT_SWAP_APPROVED') {
