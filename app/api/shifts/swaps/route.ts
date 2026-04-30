@@ -109,33 +109,17 @@ export async function GET(request: NextRequest) {
             TargetEmployee: employees.get(swap.target_employee_id) || null,
         }));
 
-        // Post-filter logic for Roles and Pool
-        let finalSwaps = enrichedSwaps;
-        if (authUser.role === 'employee') {
+        // Unified visibility logic: Show personal requests OR pooled shifts OR pending approvals for management
+        const finalSwaps = enrichedSwaps.filter((swap: any) => {
             const employeeId = authUser.employee_id;
-            finalSwaps = enrichedSwaps.filter((swap: any) => {
-                const isPersonal = swap.requester_id === employeeId || swap.target_employee_id === employeeId;
-                const isOpenPool = !swap.target_employee_id && swap.status === 'pending_approval';
-
-                if (isOpenPool) {
-                    const requester = employees.get(swap.requester_id);
-                    const reqRole = requester?.user_id ? roleMap.get(requester.user_id) : 'employee';
-                    // We include own pool posts so they can see "Pooled" status and Undo them
-                    return reqRole === 'employee';
-                }
-                return isPersonal;
-            });
-        } else if (authUser.role === 'manager') {
-            const employeeId = authUser.employee_id;
-            finalSwaps = enrichedSwaps.filter((swap: any) => {
-                const requester = employees.get(swap.requester_id);
-                const reqRole = requester?.user_id ? roleMap.get(requester.user_id) : 'employee';
-                const isOwnSwap = employeeId && (swap.requester_id === employeeId || swap.target_employee_id === employeeId);
-                const isOpenForManagers = !swap.target_employee_id && reqRole === 'manager' && swap.requester_id !== employeeId;
-                
-                return reqRole === 'employee' || isOwnSwap || isOpenForManagers;
-            });
-        }
+            const isManagerOrOwner = authUser.role === 'manager' || authUser.role === 'owner';
+            
+            const isPersonal = employeeId && (swap.requester_id === employeeId || swap.target_employee_id === employeeId);
+            const isPool = !swap.target_employee_id && swap.status === 'pending_acceptance';
+            const isPendingApprovalForManagement = isManagerOrOwner && swap.status === 'pending_approval';
+            
+            return isPersonal || isPool || isPendingApprovalForManagement;
+        });
 
         return successResponse(finalSwaps);
     } catch (err) {
@@ -218,13 +202,7 @@ export async function POST(request: NextRequest) {
                 if (userData) targetRole = userData.role;
             }
 
-            if (requesterRole === 'employee' && targetRole !== 'employee') {
-                return errorResponse('Employees can only swap shifts with other Employees.', 403);
-            }
-
-            if (requesterRole === 'manager' && targetRole !== 'manager') {
-                return errorResponse('Managers can only swap shifts with other Managers.', 403);
-            }
+            // Removed role restriction: employees and managers can now swap/transfer with each other.
         }
         // ------------------------
 
@@ -319,7 +297,7 @@ export async function POST(request: NextRequest) {
                 shift_id,
                 target_employee_id: target_employee_id || null,
                 target_shift_id: target_shift_id || null,
-                status: target_employee_id ? 'pending_acceptance' : 'pending_approval',
+                status: 'pending_acceptance',
                 manager_note: !target_employee_id ? (pool_type || 'transfer') : null
             })
             .select()
@@ -338,24 +316,46 @@ export async function POST(request: NextRequest) {
                         user_ids: [tEmp.user_id],
                         actor_id: authUser.user_id,
                         type: 'SHIFT_SWAP_REQUESTED',
-                        title: 'New Shift Request',
-                        message: target_shift_id ? 'Someone offered to swap shifts with you.' : 'Someone offered to give you their shift.',
+                        title: target_shift_id ? 'Shift Swap Request' : 'Shift Transfer Request',
+                        message: target_shift_id 
+                            ? `${authUser.first_name || 'Someone'} offered to swap shifts with you.` 
+                            : `${authUser.first_name || 'Someone'} offered to give you their shift.`,
                         entity_id: swapRequest.request_id,
                         entity_type: 'shift_swap_request'
                     });
                 }
             } else {
-                // Pool request: notify all employees in the business
-                const { data: allEmps } = await supabase.from('Employee').select('user_id').eq('business_id', authUser.business_id);
-                const userIds = allEmps?.map(e => e.user_id).filter((id): id is string => !!id && id !== authUser.user_id) || [];
-                if (userIds.length > 0) {
+                // Pool request: Find all available employees and notify them
+                // 1. Find employees in this business who DON'T have an overlapping shift
+                const { data: busyEmps } = await supabase
+                    .from('Shift')
+                    .select('employee_id')
+                    .eq('business_id', authUser.business_id)
+                    .lt('start_time', shift.end_time)
+                    .gt('end_time', shift.start_time);
+                
+                const busyIds = new Set((busyEmps || []).map(s => s.employee_id));
+                
+                // 2. Get all active employees who are not the requester
+                const { data: allEmps } = await supabase
+                    .from('Employee')
+                    .select('user_id, employee_id')
+                    .eq('business_id', authUser.business_id)
+                    .eq('status', 'active')
+                    .neq('employee_id', employeeId || shift.employee_id);
+                
+                const eligibleUserIds = (allEmps || [])
+                    .filter(e => !busyIds.has(e.employee_id) && e.user_id)
+                    .map(e => e.user_id as string);
+                
+                if (eligibleUserIds.length > 0) {
                     await createNotification({
                         business_id: authUser.business_id,
-                        user_ids: userIds,
+                        user_ids: eligibleUserIds,
                         actor_id: authUser.user_id,
-                        type: 'BROADCAST',
-                        title: 'New Open Shift',
-                        message: 'An open shift is available in the pool.',
+                        type: 'SHIFT_POOL_AVAILABLE',
+                        title: 'New Shift in Pool',
+                        message: `A new shift is available for ${pool_type === 'swap' ? 'Swap' : 'Transfer'} in the pool. Claim it now!`,
                         entity_id: swapRequest.request_id,
                         entity_type: 'shift_swap_request'
                     });

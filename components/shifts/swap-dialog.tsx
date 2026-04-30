@@ -41,9 +41,11 @@ export function ShiftSwapDialog({ open, onOpenChange, shift, role }: ShiftSwapDi
     // Fetch conflict-free colleagues based on the specific shift
     const { data: colleagues = [], isLoading: isLoadingColleagues } = useQuery({
         queryKey: ["available-colleagues", shift?.shift_id, offerType],
-        queryFn: () => {
+        queryFn: async () => {
             const onlyWithShifts = offerType === "swap" ? "&only_with_shifts=true" : "";
-            return apiGet<any[]>(`/employees?status=active&role=${role === 'manager' ? 'manager' : 'employee'}&exclude_conflicts_for_shift=${shift?.shift_id}&exclude_self=true${onlyWithShifts}`);
+            const data = await apiGet<any[]>(`/employees?exclude_conflicts_for_shift=${shift?.shift_id}&exclude_self=true${onlyWithShifts}`);
+            console.log(`[ShiftSwapDialog] Fetched ${data?.length || 0} colleagues:`, data?.[0] || 'No data');
+            return data;
         },
         enabled: !!shift?.shift_id && open && (offerType === "transfer" || offerType === "swap"),
     });
@@ -152,15 +154,15 @@ export function ShiftSwapDialog({ open, onOpenChange, shift, role }: ShiftSwapDi
                     <TabsContent value="transfer" className="space-y-4">
                         <div className="space-y-2">
                             <label className="text-sm font-medium">Recipient</label>
-                            <Select value={targetEmployee} onValueChange={setTargetEmployee}>
+                            <Select value={targetEmployee} onValueChange={setTargetEmployee} disabled={isLoadingColleagues}>
                                 <SelectTrigger>
-                                    <SelectValue placeholder={isLoadingColleagues ? "Checking availability..." : "Who should take your shift?"} />
+                                    <SelectValue placeholder={isLoadingColleagues ? "Loading..." : "Who should take your shift?"} />
                                 </SelectTrigger>
                                 <SelectContent>
                                     {colleagues.length === 0 && !isLoadingColleagues ? (
-                                        <div className="p-4 text-center text-sm text-[hsl(var(--muted-foreground))]">
+                                        <SelectItem value="none" disabled>
                                             No available colleagues found.
-                                        </div>
+                                        </SelectItem>
                                     ) : (
                                         colleagues.map((col: any) => (
                                             <SelectItem key={col.employee_id} value={col.employee_id}>
@@ -201,16 +203,22 @@ export function ShiftSwapDialog({ open, onOpenChange, shift, role }: ShiftSwapDi
                         <div className="space-y-4">
                             <div className="space-y-2">
                                 <label className="text-sm font-medium">Colleague to Swap With</label>
-                                <Select value={targetEmployee} onValueChange={(val) => { setTargetEmployee(val); setTargetShift(""); }}>
+                                <Select value={targetEmployee} onValueChange={(val) => { setTargetEmployee(val); setTargetShift(""); }} disabled={isLoadingColleagues}>
                                     <SelectTrigger>
-                                        <SelectValue placeholder="Select a colleague" />
+                                        <SelectValue placeholder={isLoadingColleagues ? "Loading..." : "Select a colleague"} />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        {colleagues.map((col: any) => (
-                                            <SelectItem key={col.employee_id} value={col.employee_id}>
-                                                {col.first_name} {col.last_name}
+                                        {colleagues.length === 0 && !isLoadingColleagues ? (
+                                            <SelectItem value="none" disabled>
+                                                No colleagues with tradeable shifts.
                                             </SelectItem>
-                                        ))}
+                                        ) : (
+                                            colleagues.map((col: any) => (
+                                                <SelectItem key={col.employee_id} value={col.employee_id}>
+                                                    {col.first_name} {col.last_name}
+                                                </SelectItem>
+                                            ))
+                                        )}
                                     </SelectContent>
                                 </Select>
                             </div>

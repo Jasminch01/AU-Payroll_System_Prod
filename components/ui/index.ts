@@ -16,3 +16,6 @@ export {
 } from './select';
 export { DataTable } from './data-table';
 export type { Column } from './data-table';
+export { Switch } from './switch';
+export { Label } from './label';
+export { Tabs, TabsList, TabsTrigger, TabsContent } from './tabs';

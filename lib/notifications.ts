@@ -20,6 +20,7 @@ export type NotificationType =
     | 'SHIFT_PUBLISHED'
     | 'SHIFT_UPDATED'
     | 'SHIFT_DELETED'
+    | 'SHIFT_POOL_AVAILABLE'
     | 'BROADCAST';
 
 export interface CreateNotificationParams {
@@ -42,7 +43,28 @@ export async function createNotification(params: CreateNotificationParams) {
 
     try {
         const supabase = await createClient();
-        const insertData = user_ids.map((user_id) => ({
+
+        // Check user preferences if it's not a broadcast
+        let filteredUserIds = [...user_ids];
+        if (type !== 'BROADCAST') {
+            const { data: disabledPrefs } = await supabase
+                .from('UserNotificationPreference')
+                .select('user_id')
+                .in('user_id', user_ids)
+                .eq('type', type)
+                .eq('is_enabled', false);
+
+            if (disabledPrefs && disabledPrefs.length > 0) {
+                const disabledUserIds = new Set(disabledPrefs.map(p => p.user_id));
+                filteredUserIds = user_ids.filter(uid => !disabledUserIds.has(uid));
+            }
+        }
+
+        if (filteredUserIds.length === 0) {
+            return { success: true, message: 'All recipients have disabled this notification type' };
+        }
+
+        const insertData = filteredUserIds.map((user_id) => ({
             business_id,
             user_id,
             actor_id: actor_id || null,
@@ -62,7 +84,7 @@ export async function createNotification(params: CreateNotificationParams) {
 
         // Trigger mobile push notifications asynchronously
         Promise.allSettled(
-            user_ids.map(user_id => 
+            filteredUserIds.map(user_id => 
                 sendPushNotification(
                     user_id,
                     title,
@@ -211,7 +233,7 @@ export async function notifyRosterPublished(rosterId: string, businessId: string
             const startTime = String(s.start_time);
             const endTime = String(s.end_time);
             const shiftDate = String(s.shift_date);
-            const time = `${new Date(startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })} - ${new Date(endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })}`;
+            const time = `${new Date(startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })} - ${new Date(endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}`;
             const statusLabel = newShifts.includes(s) ? '<span style="color: #059669; font-weight: bold;">(New)</span>' : '<span style="color: #d97706; font-weight: bold;">(Updated)</span>';
             return `<div style="padding: 10px; background: #f9fafb; border-radius: 6px; margin-bottom: 8px; border-left: 4px solid ${newShifts.includes(s) ? '#059669' : '#d97706'};">
                 <p style="margin: 0;"><strong>Date:</strong> ${shiftDate} ${statusLabel}</p>

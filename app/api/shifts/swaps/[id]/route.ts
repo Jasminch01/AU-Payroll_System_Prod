@@ -36,15 +36,29 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 
         const supabase = await createClient();
 
-        // 1. Fetch the request
+        // 1. Fetch the request (avoiding joins due to potential RLS/PostgREST issues)
+        console.log(`[Swap API] Searching for request_id: ${id} in business_id: ${authUser.business_id}`);
         const { data: swapRequest, error: findError } = await supabase
             .from('ShiftSwapRequest')
-            .select('*, Shift:shift_id(*)')
+            .select('*')
             .eq('request_id', id)
             .eq('business_id', authUser.business_id)
             .single();
 
-        if (findError || !swapRequest) return errorResponse('Swap request not found', 404);
+        if (findError || !swapRequest) {
+            console.error(`[Swap API] Request not found or error:`, findError);
+            return errorResponse('Swap request not found', 404);
+        }
+
+        // Fetch related shift separately
+        const { data: shift, error: shiftError } = await supabase
+            .from('Shift')
+            .select('*')
+            .eq('shift_id', swapRequest.shift_id)
+            .single();
+
+        if (shiftError || !shift) return errorResponse('Original shift not found', 404);
+        swapRequest.Shift = shift;
 
         const employeeId = authUser.employee_id;
 
@@ -66,7 +80,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 
         // ACTION: Accept/Decline (by Target Employee or Pool Claimant)
         if (action === 'accept' || action === 'decline') {
-            const isPoolClaim = !swapRequest.target_employee_id && swapRequest.status === 'pending_approval';
+            const isPoolClaim = !swapRequest.target_employee_id && swapRequest.status === 'pending_acceptance';
 
             if (!isPoolClaim && swapRequest.target_employee_id !== employeeId) {
                 return errorResponse('Only the target employee can respond to this invitation.', 403);
@@ -76,26 +90,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
             if (isPoolClaim && action === 'accept') {
                 if (!employeeId) return errorResponse('Valid employee profile required to claim shifts.', 401);
 
-                // 1. Role Check
-                const { data: requesterEmp, error: reqEmpError } = await supabase
-                    .from('Employee')
-                    .select('user_id')
-                    .eq('employee_id', swapRequest.requester_id)
-                    .single();
-                
-                let reqRole = 'employee';
-                if (requesterEmp?.user_id) {
-                    const { data: userData } = await supabase
-                        .from('User')
-                        .select('role')
-                        .eq('user_id', requesterEmp.user_id)
-                        .single();
-                    if (userData) reqRole = userData.role;
-                }
-
-                if (reqRole !== authUser.role) {
-                    return errorResponse(`Only ${reqRole}s can claim this shift.`, 403);
-                }
+                // Role check removed: any qualified employee can claim based on your new requirement.
 
                 // 2. Overlap Check (Safety Rail)
                 const { data: conflicts } = await supabase
@@ -140,8 +135,8 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
                             user_ids: managerUserIds,
                             actor_id: authUser.user_id,
                             type: 'SHIFT_SWAP_REQUESTED',
-                            title: 'Swap Ready for Approval',
-                            message: `A shift ${swapRequest.target_shift_id ? 'swap' : 'transfer'} was accepted and needs your approval.`,
+                            title: swapRequest.target_shift_id ? 'Swap Ready for Approval' : 'Transfer Ready for Approval',
+                            message: `A shift ${swapRequest.target_shift_id ? 'swap' : 'transfer'} was accepted and needs your final approval.`,
                             entity_id: id,
                             entity_type: 'shift_swap_request'
                         });
@@ -216,14 +211,15 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
                 // 1. Update the original shift
                 const targetEmpId = swapRequest.target_employee_id;
 
-                if (!targetEmpId) {
-                    return errorResponse('No player to swap with.', 400);
-                }
+                // If targetEmpId is null, it's a "Drop to Pool" that the manager is approving.
+                // This will make the shift an "Open Shift" (employee_id = null).
+                // We allow this if the manager is approving the drop.
+                const updateValue = targetEmpId || null;
 
                 // Transactional update (pseudo-code, using Supabase sequential calls)
                 const { error: shift1Err } = await supabase
                     .from('Shift')
-                    .update({ employee_id: targetEmpId, updated_at: new Date().toISOString() })
+                    .update({ employee_id: updateValue, updated_at: new Date().toISOString() })
                     .eq('shift_id', swapRequest.shift_id);
 
                 if (shift1Err) return errorResponse('Failed to update primary shift', 400);
@@ -251,7 +247,38 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
                 .eq('request_id', id);
 
             if (error) return errorResponse(error.message, 400);
-            return successResponse(null, action === 'approve' ? 'Swap approved' : 'Swap rejected');
+
+            // Notify involved employees about manager's decision
+            try {
+                const { data: requester } = await supabase.from('Employee').select('user_id').eq('employee_id', swapRequest.requester_id).single();
+                const { data: target } = swapRequest.target_employee_id 
+                    ? await supabase.from('Employee').select('user_id').eq('employee_id', swapRequest.target_employee_id).single()
+                    : { data: null };
+
+                const involvedUserIds = [requester?.user_id, target?.user_id].filter(Boolean) as string[];
+                
+                if (involvedUserIds.length > 0) {
+                    const isSwap = !!swapRequest.target_shift_id;
+                    await createNotification({
+                        business_id: authUser.business_id,
+                        user_ids: involvedUserIds,
+                        actor_id: authUser.user_id,
+                        type: 'SHIFT_SWAP_REQUESTED', // Or another appropriate type
+                        title: action === 'approve' 
+                            ? `Shift ${isSwap ? 'Swap' : 'Transfer'} Approved` 
+                            : `Shift ${isSwap ? 'Swap' : 'Transfer'} Rejected`,
+                        message: action === 'approve'
+                            ? `The ${isSwap ? 'swap' : 'transfer'} has been approved and shifts have been updated.`
+                            : `The ${isSwap ? 'swap' : 'transfer'} request was rejected by a manager. ${manager_note ? `Reason: ${manager_note}` : ''}`,
+                        entity_id: id,
+                        entity_type: 'shift_swap_request'
+                    });
+                }
+            } catch (notifyErr) {
+                console.error('Failed to notify employees of decision:', notifyErr);
+            }
+
+            return successResponse(null, action === 'approve' ? 'Request approved successfully' : 'Request rejected');
         }
 
         return errorResponse('Invalid action', 400);

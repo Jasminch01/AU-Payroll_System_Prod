@@ -65,7 +65,7 @@ export async function notifyAttendanceEvent(
     const timeStr = eventDate.toLocaleTimeString('en-AU', {
       hour: '2-digit',
       minute: '2-digit',
-      hour12: true
+      hour12: false
     });
     const dateStr = eventDate.toLocaleDateString('en-AU');
 

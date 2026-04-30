@@ -76,5 +76,9 @@ export function getNotificationRoute(
     return '/dashboard';
   }
 
+  if (type === 'SHIFT_POOL_AVAILABLE') {
+    return '/employee/shifts';
+  }
+
   return null;
 }

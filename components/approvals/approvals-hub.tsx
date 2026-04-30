@@ -160,7 +160,7 @@ export function ApprovalsHub({ role }: ApprovalsHubProps) {
                         <Palmtree size={16} /> Leave
                     </TabsTrigger>
                     <TabsTrigger value="swaps" className="flex items-center gap-2">
-                        <ArrowLeftRight size={16} /> Swaps
+                        <ArrowLeftRight size={16} /> Shift Requests
                     </TabsTrigger>
                 </TabsList>
 
@@ -253,7 +253,7 @@ export function ApprovalsHub({ role }: ApprovalsHubProps) {
                     {loadingSwaps ? (
                         <div className="space-y-3">{[1, 2, 3].map(i => <Card key={i} className="h-20 skeleton" />)}</div>
                     ) : filteredSwaps.length === 0 ? (
-                        <Card><CardContent className="p-12 text-center text-muted-foreground">No shift swaps found ✓</CardContent></Card>
+                        <Card><CardContent className="p-12 text-center text-muted-foreground">No shift requests found ✓</CardContent></Card>
                     ) : (
                         filteredSwaps.map((swap: any) => (
                             <Card key={swap.request_id} className={cn(swap.status === "pending_approval" && "border-warning bg-warning-light")}>
@@ -264,12 +264,15 @@ export function ApprovalsHub({ role }: ApprovalsHubProps) {
                                         </div>
                                         <div>
                                             <p className="font-semibold">
-                                                {swap.Requester?.first_name} {swap.Requester?.last_name} ↔️ {swap.TargetEmployee?.first_name} {swap.TargetEmployee?.last_name || "Anyone"}
+                                                {swap.Requester?.first_name} {swap.Requester?.last_name} {swap.target_shift_id ? "↔️" : "→"} {swap.TargetEmployee?.first_name} {swap.TargetEmployee?.last_name || "Pool"}
+                                                <span className="ml-2 text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))] border border-[hsl(var(--border))]">
+                                                    {swap.target_shift_id ? "Swap" : "Transfer"}
+                                                </span>
                                             </p>
                                             <p className="text-sm text-muted-foreground">
                                                 {new Date(swap.Shift?.start_time).toLocaleDateString("en-AU", { weekday: "short", day: "numeric", month: "short" })} ·
-                                                {new Date(swap.Shift?.start_time).toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit" })} -
-                                                {new Date(swap.Shift?.end_time).toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit" })}
+                                                {new Date(swap.Shift?.start_time).toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit", hour12: false })} -
+                                                {new Date(swap.Shift?.end_time).toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit", hour12: false })}
                                             </p>
                                         </div>
                                     </div>
