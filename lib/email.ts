@@ -8,12 +8,7 @@ export async function sendEmail({ to, subject, html, text }: { to: string; subje
     const apiKey = process.env.RESEND_API_KEY;
 
     if (!apiKey) {
-        console.log("--- MOCK EMAIL START ---");
-        console.log(`To: ${to}`);
-        console.log(`Subject: ${subject}`);
-        console.log(`Content: ${text}`);
-        console.log("--- MOCK EMAIL END ---");
-        return { success: true, message: "Mock email logged to console" };
+        return { success: true, message: "Mock email (Resend API key not set)" };
     }
 
     try {

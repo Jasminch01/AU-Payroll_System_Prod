@@ -23,10 +23,13 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { UserPlus, Users, Send, RefreshCw, Copy, Check, MoreHorizontal, Eye, ExternalLink, Trash2, Filter, X, Briefcase, User, ShieldCheck, ChevronRight, AlertTriangle, Shield, Lock, CreditCard, ChevronDown, Info } from "lucide-react";
 import type { Employee } from "@/types/database";
+import { useBusinessTimezone } from "@/lib/timezone-context";
+import { getDateInTimezone } from "@/lib/timezone-utils";
 
 type StatusFilter = "all" | "active" | "invited" | "inactive";
 
 export default function ManagerTeamPage() {
+    const { businessTimezone } = useBusinessTimezone();
     const router = useRouter();
     const queryClient = useQueryClient();
     const [inviteOpen, setInviteOpen] = useState(false);
@@ -63,7 +66,7 @@ export default function ManagerTeamPage() {
         role: "employee",
         role_title: "",
         employment_type: "full_time",
-        start_date: new Date().toISOString().split('T')[0],
+        start_date: getDateInTimezone(new Date().toISOString(), businessTimezone),
         emergency_contact_name: "",
         emergency_contact_phone: "",
         password: ""
@@ -183,7 +186,7 @@ export default function ManagerTeamPage() {
                 role: "employee",
                 role_title: "",
                 employment_type: "full_time",
-                start_date: new Date().toISOString().split('T')[0],
+                start_date: getDateInTimezone(new Date().toISOString(), businessTimezone),
                 emergency_contact_name: "",
                 emergency_contact_phone: "",
                 password: ""

@@ -1,7 +1,8 @@
 import { NextRequest } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { getAuthUser } from '@/lib/auth';
 import { successResponse, errorResponse } from '@/lib/api-helpers';
+import { getAuthUser, getBusinessTimezone } from '@/lib/auth';
+import { getDateInTimezone } from '@/lib/timezone-utils';
 
 /**
  * GET /api/shifts/colleague
@@ -21,7 +22,12 @@ export async function GET(request: NextRequest) {
 
         const { searchParams } = new URL(request.url);
         const employee_id = searchParams.get('employee_id');
-        const from = searchParams.get('from') ?? new Date().toISOString().split('T')[0];
+        let from = searchParams.get('from');
+        
+        if (!from) {
+            const timezone = await getBusinessTimezone(authUser.business_id);
+            from = getDateInTimezone(new Date().toISOString(), timezone);
+        }
 
         if (!employee_id) {
             return errorResponse('employee_id is required', 400);

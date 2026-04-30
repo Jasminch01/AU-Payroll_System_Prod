@@ -56,4 +56,3 @@ for (const ep of apiEndpoints) {
 }
 
 fs.writeFileSync('API_DOCUMENTATION.md', mdContent);
-console.log('Successfully generated API_DOCUMENTATION.md with ' + apiEndpoints.length + ' endpoints.');

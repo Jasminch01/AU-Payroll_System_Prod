@@ -37,7 +37,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
         const supabase = await createClient();
 
         // 1. Fetch the request (avoiding joins due to potential RLS/PostgREST issues)
-        console.log(`[Swap API] Searching for request_id: ${id} in business_id: ${authUser.business_id}`);
+
         const { data: swapRequest, error: findError } = await supabase
             .from('ShiftSwapRequest')
             .select('*')
@@ -119,7 +119,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 
             if (error) return errorResponse(error.message, 400);
 
-            // Notify Manager that a swap/transfer is now ready for approval
+            // 1. Notify Manager that a swap/transfer is now ready for approval
             if (action === 'accept') {
                 try {
                     const { data: managers } = await supabase
@@ -146,7 +146,35 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
                 }
             }
 
-            return successResponse(null, action === 'accept' ? 'Shift claimed / accepted. Awaiting manager approval.' : 'Invitation declined.');
+            // 2. Notify the Requester about the decision
+            try {
+                const { data: requester } = await supabase
+                    .from('Employee')
+                    .select('user_id')
+                    .eq('employee_id', swapRequest.requester_id)
+                    .single();
+
+                if (requester?.user_id) {
+                    await createNotification({
+                        business_id: authUser.business_id,
+                        user_ids: [requester.user_id],
+                        actor_id: authUser.user_id,
+                        type: action === 'accept' ? 'SHIFT_SWAP_ACCEPTED' : 'SHIFT_SWAP_REJECTED',
+                        title: action === 'accept' ? 'Shift Request Accepted' : 'Shift Request Declined',
+                        message: action === 'accept'
+                            ? `${authUser.first_name || 'A colleague'} accepted your shift request. It is now awaiting manager approval.`
+                            : `${authUser.first_name || 'A colleague'} declined your shift request.`,
+                        entity_id: id,
+                        entity_type: 'shift_swap_request'
+                    });
+                }
+            } catch (notifyErr) {
+                console.error('Failed to notify requester:', notifyErr);
+            }
+
+            return successResponse(null, action === 'accept' 
+                ? 'Request accepted. Awaiting manager approval.' 
+                : 'Request declined successfully.');
         }
 
         // ACTION: Approve/Reject (by Manager/Owner)

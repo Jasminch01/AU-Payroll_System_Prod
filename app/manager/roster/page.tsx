@@ -577,8 +577,7 @@ export default function ManagerRosterPage() {
         const formattedStart = formatTimeForPayload(shiftStart);
         const formattedEnd = formatTimeForPayload(shiftEnd);
 
-        console.log('[handleAddShift] Input times - shiftStart:', shiftStart, 'shiftEnd:', shiftEnd);
-        console.log('[handleAddShift] Formatted times - formattedStart:', formattedStart, 'formattedEnd:', formattedEnd);
+
 
         const payload = {
             employee_id: shiftEmployee,
@@ -591,9 +590,9 @@ export default function ManagerRosterPage() {
             notify,
         };
 
-        console.log('[handleAddShift] Final payload - start_time:', payload.start_time, 'end_time:', payload.end_time);
 
-        console.log('[handleAddShift] Payload times - Start:', payload.start_time, 'End:', payload.end_time);
+
+
 
         // Check for expansion
         if (currentRoster) {
@@ -646,18 +645,16 @@ export default function ManagerRosterPage() {
                     // Extract time directly from ISO string to avoid timezone conversion
                     // Format: 2026-03-10T14:30:00 -> 14:30
                     const extracted = timeStr.split('T')[1]?.substring(0, 5) || "09:00";
-                    console.log('[parseTime] Input:', timeStr, '-> Extracted:', extracted);
                     return extracted;
                 }
                 // If it's already HH:mm or HH:mm:ss, return first 5 chars
                 const result = timeStr.substring(0, 5);
-                console.log('[parseTime] Direct format:', timeStr, '-> Result:', result);
                 return result;
             };
 
             const startTime = parseTime(shift.start_time);
             const endTime = parseTime(shift.end_time);
-            console.log('[openAddShift] Parsed times - Start:', startTime, 'End:', endTime);
+
 
             // Auto-detect the shift type based on start time (not the old type from DB)
             const autoDetectedType = getShiftTypeFromTime(startTime);

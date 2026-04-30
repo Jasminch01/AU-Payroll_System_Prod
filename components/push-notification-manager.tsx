@@ -19,7 +19,7 @@ export function PushNotificationManager() {
   const [isSupported, setIsSupported] = useState(false);
 
   const subscribeToPush = async (isSilent: boolean = false) => {
-    if (!isSilent) console.log('[PushManager] Starting subscribeToPush process...');
+
     if (!isSilent) toast.dismiss();
     try {
       if (!('serviceWorker' in navigator)) {
@@ -29,9 +29,9 @@ export function PushNotificationManager() {
         throw new Error('Push notifications are not supported by this browser.');
       }
 
-      if (!isSilent) console.log('[PushManager] Requesting permission...');
+
       const permission = await Notification.requestPermission();
-      if (!isSilent) console.log('[PushManager] Permission status:', permission);
+
 
       if (permission !== 'granted') {
         if (!isSilent) {
@@ -42,7 +42,7 @@ export function PushNotificationManager() {
         return;
       }
 
-      if (!isSilent) console.log('[PushManager] Waiting for service worker to be ready...');
+
       const registration = await navigator.serviceWorker.ready;
 
       if (!registration) {
@@ -91,10 +91,7 @@ export function PushNotificationManager() {
         toast.success("Notifications Successfully Enabled", {
           description: "This device is now set up to receive important alerts and real-time schedule updates."
         });
-      } else {
-        console.log('[PushManager] Silent subscription successful');
       }
-
     } catch (error: any) {
       if (!isSilent) {
         console.error('Error subscribing to push:', error);
@@ -127,7 +124,7 @@ export function PushNotificationManager() {
               });
             } else {
               // We have permission, but no subscription exists (e.g., SW was re-registered or sub lost)
-              console.log('[PushManager] Permission granted but no active subscription found. Silently subscribing...');
+
               await subscribeToPush(true);
             }
           } catch (e) {

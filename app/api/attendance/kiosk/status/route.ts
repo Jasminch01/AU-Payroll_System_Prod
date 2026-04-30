@@ -81,10 +81,7 @@ export async function GET(request: NextRequest) {
             return errorResponse('Error fetching status', 500);
         }
 
-        console.log(`[Kiosk Status] Employee: ${employee.employee_id}`);
-        console.log(`[Kiosk Status] Last log (raw):`, JSON.stringify(lastLog));
-        console.log(`[Kiosk Status] Last log type:`, typeof lastLog);
-        console.log(`[Kiosk Status] Last log is array:`, Array.isArray(lastLog));
+
 
         // Type guard: ensure lastLog has the correct shape and is on the correct type
         let typedLastLog: { event_type: EventType; timestamp: string } | null = null;
@@ -99,16 +96,16 @@ export async function GET(request: NextRequest) {
                     event_type: eventType as EventType,
                     timestamp: String(timestamp)
                 };
-                console.log(`[Kiosk Status] LastLog is valid event:`, eventType);
+
             }
         }
 
-        console.log(`[Kiosk Status] Typed last log:`, typedLastLog);
+
 
         // 3. Determine available actions
         const actions = getAvailableActions(typedLastLog);
 
-        console.log(`[Kiosk Status] Available actions (${actions.length}):`, actions.map(a => a.label).join(', '));
+
 
         return successResponse({
             employee_name: `${employee.first_name} ${employee.last_name}`,

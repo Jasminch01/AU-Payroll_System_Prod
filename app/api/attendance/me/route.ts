@@ -41,12 +41,7 @@ export async function GET(request: NextRequest) {
         // Also get the most recent log to determine current status
         const currentStatus = logs.length > 0 ? logs[0].event_type : null;
 
-        console.log('[CLOCK ME] Today logs:', {
-            employee_id: authUser.employee_id,
-            date_range: { start, end },
-            logs_count: logs?.length || 0,
-            current_status: currentStatus
-        });
+
 
         return successResponse({
             logs,
@@ -94,12 +89,7 @@ export async function POST(request: NextRequest) {
             now
         );
 
-        console.log('[CLOCK ME POST] Clock action:', {
-            employee_id: authUser.employee_id,
-            last_log: lastLog ? { event_type: lastLog.event_type, timestamp: lastLog.timestamp } : null,
-            next_event_type: nextEventType,
-            current_time: now
-        });
+
 
         // Validate the transition
         const transitionError = validateAttendanceTransition(
