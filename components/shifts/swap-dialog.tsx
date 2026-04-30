@@ -23,6 +23,8 @@ import { apiGet, apiPost } from "@/lib/api-client";
 import { toast } from "sonner";
 import { ArrowLeftRight, Users, UserPlus, Info, ArrowRight, RefreshCw, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useBusinessTimezone } from "@/lib/timezone-context";
+import { getDateInTimezone } from "@/lib/timezone-utils";
 
 interface ShiftSwapDialogProps {
     open: boolean;
@@ -32,6 +34,7 @@ interface ShiftSwapDialogProps {
 }
 
 export function ShiftSwapDialog({ open, onOpenChange, shift, role }: ShiftSwapDialogProps) {
+    const { businessTimezone } = useBusinessTimezone();
     const queryClient = useQueryClient();
     const [targetEmployee, setTargetEmployee] = useState("");
     const [targetShift, setTargetShift] = useState("");
@@ -44,7 +47,6 @@ export function ShiftSwapDialog({ open, onOpenChange, shift, role }: ShiftSwapDi
         queryFn: async () => {
             const onlyWithShifts = offerType === "swap" ? "&only_with_shifts=true" : "";
             const data = await apiGet<any[]>(`/employees?exclude_conflicts_for_shift=${shift?.shift_id}&exclude_self=true${onlyWithShifts}`);
-            console.log(`[ShiftSwapDialog] Fetched ${data?.length || 0} colleagues:`, data?.[0] || 'No data');
             return data;
         },
         enabled: !!shift?.shift_id && open && (offerType === "transfer" || offerType === "swap"),
@@ -52,7 +54,7 @@ export function ShiftSwapDialog({ open, onOpenChange, shift, role }: ShiftSwapDi
 
     const { data: colleagueShifts = [], isLoading: isLoadingShifts } = useQuery({
         queryKey: ["colleague-shifts", targetEmployee],
-        queryFn: () => apiGet<any[]>(`/shifts/colleague?employee_id=${targetEmployee}&from=${new Date().toISOString().split('T')[0]}`),
+        queryFn: () => apiGet<any[]>(`/shifts/colleague?employee_id=${targetEmployee}&from=${getDateInTimezone(new Date().toISOString(), businessTimezone)}`),
         enabled: !!targetEmployee && offerType === "swap",
     });
 

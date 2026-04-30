@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useMemo, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { DashboardLayout } from "@/components/layout";
 import { Card, CardContent } from "@/components/ui/card";
@@ -16,6 +17,7 @@ import { toast } from "sonner";
 import { CheckCircle, XCircle, Clock, Palmtree, ArrowLeftRight } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { cn } from "@/lib/utils";
+import { useRealtimeInvalidator } from "@/hooks/use-realtime-invalidator";
 
 type ApprovalStatus = "all" | "pending" | "approved" | "rejected";
 
@@ -27,9 +29,27 @@ export function ApprovalsHub({ role }: ApprovalsHubProps) {
     const queryClient = useQueryClient();
     const { user } = useAuth();
 
-    // UI State
-    const [activeTab, setActiveTab] = useState("timesheets");
+    const searchParams = useSearchParams();
+    const [activeTab, setActiveTab] = useState(searchParams.get("tab") || "timesheets");
     const [statusFilter, setStatusFilter] = useState<ApprovalStatus>("pending");
+
+    // Memoized configs for real-time invalidator
+    const realtimeConfigs = useMemo(() => [
+        { table: 'Timesheet', queryKeys: [['timesheets']] },
+        { table: 'LeaveRequest', queryKeys: [['leave-requests']] },
+        { table: 'ShiftSwapRequest', queryKeys: [['shift-swaps']] }
+    ], []);
+
+    // Real-time invalidation
+    useRealtimeInvalidator(realtimeConfigs);
+
+    // Sync tab with URL
+    useEffect(() => {
+        const tab = searchParams.get("tab");
+        if (tab && ["timesheets", "leave", "swaps"].includes(tab)) {
+            setActiveTab(tab);
+        }
+    }, [searchParams]);
 
     // Rejection dialog
     const [rejectTarget, setRejectTarget] = useState<{ id: string; type: "timesheet" | "leave" | "swap" } | null>(null);

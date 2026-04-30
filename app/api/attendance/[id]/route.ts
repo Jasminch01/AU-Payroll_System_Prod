@@ -46,14 +46,7 @@ export async function PATCH(
 
         if (timestamp) {
             updateData.timestamp = timestamp;
-            console.log('Setting timestamp in update:', {
-                log_id,
-                employee_id: existingLog.employee_id,
-                old_timestamp: existingLog?.timestamp,
-                new_timestamp: timestamp,
-                event_type,
-                updateData_keys: Object.keys(updateData)
-            });
+
         }
         if (event_type) updateData.event_type = event_type;
         if (override_reason) updateData.override_reason = override_reason;
@@ -90,12 +83,7 @@ export async function PATCH(
         if (verifyError) {
             console.error('Failed to verify updated attendance:', verifyError);
         } else {
-            console.log('Verification: Updated attendance record found in database:', {
-                log_id: verification.log_id,
-                event_type: verification.event_type,
-                timestamp: verification.timestamp,
-                override_by: verification.override_by
-            });
+
         }
 
         return successResponse(updatedLog, 'Attendance record updated successfully');

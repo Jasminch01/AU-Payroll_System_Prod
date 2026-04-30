@@ -35,7 +35,6 @@ export async function GET(request: NextRequest) {
             const employeeId = authUser.employee_id!; // Now guaranteed to exist
             // PostgREST .or() needs quotes for string literals with letters
             const orFilter = `requester_id.eq."${employeeId}",target_employee_id.eq."${employeeId}",target_employee_id.is.null`;
-            console.log('Applying employee filter for swaps:', { employeeId, orFilter });
             query = query.or(orFilter);
         }
 

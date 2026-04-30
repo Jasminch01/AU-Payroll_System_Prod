@@ -57,6 +57,36 @@ export default function EmployeeDashboardPage() {
                 },
                 () => queryClient.invalidateQueries({ queryKey: ["my-shifts"] })
             )
+            .on(
+                'postgres_changes',
+                {
+                    event: '*',
+                    schema: 'public',
+                    table: 'ShiftSwapRequest',
+                    filter: user?.employee_id ? `requester_id=eq.${user.employee_id}` : undefined
+                },
+                () => queryClient.invalidateQueries({ queryKey: ["my-swap-requests"] })
+            )
+            .on(
+                'postgres_changes',
+                {
+                    event: '*',
+                    schema: 'public',
+                    table: 'ShiftSwapRequest',
+                    filter: user?.employee_id ? `target_employee_id=eq.${user.employee_id}` : undefined
+                },
+                () => queryClient.invalidateQueries({ queryKey: ["my-swap-requests"] })
+            )
+            .on(
+                'postgres_changes',
+                {
+                    event: 'INSERT',
+                    schema: 'public',
+                    table: 'ShiftSwapRequest',
+                    filter: 'target_employee_id=is.null'
+                },
+                () => queryClient.invalidateQueries({ queryKey: ["my-swap-requests"] })
+            )
             .subscribe();
 
         return () => {

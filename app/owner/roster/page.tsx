@@ -614,8 +614,6 @@ export default function OwnerRosterPage() {
         }
         setAddShiftOpen(true);
     };
-    // console.log("Current roster:", currentRoster);
-    //consoole
 
     const isDirty = useMemo(() => {
         if (!editingShiftId || !initialFormState) return true;

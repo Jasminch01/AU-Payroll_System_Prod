@@ -2,6 +2,8 @@ import { NextRequest } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { requireRole } from '@/lib/auth';
 import { successResponse, errorResponse } from '@/lib/api-helpers';
+import { getBusinessTimezone } from '@/lib/auth';
+import { getDateInTimezone } from '@/lib/timezone-utils';
 
 /**
  * GET /api/analytics/summary
@@ -15,7 +17,8 @@ export async function GET(request: NextRequest) {
         if (!authUser) return errorResponse('Unauthorized', 401);
 
         const supabase = await createClient();
-        const today = new Date().toISOString().split('T')[0];
+        const timezone = await getBusinessTimezone(authUser.business_id);
+        const today = getDateInTimezone(new Date().toISOString(), timezone);
 
         // 1. Employee Count
         const { count: employeeCount } = await supabase

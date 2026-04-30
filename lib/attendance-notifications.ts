@@ -89,9 +89,7 @@ export async function notifyAttendanceEvent(
       entity_type: 'attendance'
     });
 
-    console.log(
-      `[Attendance Notifications] Sent to ${recipientUserIds.length} recipients for ${employee.employee_id} - ${eventType}`
-    );
+
   } catch (err) {
     console.error('[Attendance Notifications] Unexpected error:', err);
   }

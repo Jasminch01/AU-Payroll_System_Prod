@@ -2,6 +2,8 @@ import { NextRequest } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { requireRole } from '@/lib/auth';
 import { successResponse, errorResponse } from '@/lib/api-helpers';
+import { getBusinessTimezone } from '@/lib/auth';
+import { getDateInTimezone } from '@/lib/timezone-utils';
 
 /**
  * GET /api/analytics/labour-vs-revenue
@@ -20,10 +22,13 @@ export async function GET(request: NextRequest) {
         const from = searchParams.get('from');
         const to = searchParams.get('to');
 
+        const timezone = await getBusinessTimezone(authUser.business_id);
+        const nowInBusiness = getDateInTimezone(new Date().toISOString(), timezone);
+        const [currYear, currMonth, currDay] = nowInBusiness.split('-').map(Number);
+
         // Default to current month if not specified
-        const now = new Date();
-        const defaultFrom = from || new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
-        const defaultTo = to || new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
+        const defaultFrom = from || `${currYear}-${String(currMonth).padStart(2, '0')}-01`;
+        const defaultTo = to || new Date(currYear, currMonth, 0).toISOString().split('T')[0];
 
         const supabase = await createClient();
 
@@ -82,10 +87,12 @@ export async function GET(request: NextRequest) {
         const dailyBreakdown: Array<{ date: string; labour: number; revenue: number }> = [];
         
         // 5. Generate Daily Breakdown for the last 7 days (including today)
-        const sevenDaysAgo = new Date();
+        const businessDate = new Date(currYear, currMonth - 1, currDay);
+        const sevenDaysAgo = new Date(businessDate);
         sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
+        
         const chartStart = sevenDaysAgo.toISOString().split('T')[0];
-        const chartEnd = new Date().toISOString().split('T')[0];
+        const chartEnd = nowInBusiness;
 
         const { data: dailySales } = await supabase
             .from('SalesData')
