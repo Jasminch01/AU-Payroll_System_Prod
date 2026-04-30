@@ -37,7 +37,8 @@ export function ApprovalsHub({ role }: ApprovalsHubProps) {
     const realtimeConfigs = useMemo(() => [
         { table: 'Timesheet', queryKeys: [['timesheets']] },
         { table: 'LeaveRequest', queryKeys: [['leave-requests']] },
-        { table: 'ShiftSwapRequest', queryKeys: [['shift-swaps']] }
+        { table: 'ShiftSwapRequest', queryKeys: [['shift-swaps']] },
+        { table: 'AttendanceRequest', queryKeys: [['attendance-requests']] }
     ], []);
 
     // Real-time invalidation
@@ -46,13 +47,13 @@ export function ApprovalsHub({ role }: ApprovalsHubProps) {
     // Sync tab with URL
     useEffect(() => {
         const tab = searchParams.get("tab");
-        if (tab && ["timesheets", "leave", "swaps"].includes(tab)) {
+        if (tab && ["timesheets", "leave", "swaps", "attendance"].includes(tab)) {
             setActiveTab(tab);
         }
     }, [searchParams]);
 
     // Rejection dialog
-    const [rejectTarget, setRejectTarget] = useState<{ id: string; type: "timesheet" | "leave" | "swap" } | null>(null);
+    const [rejectTarget, setRejectTarget] = useState<{ id: string; type: "timesheet" | "leave" | "swap" | "attendance" } | null>(null);
     const [rejectionReason, setRejectionReason] = useState("");
 
     // Queries - Fetch all to allow quick filtering
@@ -69,6 +70,11 @@ export function ApprovalsHub({ role }: ApprovalsHubProps) {
     const { data: shiftSwaps = [], isLoading: loadingSwaps } = useQuery({
         queryKey: ["shift-swaps", "all"],
         queryFn: () => apiGet<any[]>("/shifts/swaps"),
+    });
+
+    const { data: attendanceRequests = [], isLoading: loadingAttendance } = useQuery({
+        queryKey: ["attendance-requests", "all"],
+        queryFn: () => apiGet<any[]>("/attendance/requests"),
     });
 
     // Mutations
@@ -106,6 +112,18 @@ export function ApprovalsHub({ role }: ApprovalsHubProps) {
         onError: (err: Error) => toast.error(err.message),
     });
 
+    const attendanceMutation = useMutation({
+        mutationFn: ({ id, action, note }: { id: string; action: "approve" | "reject"; note?: string }) =>
+            apiPut(`/attendance/requests/${id}`, { action, manager_note: note }),
+        onSuccess: () => {
+            toast.success("Attendance request updated");
+            queryClient.invalidateQueries({ queryKey: ["attendance-requests"] });
+            setRejectTarget(null);
+            setRejectionReason("");
+        },
+        onError: (err: Error) => toast.error(err.message),
+    });
+
     // Filtering Logic
     const filterByStatus = (items: any[]) => {
         if (statusFilter === "all") return items;
@@ -119,13 +137,15 @@ export function ApprovalsHub({ role }: ApprovalsHubProps) {
     const filteredTS = filterByStatus(timesheets);
     const filteredLeave = filterByStatus(leaveRequests);
     const filteredSwaps = filterByStatus(shiftSwaps);
+    const filteredAttendance = filterByStatus(attendanceRequests);
 
     const pendingCount =
         timesheets.filter((t: any) => t.status === "pending").length +
         leaveRequests.filter((l: any) => l.status === "pending").length +
-        shiftSwaps.filter((s: any) => s.status === "pending_approval").length;
+        shiftSwaps.filter((s: any) => s.status === "pending_approval").length +
+        attendanceRequests.filter((a: any) => a.status === "pending").length;
 
-    function handleRejectTrigger(id: string, type: "timesheet" | "leave" | "swap") {
+    function handleRejectTrigger(id: string, type: "timesheet" | "leave" | "swap" | "attendance") {
         setRejectTarget({ id, type });
     }
 
@@ -142,6 +162,12 @@ export function ApprovalsHub({ role }: ApprovalsHubProps) {
             });
         } else if (rejectTarget.type === "swap") {
             swapMutation.mutate({
+                id: rejectTarget.id,
+                action: "reject",
+                note: rejectionReason || undefined
+            });
+        } else if (rejectTarget.type === "attendance") {
+            attendanceMutation.mutate({
                 id: rejectTarget.id,
                 action: "reject",
                 note: rejectionReason || undefined
@@ -172,7 +198,7 @@ export function ApprovalsHub({ role }: ApprovalsHubProps) {
             pageDescription={`${pendingCount} items awaiting review`}
         >
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-                <TabsList className="grid w-full grid-cols-3 mb-8">
+                <TabsList className="grid w-full grid-cols-4 mb-8">
                     <TabsTrigger value="timesheets" className="flex items-center gap-2">
                         <Clock size={16} /> Timesheets
                     </TabsTrigger>
@@ -181,6 +207,9 @@ export function ApprovalsHub({ role }: ApprovalsHubProps) {
                     </TabsTrigger>
                     <TabsTrigger value="swaps" className="flex items-center gap-2">
                         <ArrowLeftRight size={16} /> Shift Requests
+                    </TabsTrigger>
+                    <TabsTrigger value="attendance" className="flex items-center gap-2">
+                        <Clock size={16} /> Attendance
                     </TabsTrigger>
                 </TabsList>
 
@@ -304,6 +333,47 @@ export function ApprovalsHub({ role }: ApprovalsHubProps) {
                                                     <XCircle size={16} className="mr-1" /> Reject
                                                 </Button>
                                                 <Button size="sm" variant="success" onClick={() => swapMutation.mutate({ id: swap.request_id, action: "approve" })}>
+                                                    <CheckCircle size={16} className="mr-1" /> Approve
+                                                </Button>
+                                            </>
+                                        )}
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        ))
+                    )}
+                </TabsContent>
+                {/* Attendance Content */}
+                <TabsContent value="attendance" className="space-y-4 animate-in fade-in slide-in-from-bottom-2">
+                    {loadingAttendance ? (
+                        <div className="space-y-3">{[1, 2, 3].map(i => <Card key={i} className="h-20 skeleton" />)}</div>
+                    ) : filteredAttendance.length === 0 ? (
+                        <Card><CardContent className="p-12 text-center text-muted-foreground">No attendance requests found ✓</CardContent></Card>
+                    ) : (
+                        filteredAttendance.map((req: any) => (
+                            <Card key={req.request_id}>
+                                <CardContent className="p-4 flex items-center justify-between flex-wrap gap-4">
+                                    <div className="flex items-center gap-4">
+                                        <div className="h-10 w-10 rounded-full bg-warning-light flex items-center justify-center text-warning">
+                                            <Clock size={20} />
+                                        </div>
+                                        <div>
+                                            <p className="font-semibold">{req.Employee ? `${req.Employee.first_name} ${req.Employee.last_name}` : "Unknown"}</p>
+                                            <p className="text-sm text-muted-foreground">
+                                                {new Date(req.date).toLocaleDateString("en-AU")} · {new Date(req.clock_in).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })} - {new Date(req.clock_out).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}
+                                                {req.break_duration > 0 && ` (${req.break_duration}m break)`}
+                                            </p>
+                                            {req.reason && <p className="text-xs italic text-muted-foreground mt-1">"{req.reason}"</p>}
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <StatusBadge status={req.status} />
+                                        {req.status === "pending" && (
+                                            <>
+                                                <Button variant="ghost" size="sm" className="text-danger" onClick={() => handleRejectTrigger(req.request_id, "attendance")}>
+                                                    <XCircle size={16} className="mr-1" /> Reject
+                                                </Button>
+                                                <Button size="sm" variant="success" onClick={() => attendanceMutation.mutate({ id: req.request_id, action: "approve" })}>
                                                     <CheckCircle size={16} className="mr-1" /> Approve
                                                 </Button>
                                             </>

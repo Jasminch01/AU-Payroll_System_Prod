@@ -6,6 +6,9 @@ import { sendPushNotification } from './push-notifications';
 // --- NEW APP NOTIFICATION TYPES ---
 export type NotificationType = 
     | 'ATTENDANCE_CLOCK_EVENT'
+    | 'ATTENDANCE_REQUESTED'
+    | 'ATTENDANCE_APPROVED'
+    | 'ATTENDANCE_REJECTED'
     | 'SHIFT_SWAP_REQUESTED'
     | 'SHIFT_SWAP_ACCEPTED'
     | 'SHIFT_SWAP_REJECTED'
