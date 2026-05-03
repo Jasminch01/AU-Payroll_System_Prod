@@ -122,10 +122,8 @@ export async function POST(request: NextRequest) {
             business_id: authUser.business_id,
         };
 
-        // Only set override_by if employee_id exists
-        if (authUser.employee_id) {
-            insertData.override_by = authUser.employee_id;
-        }
+        // Set override_by to track who performed the manual entry/correction (Foreign Key to auth.users)
+        insertData.override_by = authUser.user_id;
 
         // Validate employee exists
         const { data: employee, error: empError } = await supabase

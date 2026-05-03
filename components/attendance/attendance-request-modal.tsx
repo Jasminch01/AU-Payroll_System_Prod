@@ -2,20 +2,17 @@
 
 import React, { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiPatch, apiPost, apiDelete } from "@/lib/api-client";
-import { X, AlertCircle, CheckCircle, Clock, Save, PlusCircle } from "lucide-react";
+import { apiPost } from "@/lib/api-client";
+import { X, AlertCircle, CheckCircle, Clock, Send } from "lucide-react";
 import { createBusinessTimestamp, getDateTimeForInput } from "@/lib/timezone-utils";
 import { useBusinessTimezone } from "@/lib/timezone-context";
-import { ConfirmationModal } from "@/components/ui/confirmation-modal";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
-interface EditAttendanceModalProps {
+interface AttendanceRequestModalProps {
     isOpen: boolean;
     onClose: () => void;
-    log: any; // Now contains session info
-    role?: string;
-    fromDate?: string;
-    toDate?: string;
+    log?: any; // Optional: if editing an existing session
 }
 
 const TIME_OPTIONS = [
@@ -26,112 +23,97 @@ const TIME_OPTIONS = [
     })
 ];
 
-export function EditAttendanceModal({
+export function AttendanceRequestModal({
     isOpen,
     onClose,
     log,
-    role,
-    fromDate,
-    toDate,
-}: EditAttendanceModalProps) {
+}: AttendanceRequestModalProps) {
     const queryClient = useQueryClient();
     const { businessTimezone } = useBusinessTimezone();
 
-    // Identify logs in the session
-    const logs = log?.all_logs || [log];
-    const clockInLog = logs.find((l: any) => l.event_type === 'CLOCK_IN');
-    const clockOutLog = logs.find((l: any) => l.event_type === 'CLOCK_OUT');
+    // Determine initial values based on whether log is a Session object or raw log
+    let clockInLog, clockOutLog;
+    if (log?.clock_in || log?.clock_out) {
+        // It's a Session object
+        clockInLog = log.clock_in;
+        clockOutLog = log.clock_out;
+    } else {
+        // It's a raw log array/object (legacy fallback)
+        const logs = log?.all_logs || (log ? [log] : []);
+        clockInLog = logs.find((l: any) => l.event_type === 'CLOCK_IN');
+        clockOutLog = logs.find((l: any) => l.event_type === 'CLOCK_OUT');
+    }
 
-    const inData = clockInLog ? getDateTimeForInput(clockInLog.timestamp, businessTimezone) : { date: "", time: "" };
-    const outData = clockOutLog ? getDateTimeForInput(clockOutLog.timestamp, businessTimezone) : { date: inData.date, time: "" };
+    const inData = clockInLog?.timestamp ? getDateTimeForInput(clockInLog.timestamp, businessTimezone) : { date: new Date().toISOString().split('T')[0], time: "" };
+    const outData = clockOutLog?.timestamp ? getDateTimeForInput(clockOutLog.timestamp, businessTimezone) : { date: inData.date, time: "" };
 
     const [inForm, setInForm] = useState({ date: inData.date, time: inData.time });
-    const [outForm, setOutForm] = useState({ date: outData.date, time: outData.time, exists: !!clockOutLog });
-    const [overrideReason, setOverrideReason] = useState(log?.override_reason || "");
+    const [outForm, setOutForm] = useState({ date: outData.date, time: outData.time });
+    const [breakHours, setBreakHours] = useState("");
+    const [reason, setReason] = useState("");
     const [error, setError] = useState("");
     const [success, setSuccess] = useState("");
 
     const [activeDropdown, setActiveDropdown] = useState<'in' | 'out' | null>(null);
     const [timeSearch, setTimeSearch] = useState("");
-    const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
 
     const mutation = useMutation({
-        mutationFn: async () => {
-            // 1. Update Clock In
-            if (clockInLog) {
-                const inTs = createBusinessTimestamp(inForm.date, inForm.time, businessTimezone);
-                await apiPatch(`/attendance/${clockInLog.log_id}`, {
-                    timestamp: inTs,
-                    override_reason: overrideReason
-                });
-            }
-
-            // 2. Update or Create Clock Out
-            if (outForm.time) {
-                const outTs = createBusinessTimestamp(outForm.date, outForm.time, businessTimezone);
-                if (clockOutLog) {
-                    await apiPatch(`/attendance/${clockOutLog.log_id}`, {
-                        timestamp: outTs,
-                        override_reason: overrideReason
-                    });
-                } else {
-                    await apiPost(`/attendance`, {
-                        employee_id: log.employee_id,
-                        event_type: 'CLOCK_OUT',
-                        timestamp: outTs,
-                        override_reason: overrideReason,
-                        device_info: 'Manual (Edit Session)'
-                    });
-                }
-            }
+        mutationFn: async (payload: any) => {
+            return apiPost(`/attendance/request-edit`, payload);
         },
         onSuccess: () => {
-            setSuccess("Attendance session updated successfully");
-            queryClient.invalidateQueries({ queryKey: ["attendance-raw"] });
+            setSuccess("Edit request submitted to management.");
+            toast.success("Request submitted successfully!");
+            queryClient.invalidateQueries({ queryKey: ["attendance-requests-me"] });
             setTimeout(() => {
                 onClose();
                 setSuccess("");
             }, 1500);
         },
         onError: (err: Error) => {
-            setError(err.message || "Failed to update session");
+            setError(err.message || "Failed to submit request");
         }
     });
-
-    const deleteMutation = useMutation({
-        mutationFn: async () => {
-            const promises = logs.map((l: any) => apiDelete(`/attendance/${l.log_id}`));
-            await Promise.all(promises);
-        },
-        onSuccess: () => {
-            setSuccess("Attendance session deleted successfully");
-            queryClient.invalidateQueries({ queryKey: ["attendance-raw"] });
-            setTimeout(() => {
-                onClose();
-                setSuccess("");
-            }, 1500);
-        },
-        onError: (err: Error) => {
-            setError(err.message || "Failed to delete session");
-        }
-    });
-
-    const handleDelete = () => {
-        setIsDeleteConfirmOpen(true);
-    };
-
-    const handleConfirmDelete = () => {
-        deleteMutation.mutate();
-        setIsDeleteConfirmOpen(false);
-    };
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        if (!overrideReason) {
-            setError("Please provide a reason for this override");
+        setError("");
+
+        if (!reason) {
+            setError("Please provide a reason for this edit request");
             return;
         }
-        mutation.mutate();
+
+        const inTs = inForm.time ? createBusinessTimestamp(inForm.date, inForm.time, businessTimezone) : null;
+        const outTs = outForm.time ? createBusinessTimestamp(outForm.date, outForm.time, businessTimezone) : null;
+
+        if (!inTs && !outTs && !breakHours) {
+            setError("Please provide at least one change (Clock In, Clock Out, or Break Hours)");
+            return;
+        }
+
+        if (!clockInLog?.log_id) {
+            setError("You can only request edits for an existing attendance record.");
+            return;
+        }
+
+        const now = new Date();
+        if (inTs && new Date(inTs) > now) {
+            setError("Cannot request a clock in time in the future.");
+            return;
+        }
+        if (outTs && new Date(outTs) > now) {
+            setError("Cannot request a clock out time in the future.");
+            return;
+        }
+
+        mutation.mutate({
+            attendance_log_id: clockInLog?.log_id || null,
+            requested_actual_start: inTs,
+            requested_actual_end: outTs,
+            requested_break_hours: breakHours ? parseFloat(breakHours) : null,
+            reason: reason
+        });
     };
 
     if (!isOpen) return null;
@@ -144,15 +126,15 @@ export function EditAttendanceModal({
                 className="relative w-full max-w-md rounded-2xl bg-[hsl(var(--background))] p-0 shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200"
                 onClick={(e) => e.stopPropagation()}
             >
-                <div className="bg-[hsl(var(--warning))] p-6 text-[hsl(var(--warning-foreground))]">
+                <div className="bg-[hsl(var(--brand))] p-6 text-white">
                     <button onClick={onClose} className="absolute right-4 top-4 rounded-full p-1.5 hover:bg-black/10 transition-colors">
                         <X size={20} />
                     </button>
                     <h2 className="text-xl font-bold flex items-center gap-2">
                         <Clock size={22} />
-                        Edit Session
+                        Request Attendance Edit
                     </h2>
-                    <p className="text-sm opacity-80 mt-1">Employee: <span className="font-bold">{log.Employee?.first_name} {log.Employee?.last_name}</span></p>
+                    <p className="text-sm opacity-80 mt-1">Submit corrections for manager approval</p>
                 </div>
 
                 <form onSubmit={handleSubmit} className="p-6 space-y-6">
@@ -161,13 +143,13 @@ export function EditAttendanceModal({
 
                     {/* Clock In Section */}
                     <div className="space-y-3">
-                        <label className="text-[10px] font-black uppercase text-[hsl(var(--muted-foreground))] tracking-widest">Clock In Time</label>
+                        <label className="text-[10px] font-black uppercase text-[hsl(var(--muted-foreground))] tracking-widest">Requested Clock In</label>
                         <div className="flex gap-2">
                             <input
                                 type="date"
                                 value={inForm.date}
-                                onChange={e => setInForm({ ...inForm, date: e.target.value })}
-                                className="flex-1 h-11 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-3 text-sm focus:ring-2 focus:ring-[hsl(var(--brand))]/20"
+                                readOnly
+                                className="flex-1 h-11 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/50 text-[hsl(var(--muted-foreground))] px-3 text-sm cursor-not-allowed"
                             />
                             <div className="relative w-32">
                                 <button
@@ -181,7 +163,7 @@ export function EditAttendanceModal({
                                 {activeDropdown === 'in' && (
                                     <>
                                         <div className="fixed inset-0 z-40" onClick={() => setActiveDropdown(null)} />
-                                        <div className="absolute top-12 right-0 w-40 bg-[hsl(var(--card))] border rounded-lg shadow-xl z-50 overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-100">
+                                        <div className="absolute top-12 right-0 w-40 bg-[hsl(var(--card))] border rounded-lg shadow-xl z-50 overflow-hidden flex flex-col">
                                             <div className="p-2 border-b bg-[hsl(var(--muted))]/30 sticky top-0">
                                                 <input
                                                     autoFocus
@@ -206,16 +188,13 @@ export function EditAttendanceModal({
 
                     {/* Clock Out Section */}
                     <div className="space-y-3">
-                        <div className="flex items-center justify-between">
-                            <label className="text-[10px] font-black uppercase text-[hsl(var(--muted-foreground))] tracking-widest">Clock Out Time</label>
-                            {!outForm.exists && <span className="text-[10px] font-bold text-orange-600 bg-orange-50 px-2 py-0.5 rounded-full">Missing</span>}
-                        </div>
+                        <label className="text-[10px] font-black uppercase text-[hsl(var(--muted-foreground))] tracking-widest">Requested Clock Out</label>
                         <div className="flex gap-2">
                             <input
                                 type="date"
                                 value={outForm.date}
-                                onChange={e => setOutForm({ ...outForm, date: e.target.value })}
-                                className="flex-1 h-11 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-3 text-sm focus:ring-2 focus:ring-[hsl(var(--brand))]/20"
+                                readOnly
+                                className="flex-1 h-11 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/50 text-[hsl(var(--muted-foreground))] px-3 text-sm cursor-not-allowed"
                             />
                             <div className="relative w-32">
                                 <button
@@ -224,12 +203,12 @@ export function EditAttendanceModal({
                                     className="w-full h-11 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-3 text-sm flex items-center justify-between"
                                 >
                                     <span>{outForm.time || "--:--"}</span>
-                                    {outForm.exists ? <Clock size={14} className="opacity-40" /> : <PlusCircle size={14} className="text-orange-500" />}
+                                    <Clock size={14} className="opacity-40" />
                                 </button>
                                 {activeDropdown === 'out' && (
                                     <>
                                         <div className="fixed inset-0 z-40" onClick={() => setActiveDropdown(null)} />
-                                        <div className="absolute top-12 right-0 w-40 bg-[hsl(var(--card))] border rounded-lg shadow-xl z-50 overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-100">
+                                        <div className="absolute top-12 right-0 w-40 bg-[hsl(var(--card))] border rounded-lg shadow-xl z-50 overflow-hidden flex flex-col">
                                             <div className="p-2 border-b bg-[hsl(var(--muted))]/30 sticky top-0">
                                                 <input
                                                     autoFocus
@@ -252,53 +231,39 @@ export function EditAttendanceModal({
                         </div>
                     </div>
 
+                    {/* Break Hours */}
+                    <div className="space-y-3">
+                        <label className="text-[10px] font-black uppercase text-[hsl(var(--muted-foreground))] tracking-widest">Requested Break Hours</label>
+                        <input
+                            type="number"
+                            step="0.01"
+                            value={breakHours}
+                            onChange={e => setBreakHours(e.target.value)}
+                            placeholder="e.g., 0.5 for 30 mins"
+                            className="w-full h-11 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-3 text-sm focus:ring-2 focus:ring-[hsl(var(--brand))]/20"
+                        />
+                    </div>
+
                     <div className="space-y-2">
-                        <label className="text-[10px] font-black uppercase text-[hsl(var(--muted-foreground))] tracking-widest">Override Reason <span className="text-red-500">*</span></label>
+                        <label className="text-[10px] font-black uppercase text-[hsl(var(--muted-foreground))] tracking-widest">Reason for Edit <span className="text-red-500">*</span></label>
                         <textarea
-                            value={overrideReason}
-                            onChange={e => setOverrideReason(e.target.value)}
-                            placeholder="Reason for editing this session..."
+                            value={reason}
+                            onChange={e => setReason(e.target.value)}
+                            placeholder="e.g., Forgot to clock out from kiosk, worked extra 15 mins..."
                             className="w-full p-3 rounded-xl border bg-[hsl(var(--card))] text-sm focus:ring-2 focus:ring-[hsl(var(--brand))]/20"
                             rows={3}
                         />
                     </div>
 
-                    <div className="flex gap-3">
-                        {role === 'owner' && (
-                            <button
-                                type="button"
-                                onClick={handleDelete}
-                                disabled={mutation.isPending || deleteMutation.isPending}
-                                className="flex-1 h-12 rounded-xl border border-red-200 bg-red-50 text-red-600 font-bold hover:bg-red-100 transition-all flex items-center justify-center gap-2"
-                            >
-                                {deleteMutation.isPending ? "Deleting..." : "Delete Session"}
-                            </button>
-                        )}
-                        <button
-                            type="submit"
-                            disabled={mutation.isPending || deleteMutation.isPending}
-                            className={cn(
-                                "h-12 rounded-xl font-bold shadow-lg transition-all flex items-center justify-center gap-2",
-                                role === 'owner' ? "flex-2 bg-[hsl(var(--warning))] text-[hsl(var(--warning-foreground))]" : "w-full bg-[hsl(var(--warning))] text-[hsl(var(--warning-foreground))]"
-                            )}
-                        >
-                            {mutation.isPending ? "Saving Changes..." : <><Save size={18} /> Update Session</>}
-                        </button>
-                    </div>
+                    <button
+                        type="submit"
+                        disabled={mutation.isPending}
+                        className="w-full h-12 rounded-xl bg-[hsl(var(--brand))] text-white font-bold shadow-lg transition-all flex items-center justify-center gap-2 hover:opacity-90 disabled:opacity-50"
+                    >
+                        {mutation.isPending ? "Submitting..." : <><Send size={18} /> Submit Request</>}
+                    </button>
                 </form>
             </div>
-
-            <ConfirmationModal
-                isOpen={isDeleteConfirmOpen}
-                onClose={() => setIsDeleteConfirmOpen(false)}
-                onConfirm={handleConfirmDelete}
-                title="Delete Attendance Session?"
-                description="Are you sure you want to delete this entire session? This will remove all clock-in, clock-out, and break logs for this period. This action cannot be undone."
-                confirmLabel="Delete Everything"
-                cancelLabel="Keep Session"
-                variant="danger"
-                isLoading={deleteMutation.isPending}
-            />
         </div>
     );
 }

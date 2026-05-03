@@ -51,10 +51,8 @@ export async function PATCH(
         if (event_type) updateData.event_type = event_type;
         if (override_reason) updateData.override_reason = override_reason;
 
-        // Always track who performed the override
-        if (authUser.employee_id) {
-            updateData.override_by = authUser.employee_id;
-        }
+        // Always track who performed the override (Foreign Key to auth.users)
+        updateData.override_by = authUser.user_id;
         // 3. Perform update
         const { data: updatedLog, error: updateError } = await supabase
             .from('AttendanceLog')
