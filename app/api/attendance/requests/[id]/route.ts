@@ -10,7 +10,7 @@ import { createNotification } from '@/lib/notifications';
  * Approve or Reject an attendance edit request
  * Access: Owner, Manager
  */
-export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
     try {
         const authUser = await requireRole('owner', 'manager');
         if (!authUser) return errorResponse('Unauthorized', 401);
