@@ -292,6 +292,23 @@ export interface LeaveRequest {
   updated_at: string | null;
 }
 
+export interface AttendanceEditRequest {
+  request_id: string;
+  business_id: string;
+  employee_id: string;
+  attendance_log_id: string | null;
+  requested_actual_start: string | null;
+  requested_actual_end: string | null;
+  requested_break_hours: number | null;
+  reason: string | null;
+  status: 'pending' | 'approved' | 'rejected' | 'cancelled';
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  manager_note: string | null;
+  created_at: string;
+  updated_at: string | null;
+}
+
 export interface PublicHoliday {
   holiday_id: string;
   business_id: string;
@@ -389,6 +406,10 @@ export type LeaveBalanceInsert = Omit<LeaveBalance, 'balance_id' | 'created_at' 
 };
 
 export type LeaveRequestInsert = Omit<LeaveRequest, 'request_id' | 'created_at' | 'updated_at'> & {
+  request_id?: string;
+};
+
+export type AttendanceEditRequestInsert = Omit<AttendanceEditRequest, 'request_id' | 'created_at' | 'updated_at'> & {
   request_id?: string;
 };
 
