@@ -48,7 +48,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
                         .from('AttendanceLog')
                         .update({
                             timestamp: editReq.requested_actual_start,
-                            override_by: authUser.employee_id || authUser.user_id,
+                            override_by: authUser.user_id,
                             override_reason: `Approved Edit Request: ${editReq.reason}`,
                             updated_at: new Date().toISOString()
                         })
@@ -90,7 +90,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
                         .from('AttendanceLog')
                         .update({
                             timestamp: editReq.requested_actual_end,
-                            override_by: authUser.employee_id || authUser.user_id,
+                            override_by: authUser.user_id,
                             override_reason: `Approved Edit Request: ${editReq.reason}`,
                             updated_at: new Date().toISOString()
                         })
@@ -104,7 +104,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
                             employee_id: editReq.employee_id,
                             event_type: 'CLOCK_OUT',
                             timestamp: editReq.requested_actual_end,
-                            override_by: authUser.employee_id || authUser.user_id,
+                            override_by: authUser.user_id,
                             override_reason: `Approved Edit Request (Missing Clock Out): ${editReq.reason}`,
                             device_info: 'Manager Approved Edit'
                         });
