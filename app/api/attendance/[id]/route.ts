@@ -52,9 +52,7 @@ export async function PATCH(
         if (override_reason) updateData.override_reason = override_reason;
 
         // Always track who performed the override
-        if (authUser.employee_id) {
-            updateData.override_by = authUser.employee_id;
-        }
+        updateData.override_by = authUser.employee_id || authUser.user_id;
         // 3. Perform update
         const { data: updatedLog, error: updateError } = await supabase
             .from('AttendanceLog')
