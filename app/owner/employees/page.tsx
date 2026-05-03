@@ -26,11 +26,14 @@ import type { Employee } from "@/types/database";
 import { useAuth } from "@/hooks/use-auth";
 import { createClient } from "@/lib/supabase/client";
 import { generateBusinessPrefix, formatEmpSuffix, getNumericSuffix } from "@/lib/utils/employee-id";
+import { useBusinessTimezone } from "@/lib/timezone-context";
+import { getDateInTimezone } from "@/lib/timezone-utils";
 
 type StatusFilter = "all" | "active" | "invited" | "inactive";
 type RoleFilter = "all" | "employee" | "manager";
 
 export default function OwnerEmployeesPage() {
+    const { businessTimezone } = useBusinessTimezone();
     const router = useRouter();
     const queryClient = useQueryClient();
     const [inviteOpen, setInviteOpen] = useState(false);
@@ -72,7 +75,7 @@ export default function OwnerEmployeesPage() {
         first_name: '', last_name: '', email: '', phone: '', dob: '',
         emergency_contact_name: '', emergency_contact_phone: '',
         role_title: '', employment_type: '', pay_cycle: 'weekly',
-        start_date: new Date().toISOString().split('T')[0],
+        start_date: getDateInTimezone(new Date().toISOString(), businessTimezone),
         weekday_rate: '',
         password: '',
         role: 'employee',
@@ -137,7 +140,6 @@ export default function OwnerEmployeesPage() {
                     filter: `business_id=eq.${user.business_id}`
                 },
                 (payload: any) => {
-                    console.log('Real-time update received:', payload);
                     queryClient.invalidateQueries({ queryKey: ["employees"] });
                 }
             )
@@ -216,7 +218,7 @@ export default function OwnerEmployeesPage() {
                 first_name: '', last_name: '', email: '', phone: '', dob: '',
                 emergency_contact_name: '', emergency_contact_phone: '',
                 role_title: '', employment_type: '', pay_cycle: 'weekly',
-                start_date: new Date().toISOString().split('T')[0],
+                start_date: getDateInTimezone(new Date().toISOString(), businessTimezone),
                 weekday_rate: '',
                 password: '',
                 role: 'employee',
@@ -246,7 +248,7 @@ export default function OwnerEmployeesPage() {
                 first_name: '', last_name: '', email: '', phone: '', dob: '',
                 emergency_contact_name: '', emergency_contact_phone: '',
                 role_title: '', employment_type: '', pay_cycle: 'weekly',
-                start_date: new Date().toISOString().split('T')[0],
+                start_date: getDateInTimezone(new Date().toISOString(), businessTimezone),
                 weekday_rate: '',
                 password: '',
                 role: 'employee',

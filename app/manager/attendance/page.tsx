@@ -28,6 +28,7 @@ import type { AttendanceLog } from "@/types/database";
 import { cn } from "@/lib/utils";
 import { EditAttendanceModal } from "@/components/attendance/edit-attendance-modal";
 import { useBusinessTimezone } from "@/lib/timezone-context";
+import { getDateInTimezone } from "@/lib/timezone-utils";
 
 /* ===== Types ===== */
 
@@ -47,6 +48,7 @@ interface Session {
     duration_minutes: number | null; // null when session is still open
     is_manual: boolean;
     device_info: string;
+    has_pending_request?: boolean;
 }
 
 interface GroupedAttendance {
@@ -70,9 +72,8 @@ interface GroupedAttendance {
 
 /* ===== Helpers ===== */
 
-function todayDateString(): string {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+function todayDateString(timezone: string): string {
+    return getDateInTimezone(new Date().toISOString(), timezone);
 }
 
 function formatDuration(totalMinutes: number): string {
@@ -99,9 +100,19 @@ function formatTime(iso: string | null, timezone: string) {
 
 export default function ManagerAttendancePage() {
     const { businessTimezone } = useBusinessTimezone();
-    const today = todayDateString();
-    const [fromDate, setFromDate] = useState<string>(today);
-    const [toDate, setToDate] = useState<string>(today);
+    const [fromDate, setFromDate] = useState<string>("");
+    const [toDate, setToDate] = useState<string>("");
+
+    // Initialize dates once timezone is available
+    useEffect(() => {
+        if (businessTimezone && !fromDate && !toDate) {
+            const today = todayDateString(businessTimezone);
+            setFromDate(today);
+            setToDate(today);
+        }
+    }, [businessTimezone]);
+
+    const today = useMemo(() => todayDateString(businessTimezone), [businessTimezone]);
     const [detailRow, setDetailRow] = useState<GroupedAttendance | null>(null);
     const [isManualEntryModalOpen, setIsManualEntryModalOpen] = useState(false);
     const [editingLog, setEditingLog] = useState<any | null>(null);
@@ -141,6 +152,11 @@ export default function ManagerAttendancePage() {
     if (fromDate) queryParams.from = fromDate;
     if (toDate) queryParams.to = toDate;
 
+    const { data: attendanceRequests = [] } = useQuery({
+        queryKey: ["attendance-edit-requests", "pending"],
+        queryFn: () => apiGet<any[]>("/attendance/requests?status=pending"),
+    });
+
     const { data: records = [], isLoading } = useQuery({
         queryKey: ["attendance-raw", fromDate, toDate],
         queryFn: () =>
@@ -152,7 +168,24 @@ export default function ManagerAttendancePage() {
         // Use the new cross-midnight aware grouping function
         const groupedSessions = groupAttendanceIntoSessions(records, businessTimezone);
 
-        return groupedSessions
+        // Filter logic: only show records where clock_in_date is within the selected date range
+        const filteredSessions = groupedSessions.filter((group) => {
+            if (!fromDate && !toDate) return true; // No filter = show all
+
+            // String comparison on YYYY-MM-DD format is reliable and timezone-safe
+            if (fromDate && toDate) {
+                return group.clock_in_date >= fromDate && group.clock_in_date <= toDate;
+            }
+            if (fromDate) {
+                return group.clock_in_date >= fromDate;
+            }
+            if (toDate) {
+                return group.clock_in_date <= toDate;
+            }
+            return true;
+        });
+
+        return filteredSessions
             .flatMap((group) =>
                 group.sessions.map((session) => {
                     // Build a Session object for each work session
@@ -167,7 +200,10 @@ export default function ManagerAttendancePage() {
                         ]
                             .filter(Boolean)
                             .join(", "),
-                        breaks: undefined
+                        breaks: undefined,
+                        has_pending_request: attendanceRequests.some((r: any) => 
+                            r.attendance_log_id === session.clock_in?.log_id && r.status === 'pending'
+                        )
                     };
 
                     const totalMinutes = session.duration_minutes ?? 0;
@@ -377,6 +413,17 @@ export default function ManagerAttendancePage() {
             key: "override",
             label: "Status",
             render: (row) => {
+                const hasPending = row.sessions.some((s: any) => s.has_pending_request);
+                
+                if (hasPending) {
+                    return (
+                        <div className="flex flex-col gap-1">
+                            <StatusBadge status="pending" label="Requested" className="bg-yellow-100 text-yellow-800 border-yellow-200" />
+                            <p className="text-[10px] text-yellow-700 font-medium">Edit request pending</p>
+                        </div>
+                    );
+                }
+
                 if (!row.is_manual) return <StatusBadge status="auto" label="Auto" />;
                 return (
                     <div className="flex flex-col gap-0.5">

@@ -7,9 +7,6 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/badge";
 import {
-    Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter
-} from "@/components/ui/dialog";
-import {
     Tabs, TabsContent, TabsList, TabsTrigger
 } from "@/components/ui/tabs";
 import { apiGet, apiPost, apiPut } from "@/lib/api-client";
@@ -18,6 +15,7 @@ import { CalendarDays, Clock, ArrowLeftRight, Check, X, Users, LayoutGrid, List,
 import { useAuth } from "@/hooks/use-auth";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
+import { useRealtimeInvalidator } from "@/hooks/use-realtime-invalidator";
 
 import { ShiftSwapDialog } from "@/components/shifts/swap-dialog";
 
@@ -35,72 +33,15 @@ export default function ManagerShiftsPage() {
         queryFn: () => apiGet<any[]>("/shifts/me"),
     });
 
-    // Real-time listener for shifts
-    useEffect(() => {
-        const supabase = createClient();
-        const channel = supabase
-            .channel('manager-shifts-realtime')
-            .on(
-                'postgres_changes',
-                {
-                    event: 'INSERT',
-                    schema: 'public',
-                    table: 'Shift',
-                    filter: user?.employee_id ? `employee_id=eq.${user.employee_id}` : undefined
-                },
-                () => queryClient.invalidateQueries({ queryKey: ["my-shifts"] })
-            )
-            .on(
-                'postgres_changes',
-                {
-                    event: 'UPDATE',
-                    schema: 'public',
-                    table: 'Shift',
-                    filter: user?.employee_id ? `employee_id=eq.${user.employee_id}` : undefined
-                },
-                () => queryClient.invalidateQueries({ queryKey: ["my-shifts"] })
-            )
-            .on(
-                'postgres_changes',
-                {
-                    event: 'DELETE',
-                    schema: 'public',
-                    table: 'Shift'
-                },
-                () => queryClient.invalidateQueries({ queryKey: ["my-shifts"] })
-            )
-            .on(
-                'postgres_changes',
-                {
-                    event: '*',
-                    schema: 'public',
-                    table: 'Roster'
-                },
-                () => {
-                    queryClient.invalidateQueries({ queryKey: ["my-shifts"] });
-                }
-            )
-            .on(
-                'postgres_changes',
-                {
-                    event: '*',
-                    schema: 'public',
-                    table: 'ShiftSwapRequest'
-                },
-                (payload) => {
-                    console.log('Real-time ShiftSwapRequest change received:', payload);
-                    queryClient.invalidateQueries({ queryKey: ["my-swap-requests"] });
-                    queryClient.invalidateQueries({ queryKey: ["my-shifts"] });
-                }
-            )
-            .subscribe((status) => {
-                console.log('Supabase real-time subscription status (manager):', status);
-            });
+    // Memoized configs for real-time invalidator
+    const realtimeConfigs = useMemo(() => [
+        { table: 'Shift', queryKeys: [['my-shifts']] },
+        { table: 'Roster', queryKeys: [['my-shifts']] },
+        { table: 'ShiftSwapRequest', queryKeys: [['my-shifts'], ['my-swap-requests']] }
+    ], []);
 
-        return () => {
-            supabase.removeChannel(channel);
-        };
-    }, [user?.employee_id, queryClient]);
+    // Real-time invalidation
+    useRealtimeInvalidator(realtimeConfigs);
 
     // Detect default roster period based on data
     useEffect(() => {
@@ -110,7 +51,7 @@ export default function ManagerShiftsPage() {
                 const start = new Date(shiftWithRoster.Roster.start_date);
                 const end = new Date(shiftWithRoster.Roster.end_date);
                 const diffDays = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-                
+
                 if (diffDays > 20) setRosterPeriod("monthly");
                 else if (diffDays > 10) setRosterPeriod("fortnightly");
                 else setRosterPeriod("weekly");
@@ -127,7 +68,13 @@ export default function ManagerShiftsPage() {
         mutationFn: ({ id, action }: { id: string; action: "accept" | "decline" | "cancel" }) =>
             apiPut(`/shifts/swaps/${id}`, { action }),
         onSuccess: (data: any, variables: any) => {
-            toast.success(variables.action === 'cancel' ? "Request cancelled!" : "Response recorded!");
+            if (variables.action === 'cancel') {
+                toast.success("Request cancelled successfully.");
+            } else if (variables.action === 'accept') {
+                toast.success("Request accepted! Awaiting manager approval.");
+            } else {
+                toast.success("Request declined.");
+            }
             queryClient.invalidateQueries({ queryKey: ["my-swap-requests"] });
             queryClient.invalidateQueries({ queryKey: ["my-shifts"] });
         },
@@ -137,31 +84,31 @@ export default function ManagerShiftsPage() {
     const claimShiftMutation = useMutation({
         mutationFn: (id: string) => apiPut(`/shifts/swaps/${id}`, { action: "accept" }),
         onSuccess: () => {
-            toast.success("Shift claimed successfully!");
+            toast.success("Shift claimed successfully! Awaiting manager approval.");
             queryClient.invalidateQueries({ queryKey: ["my-swap-requests"] });
             queryClient.invalidateQueries({ queryKey: ["my-shifts"] });
         },
         onError: (err: Error) => toast.error(err.message),
     });
 
-     const now = new Date();
-     const ongoing = shifts.filter((s: any) => {
-         const start = new Date(s.start_time);
-         const end = new Date(s.end_time);
-         return start <= now && end >= now;
-     });
- 
-     const upcoming = shifts.filter((s: any) => new Date(s.start_time) > now)
-         .sort((a: any, b: any) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
-     
-     const past = shifts.filter((s: any) => new Date(s.end_time) < now)
-         .sort((a: any, b: any) => new Date(b.end_time).getTime() - new Date(a.end_time).getTime());
+    const now = new Date();
+    const ongoing = shifts.filter((s: any) => {
+        const start = new Date(s.start_time);
+        const end = new Date(s.end_time);
+        return start <= now && end >= now;
+    });
+
+    const upcoming = shifts.filter((s: any) => new Date(s.start_time) > now)
+        .sort((a: any, b: any) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
+
+    const past = shifts.filter((s: any) => new Date(s.end_time) < now)
+        .sort((a: any, b: any) => new Date(b.end_time).getTime() - new Date(a.end_time).getTime());
 
     const pendingIncomingSwaps = swapRequests.filter((sr: any) =>
         sr.target_employee_id === user?.employee_id && sr.status === 'pending_acceptance'
     );
 
-    const openPoolShifts = swapRequests.filter((sr: any) => 
+    const openPoolShifts = swapRequests.filter((sr: any) =>
         !sr.target_employee_id && sr.status === 'pending_acceptance' && sr.requester_id !== user?.employee_id
     );
 
@@ -188,23 +135,23 @@ export default function ManagerShiftsPage() {
         if (rosterPeriod === "weekly") startDiff = weekOffset * 7;
         if (rosterPeriod === "fortnightly") startDiff = weekOffset * 14;
         if (rosterPeriod === "monthly") {
-             const currentMonth = new Date();
-             currentMonth.setMonth(currentMonth.getMonth() + weekOffset);
-             currentMonth.setDate(1);
-             currentMonth.setHours(0, 0, 0, 0);
-             
-             const daysInMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0).getDate();
-             for (let i = 0; i < daysInMonth; i++) {
-                 const next = new Date(currentMonth);
-                 next.setDate(i + 1);
-                 days.push(next);
-             }
-             return days;
+            const currentMonth = new Date();
+            currentMonth.setMonth(currentMonth.getMonth() + weekOffset);
+            currentMonth.setDate(1);
+            currentMonth.setHours(0, 0, 0, 0);
+
+            const daysInMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0).getDate();
+            for (let i = 0; i < daysInMonth; i++) {
+                const next = new Date(currentMonth);
+                next.setDate(i + 1);
+                days.push(next);
+            }
+            return days;
         }
 
         const start = new Date(monday);
         start.setDate(monday.getDate() + startDiff);
-        
+
         for (let i = 0; i < count; i++) {
             const next = new Date(start);
             next.setDate(start.getDate() + i);
@@ -212,14 +159,14 @@ export default function ManagerShiftsPage() {
         }
         return days;
     }, [weekOffset, rosterPeriod]);
-    
+
     const getShiftStatus = (shift: any) => {
         const now = new Date();
         const start = new Date(shift.start_time);
         const end = new Date(shift.end_time);
 
-        const activeRequest = (swapRequests || []).find((sr: any) => 
-            String(sr.shift_id) === String(shift.shift_id) && 
+        const activeRequest = (swapRequests || []).find((sr: any) =>
+            String(sr.shift_id) === String(shift.shift_id) &&
             ['pending_acceptance', 'pending_approval'].includes(sr.status)
         );
 
@@ -261,17 +208,17 @@ export default function ManagerShiftsPage() {
                         </div>
                     )}
                     <div className="flex items-center bg-[hsl(var(--muted))]/50 rounded-lg p-1">
-                        <Button 
-                            variant="ghost" 
-                            size="sm" 
+                        <Button
+                            variant="ghost"
+                            size="sm"
                             className={cn("h-8 px-3 rounded-md transition-all", viewMode === "list" ? "bg-white shadow-sm text-[hsl(var(--brand))]" : "text-[hsl(var(--muted-foreground))]")}
                             onClick={() => setViewMode("list")}
                         >
                             <List size={16} className="mr-2" /> List
                         </Button>
-                        <Button 
-                            variant="ghost" 
-                            size="sm" 
+                        <Button
+                            variant="ghost"
+                            size="sm"
                             className={cn("h-8 px-3 rounded-md transition-all", viewMode === "grid" ? "bg-white shadow-sm text-[hsl(var(--brand))]" : "text-[hsl(var(--muted-foreground))]")}
                             onClick={() => setViewMode("grid")}
                         >
@@ -347,8 +294,8 @@ export default function ManagerShiftsPage() {
                                             {pool.Shift?.start_time?.split('T')[1]?.substring(0, 5)} - {pool.Shift?.end_time?.split('T')[1]?.substring(0, 5)}
                                         </div>
                                     </div>
-                                    <Button 
-                                        className="w-full h-8 text-xs bg-[hsl(var(--brand))]" 
+                                    <Button
+                                        className="w-full h-8 text-xs bg-[hsl(var(--brand))]"
                                         onClick={() => claimShiftMutation.mutate(pool.request_id)}
                                         loading={claimShiftMutation.isPending}
                                     >
@@ -399,8 +346,8 @@ export default function ManagerShiftsPage() {
                                 const isToday = formatToDateString(new Date()) === dateStr;
 
                                 return (
-                                    <div 
-                                        key={dateStr} 
+                                    <div
+                                        key={dateStr}
                                         className={cn(
                                             "rounded-xl p-2 border transition-all flex flex-col",
                                             rosterPeriod === "monthly" ? "min-h-[100px] lg:min-h-0 lg:h-full" : "min-h-[140px] w-full",
@@ -417,8 +364,8 @@ export default function ManagerShiftsPage() {
                                         </div>
                                         <div className="space-y-1.5">
                                             {dayShifts.map((s: any) => (
-                                                <div 
-                                                    key={s.shift_id} 
+                                                <div
+                                                    key={s.shift_id}
                                                     className="bg-[hsl(var(--brand))] text-white p-2 rounded-lg text-[10px] font-medium leading-tight cursor-pointer hover:brightness-110 transition-all shadow-sm"
                                                     onClick={() => { setSelectedShift(s); setSwapDialogOpen(true); }}
                                                 >
@@ -510,32 +457,32 @@ export default function ManagerShiftsPage() {
                                                                             size="sm"
                                                                             className="h-8 text-[10px] gap-1 px-3 border-[hsl(var(--brand))]/20 text-[hsl(var(--brand))] hover:bg-[hsl(var(--brand-light))]"
                                                                             onClick={() => { setSelectedShift(shift); setSwapDialogOpen(true); }}
-                                                                            disabled={!!(swapRequests || []).find((sr: any) => 
-                                                                                String(sr.shift_id) === String(shift.shift_id) && 
+                                                                            disabled={!!(swapRequests || []).find((sr: any) =>
+                                                                                String(sr.shift_id) === String(shift.shift_id) &&
                                                                                 ['pending_acceptance', 'pending_approval'].includes(sr.status)
                                                                             )}
                                                                         >
-                                                                             <ArrowLeftRight size={12} /> Shift Actions
-                                                                         </Button>
-                                                                     )}
-                                                                    
-                                                                    {(swapRequests || []).find((sr: any) => 
-                                                                        String(sr.shift_id) === String(shift.shift_id) && 
+                                                                            <ArrowLeftRight size={12} /> Shift Actions
+                                                                        </Button>
+                                                                    )}
+
+                                                                    {(swapRequests || []).find((sr: any) =>
+                                                                        String(sr.shift_id) === String(shift.shift_id) &&
                                                                         String(sr.requester_id) === String(user?.employee_id) &&
                                                                         ['pending_acceptance', 'pending_approval'].includes(sr.status)
                                                                     ) && (
-                                                                        <Button
-                                                                            variant="ghost"
-                                                                            size="sm"
-                                                                            className="h-8 text-[10px] text-[hsl(var(--danger))] bg-[hsl(var(--danger-light))]/5 hover:bg-[hsl(var(--danger-light))]/15 border border-[hsl(var(--danger))]/10"
-                                                                            onClick={() => {
-                                                                                const req = (swapRequests || []).find((sr: any) => String(sr.shift_id) === String(shift.shift_id) && ['pending_acceptance', 'pending_approval'].includes(sr.status));
-                                                                                if (req) respondSwapMutation.mutate({ id: req.request_id, action: 'cancel' });
-                                                                            }}
-                                                                        >
-                                                                            <X size={12} className="mr-1" /> Undo Request
-                                                                        </Button>
-                                                                    )}
+                                                                            <Button
+                                                                                variant="ghost"
+                                                                                size="sm"
+                                                                                className="h-8 text-[10px] text-[hsl(var(--danger))] bg-[hsl(var(--danger-light))]/5 hover:bg-[hsl(var(--danger-light))]/15 border border-[hsl(var(--danger))]/10"
+                                                                                onClick={() => {
+                                                                                    const req = (swapRequests || []).find((sr: any) => String(sr.shift_id) === String(shift.shift_id) && ['pending_acceptance', 'pending_approval'].includes(sr.status));
+                                                                                    if (req) respondSwapMutation.mutate({ id: req.request_id, action: 'cancel' });
+                                                                                }}
+                                                                            >
+                                                                                <X size={12} className="mr-1" /> Undo Request
+                                                                            </Button>
+                                                                        )}
                                                                 </div>
                                                             </td>
                                                         </tr>
@@ -551,10 +498,10 @@ export default function ManagerShiftsPage() {
                 )}
             </div>
 
-            <ShiftSwapDialog 
-                open={swapDialogOpen} 
-                onOpenChange={setSwapDialogOpen} 
-                shift={selectedShift} 
+            <ShiftSwapDialog
+                open={swapDialogOpen}
+                onOpenChange={setSwapDialogOpen}
+                shift={selectedShift}
                 role="manager"
             />
         </DashboardLayout>

@@ -28,11 +28,18 @@ export function getNotificationRoute(
     return null;
   }
 
+  if (type === 'ATTENDANCE_REQUESTED') {
+    if (userRole === 'manager' || userRole === 'owner') {
+      return '/manager/approvals?tab=attendance_edits';
+    }
+    return '/employee/attendance';
+  }
+
   // Shift swap notifications
   if (type === 'SHIFT_SWAP_REQUESTED' || type === 'SHIFT_SWAP_ACCEPTED' || 
       type === 'SHIFT_SWAP_REJECTED' || type === 'SHIFT_SWAP_APPROVED') {
     if (userRole === 'manager' || userRole === 'owner') {
-      return '/manager/approvals'; // or owner/approvals
+      return '/manager/approvals?tab=swaps';
     }
     return '/employee/shifts?tab=swaps';
   }
@@ -41,7 +48,7 @@ export function getNotificationRoute(
   if (type === 'SHIFT_TRANSFER_OFFERED' || type === 'SHIFT_TRANSFER_ACCEPTED' || 
       type === 'SHIFT_TRANSFER_APPROVED') {
     if (userRole === 'manager' || userRole === 'owner') {
-      return '/manager/approvals';
+      return '/manager/approvals?tab=swaps';
     }
     return '/employee/shifts?tab=transfers';
   }
@@ -77,7 +84,7 @@ export function getNotificationRoute(
   }
 
   if (type === 'SHIFT_POOL_AVAILABLE') {
-    return '/employee/shifts';
+    return '/employee/shifts?tab=pool';
   }
 
   return null;

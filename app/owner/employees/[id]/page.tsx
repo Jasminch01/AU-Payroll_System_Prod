@@ -71,7 +71,7 @@ export default function OwnerEmployeeDetailPage() {
         queryFn: () => apiGet<any>(`/employees/${employeeId}`),
         enabled: !!employeeId,
     });
-    console.log("Employee data:", employee);
+
 
 
     const { data: rateHistory, isLoading: isLoadingRates } = useQuery({
@@ -95,7 +95,7 @@ export default function OwnerEmployeeDetailPage() {
                 abn: employee.abn || "",
                 tfn: employee.tfn || "",
             };
-            //console.log("Normalized employee data:", normalizedData);
+
             setFormData(normalizedData);
         }
     }, [employee, formData]);
@@ -108,7 +108,7 @@ export default function OwnerEmployeeDetailPage() {
 
     const updateMutation = useMutation({
         mutationFn: (data: any) => {
-            // console.log("Sending to API:", data);
+
             return apiPut(`/employees/${employeeId}`, data);
         },
         onSuccess: () => {
@@ -119,7 +119,7 @@ export default function OwnerEmployeeDetailPage() {
             setFormData(null); // Will reload from query
         },
         onError: (err: Error) => {
-            //  console.error("Update error:", err);
+
             toast.error(err.message);
         },
     });
@@ -197,7 +197,7 @@ export default function OwnerEmployeeDetailPage() {
     };
 
     const updateField = (field: string, value: any) => {
-        //  console.log(`Updating field: ${field} with value:`, value);
+
         setFormData((prev: any) => ({ ...prev, [field]: value }));
         // Enable editing mode when any field is touched
         if (!editing) {
@@ -231,7 +231,7 @@ export default function OwnerEmployeeDetailPage() {
     }
 
     const data = formData || employee;
-    //  console.log("Current display data:", data);
+
 
     return (
         <DashboardLayout role="owner" pageTitle="" pageDescription="" actions={null}>

@@ -60,23 +60,17 @@ export async function GET(request: NextRequest) {
             return errorResponse(error.message, 400);
         }
 
-        console.log('Shifts before filtering:', { 
-            count: shifts?.length, 
-            employee_id: authUser.employee_id,
-            shifts: shifts?.slice(0, 2)
-        });
+
 
         // Client-side filtering
         const visibleShifts = (shifts || []).filter((s: any) => {
             // Only show shifts that have been explicitly published
             const isPublished = s.shift_status === 'published';
-            if (!isPublished) {
-                console.log('Filtering out draft shift:', { shift_id: s.shift_id, shift_status: s.shift_status });
-            }
+
             return isPublished;
         });
 
-        console.log('Visible shifts:', { count: visibleShifts.length });
+
         return successResponse(visibleShifts, `Found ${visibleShifts.length} published shift(s)`);
     } catch (err) {
         console.error('My shifts error:', err);

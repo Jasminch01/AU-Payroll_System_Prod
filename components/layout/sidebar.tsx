@@ -63,7 +63,7 @@ const managerNav: NavItem[] = [
 
 const employeeNav: NavItem[] = [
     { label: "Dashboard", href: "/employee/dashboard", icon: <LayoutDashboard size={20} /> },
-  //  { label: "Clock In / Out", href: "/employee/clock", icon: <Clock size={20} /> },
+    { label: "Attendance", href: "/employee/attendance", icon: <Clock size={20} /> },
     { label: "My Shifts", href: "/employee/shifts", icon: <CalendarDays size={20} /> },
     { label: "Timesheets", href: "/employee/timesheets", icon: <FileText size={20} /> },
     { label: "Leave", href: "/employee/leave", icon: <Palmtree size={20} /> },

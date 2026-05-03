@@ -158,15 +158,9 @@ export async function POST(request: NextRequest) {
             return errorResponse('Business not found', 404);
         }
 
-        console.log('Business validation passed:', { business_id: insertData.business_id });
 
-        console.log('Manual attendance entry being saved:', {
-            employee_id: insertData.employee_id,
-            event_type: insertData.event_type,
-            timestamp: insertData.timestamp,
-            business_id: insertData.business_id,
-            override_by: insertData.override_by
-        });
+
+
 
         const { data: log, error } = await supabase
             .from('AttendanceLog')
@@ -195,7 +189,7 @@ export async function POST(request: NextRequest) {
         if (verifyError) {
             console.error('Failed to verify saved attendance:', verifyError);
         } else {
-            console.log('Verification: Attendance record found in database:', verification);
+
         }
 
         // Notify owner and managers of attendance event (async, no await)

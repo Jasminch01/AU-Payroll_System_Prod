@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useMemo, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { DashboardLayout } from "@/components/layout";
 import { Card, CardContent } from "@/components/ui/card";
@@ -13,9 +14,11 @@ import {
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { apiGet, apiPut } from "@/lib/api-client";
 import { toast } from "sonner";
-import { CheckCircle, XCircle, Clock, Palmtree, ArrowLeftRight } from "lucide-react";
+import { CheckCircle, XCircle, Clock, Palmtree, ArrowLeftRight, Edit3 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { cn } from "@/lib/utils";
+import { useRealtimeInvalidator } from "@/hooks/use-realtime-invalidator";
+import { useBusinessTimezone } from "@/lib/timezone-context";
 
 type ApprovalStatus = "all" | "pending" | "approved" | "rejected";
 
@@ -26,13 +29,33 @@ interface ApprovalsHubProps {
 export function ApprovalsHub({ role }: ApprovalsHubProps) {
     const queryClient = useQueryClient();
     const { user } = useAuth();
+    const { businessTimezone } = useBusinessTimezone();
 
-    // UI State
-    const [activeTab, setActiveTab] = useState("timesheets");
+    const searchParams = useSearchParams();
+    const [activeTab, setActiveTab] = useState(searchParams.get("tab") || "timesheets");
     const [statusFilter, setStatusFilter] = useState<ApprovalStatus>("pending");
 
+    // Memoized configs for real-time invalidator
+    const realtimeConfigs = useMemo(() => [
+        { table: 'Timesheet', queryKeys: [['timesheets']] },
+        { table: 'LeaveRequest', queryKeys: [['leave-requests']] },
+        { table: 'ShiftSwapRequest', queryKeys: [['shift-swaps']] },
+        { table: 'AttendanceEditRequest', queryKeys: [['attendance-edit-requests']] }
+    ], []);
+
+    // Real-time invalidation
+    useRealtimeInvalidator(realtimeConfigs);
+
+    // Sync tab with URL
+    useEffect(() => {
+        const tab = searchParams.get("tab");
+        if (tab && ["timesheets", "leave", "swaps", "attendance_edits"].includes(tab)) {
+            setActiveTab(tab);
+        }
+    }, [searchParams]);
+
     // Rejection dialog
-    const [rejectTarget, setRejectTarget] = useState<{ id: string; type: "timesheet" | "leave" | "swap" } | null>(null);
+    const [rejectTarget, setRejectTarget] = useState<{ id: string; type: "timesheet" | "leave" | "swap" | "attendance_edit" } | null>(null);
     const [rejectionReason, setRejectionReason] = useState("");
 
     // Queries - Fetch all to allow quick filtering
@@ -49,6 +72,11 @@ export function ApprovalsHub({ role }: ApprovalsHubProps) {
     const { data: shiftSwaps = [], isLoading: loadingSwaps } = useQuery({
         queryKey: ["shift-swaps", "all"],
         queryFn: () => apiGet<any[]>("/shifts/swaps"),
+    });
+
+    const { data: attendanceEdits = [], isLoading: loadingEdits } = useQuery({
+        queryKey: ["attendance-edit-requests", "all"],
+        queryFn: () => apiGet<any[]>("/attendance/requests?status=all"),
     });
 
     // Mutations
@@ -86,6 +114,19 @@ export function ApprovalsHub({ role }: ApprovalsHubProps) {
         onError: (err: Error) => toast.error(err.message),
     });
 
+    const editMutation = useMutation({
+        mutationFn: ({ id, status, note }: { id: string; status: "approved" | "rejected"; note?: string }) =>
+            apiPut(`/attendance/requests/${id}`, { status, manager_note: note }),
+        onSuccess: (data: any, variables: any) => {
+            toast.success(`Request ${variables.status}`);
+            queryClient.invalidateQueries({ queryKey: ["attendance-edit-requests"] });
+            queryClient.invalidateQueries({ queryKey: ["attendance-raw"] });
+            setRejectTarget(null);
+            setRejectionReason("");
+        },
+        onError: (err: Error) => toast.error(err.message),
+    });
+
     // Filtering Logic
     const filterByStatus = (items: any[]) => {
         if (statusFilter === "all") return items;
@@ -99,13 +140,16 @@ export function ApprovalsHub({ role }: ApprovalsHubProps) {
     const filteredTS = filterByStatus(timesheets);
     const filteredLeave = filterByStatus(leaveRequests);
     const filteredSwaps = filterByStatus(shiftSwaps);
+    const filteredEdits = filterByStatus(attendanceEdits);
 
-    const pendingCount =
-        timesheets.filter((t: any) => t.status === "pending").length +
-        leaveRequests.filter((l: any) => l.status === "pending").length +
-        shiftSwaps.filter((s: any) => s.status === "pending_approval").length;
+    const pendingTimesheets = timesheets.filter((t: any) => t.status === "pending").length;
+    const pendingLeave = leaveRequests.filter((l: any) => l.status === "pending").length;
+    const pendingSwaps = shiftSwaps.filter((s: any) => s.status === "pending_approval").length;
+    const pendingEdits = attendanceEdits.filter((e: any) => e.status === "pending").length;
 
-    function handleRejectTrigger(id: string, type: "timesheet" | "leave" | "swap") {
+    const pendingCount = pendingTimesheets + pendingLeave + pendingSwaps + pendingEdits;
+
+    function handleRejectTrigger(id: string, type: "timesheet" | "leave" | "swap" | "attendance_edit") {
         setRejectTarget({ id, type });
     }
 
@@ -124,6 +168,12 @@ export function ApprovalsHub({ role }: ApprovalsHubProps) {
             swapMutation.mutate({
                 id: rejectTarget.id,
                 action: "reject",
+                note: rejectionReason || undefined
+            });
+        } else if (rejectTarget.type === "attendance_edit") {
+            editMutation.mutate({
+                id: rejectTarget.id,
+                status: "rejected",
                 note: rejectionReason || undefined
             });
         }
@@ -152,15 +202,38 @@ export function ApprovalsHub({ role }: ApprovalsHubProps) {
             pageDescription={`${pendingCount} items awaiting review`}
         >
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-                <TabsList className="grid w-full grid-cols-3 mb-8">
-                    <TabsTrigger value="timesheets" className="flex items-center gap-2">
+                <TabsList className="grid w-full grid-cols-4 mb-8">
+                    <TabsTrigger value="timesheets" className="flex items-center gap-2 relative">
                         <Clock size={16} /> Timesheets
+                        {pendingTimesheets > 0 && (
+                            <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-[10px] font-bold text-white">
+                                {pendingTimesheets}
+                            </span>
+                        )}
                     </TabsTrigger>
-                    <TabsTrigger value="leave" className="flex items-center gap-2">
+                    <TabsTrigger value="leave" className="flex items-center gap-2 relative">
                         <Palmtree size={16} /> Leave
+                        {pendingLeave > 0 && (
+                            <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-[10px] font-bold text-white">
+                                {pendingLeave}
+                            </span>
+                        )}
                     </TabsTrigger>
-                    <TabsTrigger value="swaps" className="flex items-center gap-2">
+                    <TabsTrigger value="swaps" className="flex items-center gap-2 relative">
                         <ArrowLeftRight size={16} /> Shift Requests
+                        {pendingSwaps > 0 && (
+                            <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-[10px] font-bold text-white">
+                                {pendingSwaps}
+                            </span>
+                        )}
+                    </TabsTrigger>
+                    <TabsTrigger value="attendance_edits" className="flex items-center gap-2 relative">
+                        <Edit3 size={16} /> Attendance Edits
+                        {pendingEdits > 0 && (
+                            <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-[10px] font-bold text-white">
+                                {pendingEdits}
+                            </span>
+                        )}
                     </TabsTrigger>
                 </TabsList>
 
@@ -288,6 +361,67 @@ export function ApprovalsHub({ role }: ApprovalsHubProps) {
                                                 </Button>
                                             </>
                                         )}
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        ))
+                    )}
+                </TabsContent>
+
+                {/* Attendance Edits Content */}
+                <TabsContent value="attendance_edits" className="space-y-4 animate-in fade-in slide-in-from-bottom-2">
+                    {loadingEdits ? (
+                        <div className="space-y-3">{[1, 2, 3].map(i => <Card key={i} className="h-20 skeleton" />)}</div>
+                    ) : filteredEdits.length === 0 ? (
+                        <Card><CardContent className="p-12 text-center text-muted-foreground">No attendance edit requests found ✓</CardContent></Card>
+                    ) : (
+                        filteredEdits.map((edit: any) => (
+                            <Card key={edit.request_id}>
+                                <CardContent className="p-4 flex flex-col gap-4">
+                                    <div className="flex items-center justify-between flex-wrap gap-4">
+                                        <div className="flex items-center gap-4">
+                                            <div className="h-10 w-10 rounded-full bg-brand-light flex items-center justify-center text-brand">
+                                                <Clock size={20} />
+                                            </div>
+                                            <div>
+                                                <p className="font-semibold">{edit.Employee ? `${edit.Employee.first_name} ${edit.Employee.last_name}` : "Unknown"}</p>
+                                                <p className="text-sm text-muted-foreground">
+                                                    Request for: {new Date(edit.requested_actual_start || edit.created_at).toLocaleDateString("en-AU")}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <StatusBadge status={edit.status} />
+                                            {edit.status === "pending" && (
+                                                <>
+                                                    <Button variant="ghost" size="sm" className="text-danger" onClick={() => handleRejectTrigger(edit.request_id, "attendance_edit")}>
+                                                        <XCircle size={16} className="mr-1" /> Reject
+                                                    </Button>
+                                                    <Button size="sm" variant="success" onClick={() => editMutation.mutate({ id: edit.request_id, status: "approved" })}>
+                                                        <CheckCircle size={16} className="mr-1" /> Approve
+                                                    </Button>
+                                                </>
+                                            )}
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-3 bg-muted/30 rounded-lg text-sm">
+                                        <div>
+                                            <p className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest mb-1">Requested Changes</p>
+                                            {edit.requested_actual_start && (
+                                                <p>Clock In: <span className="font-mono font-bold">{new Date(edit.requested_actual_start).toLocaleTimeString("en-AU", { hour12: false, timeZone: businessTimezone })}</span></p>
+                                            )}
+                                            {edit.requested_actual_end && (
+                                                <p>Clock Out: <span className="font-mono font-bold">{new Date(edit.requested_actual_end).toLocaleTimeString("en-AU", { hour12: false, timeZone: businessTimezone })}</span></p>
+                                            )}
+                                            {edit.requested_break_hours !== null && (
+                                                <p>Breaks: <span className="font-mono font-bold">{edit.requested_break_hours}h</span></p>
+                                            )}
+                                        </div>
+                                        <div>
+                                            <p className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest mb-1">Reason</p>
+                                            <p className="italic">"{edit.reason}"</p>
+                                        </div>
                                     </div>
                                 </CardContent>
                             </Card>

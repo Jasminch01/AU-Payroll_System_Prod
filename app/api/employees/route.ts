@@ -39,14 +39,7 @@ export async function GET(request: NextRequest) {
         const excludeConflictsForShift = searchParams.get('exclude_conflicts_for_shift');
         const onlyWithShifts = searchParams.get('only_with_shifts') === 'true';
 
-        console.log('[Employees API] Request Params:', {
-            role: roleFilter,
-            status: statusFilter,
-            excludeSelf,
-            excludeConflictsForShift,
-            onlyWithShifts,
-            business_id: authUser.business_id
-        });
+
 
         // Calculate offset
         const from = (page - 1) * limit;
@@ -112,7 +105,7 @@ export async function GET(request: NextRequest) {
                     if (s.employee_id) busyEmployeeIds.add(s.employee_id);
                 });
 
-                console.log('[Employees API] Busy employees (conflicts):', Array.from(busyEmployeeIds));
+
             }
         }
 
@@ -139,11 +132,11 @@ export async function GET(request: NextRequest) {
             ));
 
             if (eligibleEmployeeIds.length === 0) {
-                console.log('[Employees API] No eligible employees found for swap (onlyWithShifts)');
+
                 // Return empty if no one else has published shifts
                 return successResponse([], 'No colleagues with available shifts found');
             }
-            console.log('[Employees API] Eligible employees for swap:', eligibleEmployeeIds.length);
+
         }
 
         // First determine eligible employees if onlyWithShifts or excludeConflictsForShift
@@ -193,7 +186,7 @@ export async function GET(request: NextRequest) {
             return errorResponse(error.message, 400);
         }
 
-        console.log(`[Employees API] Database returned ${employees?.length || 0} potential candidates`);
+
 
         let filtered = employees || [];
 
@@ -254,7 +247,7 @@ export async function GET(request: NextRequest) {
         const totalItems = count || 0;
 
         if (isPaginated) {
-            console.log(`[Employees API] Returning ${filtered.length} employees (paginated)`);
+
             return successResponse({
                 employees: filtered,
                 meta: {
@@ -273,9 +266,9 @@ export async function GET(request: NextRequest) {
             }, `Found ${filtered.length} employee(s) page`);
         } else {
             if (filtered.length > 0) {
-                console.log(`[Employees API] Success: ${filtered.length} available employees found`);
+
             } else {
-                console.log('[Employees API] Notice: No available employees found after final filtering');
+
             }
             return successResponse(filtered, `Found ${filtered.length} employee(s)`);
         }

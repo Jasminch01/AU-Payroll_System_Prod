@@ -21,7 +21,8 @@ export type NotificationType =
     | 'SHIFT_UPDATED'
     | 'SHIFT_DELETED'
     | 'SHIFT_POOL_AVAILABLE'
-    | 'BROADCAST';
+    | 'BROADCAST'
+    | 'ATTENDANCE_REQUESTED';
 
 export interface CreateNotificationParams {
     business_id: string;
@@ -183,7 +184,7 @@ export async function notifyRosterPublished(rosterId: string, businessId: string
     const notifiedUserKeys = Object.keys(userChanges);
     if (notifiedUserKeys.length === 0) return;
 
-    console.log(`[Notification] Sending grouped notifications to ${notifiedUserKeys.length} employees for roster ${rosterId}`);
+
     
     // 4. Log the notification event summary (for audit)
     await logAudit({

@@ -234,7 +234,6 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
         // --- EMAIL SYNCHRONIZATION ---
         // If the email was changed, update it in Supabase Auth as well
         if (updateData.email && beforeValue && beforeValue.email !== updateData.email) {
-            console.log(`Synchronizing email change: ${beforeValue.email} -> ${updateData.email} for user ${beforeValue.user_id}`);
             const { error: authUpdateError } = await adminClient.auth.admin.updateUserById(beforeValue.user_id, {
                 email: updateData.email as string,
                 email_confirm: true // Force confirm since this is a manager correction
