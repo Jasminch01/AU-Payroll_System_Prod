@@ -28,10 +28,9 @@ export function getNotificationRoute(
     return null;
   }
 
-  // Attendance Request notifications
-  if (type === 'ATTENDANCE_REQUESTED' || type === 'ATTENDANCE_APPROVED' || type === 'ATTENDANCE_REJECTED') {
-    if (userRole === 'owner' || userRole === 'manager') {
-      return '/manager/approvals?tab=attendance';
+  if (type === 'ATTENDANCE_REQUESTED') {
+    if (userRole === 'manager' || userRole === 'owner') {
+      return '/manager/approvals?tab=attendance_edits';
     }
     return '/employee/attendance';
   }

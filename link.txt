@@ -1,1 +1,0 @@
-https://hihvehilmlloienmnxqh.supabase.co/auth/v1/verify?token=386750c726221489d469f23999bb0af8397a146e5a4a4140ed2dd245&type=magiclink&redirect_to=http://localhost:3000/onboarding

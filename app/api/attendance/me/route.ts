@@ -5,15 +5,10 @@ import { successResponse, errorResponse } from '@/lib/api-helpers';
 import { getNextAttendanceEvent, validateAttendanceTransition } from '@/lib/attendance-logic';
 import { EventType } from '@/types/database';
 import { notifyAttendanceEvent } from '@/lib/attendance-notifications';
+import { groupAttendanceIntoSessions } from '@/lib/attendance-grouper';
 
 import { getTodayRangeInTimezone } from '@/lib/timezone-utils';
 
-/**
- * GET /api/attendance/me
- * 
- * Get today's logs for the authenticated employee
- * Access: Employee, Manager, Owner
- */
 export async function GET(request: NextRequest) {
     try {
         const authUser = await getAuthUser();
@@ -25,26 +20,43 @@ export async function GET(request: NextRequest) {
 
         // Get today's date range in the business timezone
         const timezone = await getBusinessTimezone(authUser.business_id);
-        const { start, end } = getTodayRangeInTimezone(timezone);
+        const { searchParams } = new URL(request.url);
+        const from = searchParams.get('from');
+        const to = searchParams.get('to');
 
-        const { data: logs, error } = await supabase
+        let query = supabase
             .from('AttendanceLog')
-            .select('*')
+            .select('*, Employee:employee_id(first_name, last_name, role_title)')
             .eq('employee_id', authUser.employee_id)
-            .eq('business_id', authUser.business_id)
-            .gte('timestamp', start)
-            .lte('timestamp', end)
-            .order('timestamp', { ascending: false });
+            .eq('business_id', authUser.business_id);
+
+        if (from || to) {
+            if (from) query = query.gte('timestamp', `${from}T00:00:00Z`);
+            if (to) query = query.lte('timestamp', `${to}T23:59:59Z`);
+        } else {
+            const { start, end } = getTodayRangeInTimezone(timezone);
+            query = query.gte('timestamp', start).lte('timestamp', end);
+        }
+
+        const { data: logs, error } = await query.order('timestamp', { ascending: false });
 
         if (error) return errorResponse(error.message, 400);
 
+        // Group logs into sessions
+        const grouped = groupAttendanceIntoSessions(logs || [], timezone);
+        
+        // Flatten sessions for the employee
+        const allSessions = grouped.flatMap(g => g.sessions.map(s => ({
+            ...s,
+            total_hours: (s.duration_minutes || 0) / 60
+        })));
+
         // Also get the most recent log to determine current status
-        const currentStatus = logs.length > 0 ? logs[0].event_type : null;
-
-
+        const currentStatus = logs && logs.length > 0 ? logs[0].event_type : null;
 
         return successResponse({
             logs,
+            sessions: allSessions,
             current_status: currentStatus,
         });
     } catch (err) {
