@@ -46,6 +46,7 @@ interface Session {
     clock_in: string | null;
     clock_out: string | null;
     duration_minutes: number | null; // null when session is still open
+    break_minutes: number;
     is_manual: boolean;
     device_info: string;
 }
@@ -64,6 +65,7 @@ interface GroupedAttendance {
     last_out: string | null;
     sessions: Session[];
     total_hours: number; // sum of completed session durations
+    total_break_minutes: number;
     is_manual: boolean;
     device_info: string;
     override_reason?: string;
@@ -189,6 +191,7 @@ export default function OwnerAttendancePage() {
                         clock_in: session.clock_in?.timestamp ?? null,
                         clock_out: session.clock_out?.timestamp ?? null,
                         duration_minutes: session.duration_minutes,
+                        break_minutes: session.break_minutes,
                         is_manual: !!session.clock_in?.override_by || !!session.clock_out?.override_by,
                         device_info: [
                             session.clock_in?.device_info,
@@ -200,6 +203,7 @@ export default function OwnerAttendancePage() {
                     };
 
                     const totalMinutes = session.duration_minutes ?? 0;
+                    const totalBreakMinutes = session.break_minutes ?? 0;
 
                     return {
                         id: `${group.employee_id}_${group.clock_in_date}_${session.clock_in?.timestamp}`,
@@ -215,6 +219,7 @@ export default function OwnerAttendancePage() {
                         last_out: session.clock_out?.timestamp ?? null,
                         sessions: [sessionObj],
                         total_hours: totalMinutes,
+                        total_break_minutes: totalBreakMinutes,
                         is_manual:
                             !!session.clock_in?.override_by ||
                             !!session.clock_out?.override_by,
@@ -395,6 +400,18 @@ export default function OwnerAttendancePage() {
             },
         },
         {
+            key: "total_break",
+            label: "Total Break",
+            render: (row) => (
+                <div className="flex items-center gap-2">
+                    <Coffee size={14} className="text-amber-600 shrink-0" />
+                    <span className="text-sm font-medium tabular-nums text-amber-700">
+                        {formatDuration(row.total_break_minutes)}
+                    </span>
+                </div>
+            ),
+        },
+        {
             key: "sessions_count",
             label: "Sessions",
             render: (row) => (
@@ -465,6 +482,10 @@ export default function OwnerAttendancePage() {
         (sum, r) => sum + r.total_hours,
         0
     );
+    const totalBreakMinutesAll = filteredData.reduce(
+        (sum, r) => sum + r.total_break_minutes,
+        0
+    );
 
     const handleRowClick = useCallback((row: GroupedAttendance) => {
         setDetailRow(row);
@@ -500,6 +521,20 @@ export default function OwnerAttendancePage() {
                         </p>
                         <p className="text-2xl font-bold mt-0.5">
                             {formatDuration(totalWorkedMinutes)}
+                        </p>
+                    </div>
+                </div>
+
+                <div className="flex items-center gap-4 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-5 shadow-sm">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-amber-50 text-amber-600">
+                        <Coffee size={24} />
+                    </div>
+                    <div>
+                        <p className="text-xs font-semibold text-amber-600 uppercase tracking-wider">
+                            Total Breaks
+                        </p>
+                        <p className="text-2xl font-bold mt-0.5">
+                            {formatDuration(totalBreakMinutesAll)}
                         </p>
                     </div>
                 </div>

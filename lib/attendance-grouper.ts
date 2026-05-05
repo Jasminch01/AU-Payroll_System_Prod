@@ -21,6 +21,7 @@ export interface WorkSession {
   breaks: AttendanceLogWithEmployee[];
   all_logs: AttendanceLogWithEmployee[]; // All logs in this session (in/out/breaks)
   duration_minutes: number | null; // null if no CLOCK_OUT yet
+  break_minutes: number;
   has_overtime: boolean;
 }
 
@@ -33,6 +34,32 @@ export interface GroupedAttendanceSession {
     last_name: string;
     role_title: string;
   } | null;
+}
+
+/**
+ * Calculate total break minutes from a list of break logs
+ */
+function calculateBreakMinutes(breaks: AttendanceLogWithEmployee[]): number {
+  if (breaks.length < 2) return 0;
+  
+  // Sort breaks by timestamp
+  const sortedBreaks = [...breaks].sort(
+    (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+  );
+  
+  let totalBreakMs = 0;
+  let currentStart: number | null = null;
+  
+  for (const log of sortedBreaks) {
+    if (log.event_type === 'BREAK_START') {
+      currentStart = new Date(log.timestamp).getTime();
+    } else if (log.event_type === 'BREAK_END' && currentStart !== null) {
+      totalBreakMs += (new Date(log.timestamp).getTime() - currentStart);
+      currentStart = null;
+    }
+  }
+  
+  return totalBreakMs / 60000;
 }
 
 /**
@@ -89,6 +116,13 @@ export function groupAttendanceIntoSessions(
           // Close the previous session for this source as incomplete
           const prev = activeSessions[sameSourceIndex];
           if (prev.clock_in) usedClockInIds.add(prev.clock_in.log_id);
+          
+          // Calculate duration for the incomplete session if it has breaks
+          if (prev.clock_in) {
+            const inMs = new Date(prev.clock_in.timestamp).getTime();
+            // Since it's incomplete, we don't have a duration, but we might want to store breaks
+          }
+          
           sessions.push(prev as WorkSession);
           activeSessions.splice(sameSourceIndex, 1);
         }
@@ -100,6 +134,7 @@ export function groupAttendanceIntoSessions(
           breaks: [],
           all_logs: [log],
           duration_minutes: null,
+          break_minutes: 0,
           has_overtime: false,
         });
       } else if (log.event_type === 'CLOCK_OUT') {
@@ -120,7 +155,10 @@ export function groupAttendanceIntoSessions(
             usedClockInIds.add(matchedSession.clock_in.log_id);
             const inMs = new Date(matchedSession.clock_in.timestamp).getTime();
             const outMs = new Date(log.timestamp).getTime();
-            matchedSession.duration_minutes = (outMs - inMs) / 60000;
+            const grossMinutes = (outMs - inMs) / 60000;
+            const breakMinutes = calculateBreakMinutes(matchedSession.breaks || []);
+            matchedSession.break_minutes = breakMinutes;
+            matchedSession.duration_minutes = Math.max(0, grossMinutes - breakMinutes);
           }
 
           sessions.push(matchedSession as WorkSession);
@@ -137,12 +175,6 @@ export function groupAttendanceIntoSessions(
               if (clockInDate === clockOutDate && !usedClockInIds.has(possibleClockIn.log_id)) {
                 matchedClockIn = possibleClockIn;
                 usedClockInIds.add(possibleClockIn.log_id);
-                console.log(`[GROUPER] Paired orphan CLOCK_OUT with CLOCK_IN:`, {
-                  employee_id: employeeId,
-                  clock_in: matchedClockIn.timestamp,
-                  clock_out: log.timestamp,
-                  clock_out_override_by: log.override_by
-                });
                 break;
               }
             }
@@ -155,6 +187,7 @@ export function groupAttendanceIntoSessions(
             breaks: [],
             all_logs: matchedClockIn ? [matchedClockIn, log] : [log],
             duration_minutes: null,
+            break_minutes: 0,
             has_overtime: false,
           };
 
@@ -182,6 +215,11 @@ export function groupAttendanceIntoSessions(
 
     // Add any remaining active sessions as incomplete sessions
     for (const remainingSession of activeSessions) {
+      if (remainingSession.breaks) {
+        remainingSession.break_minutes = calculateBreakMinutes(remainingSession.breaks);
+      } else {
+        remainingSession.break_minutes = 0;
+      }
       sessions.push(remainingSession as WorkSession);
     }
 

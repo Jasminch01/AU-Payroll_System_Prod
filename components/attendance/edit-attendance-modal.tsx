@@ -193,9 +193,17 @@ export function EditAttendanceModal({
                                                 />
                                             </div>
                                             <div className="max-h-36 overflow-y-auto p-1">
-                                                {TIME_OPTIONS.filter(t => t.includes(timeSearch)).map(t => (
-                                                    <button key={t} type="button" onClick={() => { setInForm({ ...inForm, time: t }); setActiveDropdown(null); setTimeSearch(""); }} className="w-full text-left px-4 py-2 text-sm hover:bg-[hsl(var(--muted))] rounded-md">{t}</button>
-                                                ))}
+                                                {(() => {
+                                                    const filtered = TIME_OPTIONS.filter(t => t.includes(timeSearch));
+                                                    const currentIndex = filtered.indexOf(inForm.time);
+                                                    const rotated = currentIndex > 0 
+                                                        ? [...filtered.slice(currentIndex), ...filtered.slice(0, currentIndex)]
+                                                        : filtered;
+                                                    
+                                                    return rotated.map(t => (
+                                                        <button key={t} type="button" onClick={() => { setInForm({ ...inForm, time: t }); setActiveDropdown(null); setTimeSearch(""); }} className="w-full text-left px-4 py-2 text-sm hover:bg-[hsl(var(--muted))] rounded-md">{t}</button>
+                                                    ));
+                                                })()}
                                             </div>
                                         </div>
                                     </>
@@ -241,9 +249,17 @@ export function EditAttendanceModal({
                                                 />
                                             </div>
                                             <div className="max-h-36 overflow-y-auto p-1">
-                                                {TIME_OPTIONS.filter(t => t.includes(timeSearch)).map(t => (
-                                                    <button key={t} type="button" onClick={() => { setOutForm({ ...outForm, time: t }); setActiveDropdown(null); setTimeSearch(""); }} className="w-full text-left px-4 py-2 text-sm hover:bg-[hsl(var(--muted))] rounded-md">{t}</button>
-                                                ))}
+                                                {(() => {
+                                                    const filtered = TIME_OPTIONS.filter(t => t.includes(timeSearch));
+                                                    const currentIndex = filtered.indexOf(outForm.time);
+                                                    const rotated = currentIndex > 0 
+                                                        ? [...filtered.slice(currentIndex), ...filtered.slice(0, currentIndex)]
+                                                        : filtered;
+                                                    
+                                                    return rotated.map(t => (
+                                                        <button key={t} type="button" onClick={() => { setOutForm({ ...outForm, time: t }); setActiveDropdown(null); setTimeSearch(""); }} className="w-full text-left px-4 py-2 text-sm hover:bg-[hsl(var(--muted))] rounded-md">{t}</button>
+                                                    ));
+                                                })()}
                                             </div>
                                         </div>
                                     </>
