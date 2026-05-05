@@ -89,116 +89,83 @@ export async function POST(request: NextRequest) {
         if (!authUser) return errorResponse('Unauthorized', 401);
 
         const body = await request.json();
-        const { employee_id, event_type } = body;
         const supabase = await createClient();
 
-        // 1. Check current state for validation
-        const newTimestamp = body.timestamp || new Date().toISOString();
-        const { data: lastLog } = await supabase
-            .from('AttendanceLog')
-            .select('event_type, timestamp')
-            .eq('employee_id', employee_id)
-            .lte('timestamp', newTimestamp)
-            .order('timestamp', { ascending: false })
-            .limit(1)
-            .maybeSingle();
+        // Support both single object and array of objects
+        const entries = Array.isArray(body) ? body : [body];
+        const createdLogs = [];
 
-        const transitionError = validateAttendanceTransition(
-            lastLog as { event_type: EventType, timestamp: string } | null,
-            event_type as EventType,
-            newTimestamp
+        for (const entryData of entries) {
+            const { employee_id, event_type, timestamp } = entryData;
+
+            // 1. Check current state for validation (relative to this entry)
+            const newTimestamp = timestamp || new Date().toISOString();
+            const { data: lastLog } = await supabase
+                .from('AttendanceLog')
+                .select('event_type, timestamp')
+                .eq('employee_id', employee_id)
+                .lte('timestamp', newTimestamp)
+                .order('timestamp', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+
+            const transitionError = validateAttendanceTransition(
+                lastLog as { event_type: EventType, timestamp: string } | null,
+                event_type as EventType,
+                newTimestamp
+            );
+
+            if (transitionError) {
+                return errorResponse(`Manual entry error: ${transitionError}`, 400);
+            }
+
+            // Build insert object
+            const insertData: any = {
+                ...entryData,
+                timestamp: newTimestamp,
+                business_id: authUser.business_id,
+                override_by: authUser.user_id,
+            };
+
+            // Validate employee exists and belongs to the same business
+            const { data: employee, error: empError } = await supabase
+                .from('Employee')
+                .select('employee_id, business_id')
+                .eq('employee_id', employee_id)
+                .eq('business_id', authUser.business_id)
+                .single();
+
+            if (empError || !employee) {
+                return errorResponse('Employee not found or unauthorized', 404);
+            }
+
+            const { data: log, error } = await supabase
+                .from('AttendanceLog')
+                .insert(insertData)
+                .select()
+                .single();
+
+            if (error) {
+                console.error('Failed to insert manual attendance:', error);
+                return errorResponse(error.message, 400);
+            }
+
+            createdLogs.push(log);
+
+            // Notify owner and managers of attendance event (async)
+            notifyAttendanceEvent(
+                employee_id,
+                event_type as EventType,
+                newTimestamp,
+                authUser.business_id
+            ).catch(err => console.error('Failed to send attendance notification:', err));
+        }
+
+        return successResponse(
+            createdLogs.length === 1 ? createdLogs[0] : createdLogs,
+            `${createdLogs.length} attendance record(s) recorded`,
+            201
         );
-
-        if (transitionError) {
-            return errorResponse(`Manual entry error: ${transitionError}`, 400);
-        }
-
-        const localTimestamp = new Date().toISOString();
-
-        // Build insert object with optional override_by
-        const insertData: any = {
-            ...body,
-            timestamp: body.timestamp || localTimestamp,
-            business_id: authUser.business_id,
-        };
-
-        // Set override_by to track who performed the manual entry/correction (Foreign Key to auth.users)
-        insertData.override_by = authUser.user_id;
-
-        // Validate employee exists
-        const { data: employee, error: empError } = await supabase
-            .from('Employee')
-            .select('employee_id, business_id')
-            .eq('employee_id', insertData.employee_id)
-            .single();
-
-        if (empError || !employee) {
-            console.error('Employee validation failed:', {
-                employee_id: insertData.employee_id,
-                error: empError?.message
-            });
-            return errorResponse('Employee not found', 404);
-        }
-
-
-        // Validate business exists
-        const { data: business, error: bizError } = await supabase
-            .from('Business')
-            .select('business_id')
-            .eq('business_id', insertData.business_id)
-            .single();
-
-        if (bizError || !business) {
-            console.error('Business validation failed:', {
-                business_id: insertData.business_id,
-                error: bizError?.message
-            });
-            return errorResponse('Business not found', 404);
-        }
-
-
-
-
-
-        const { data: log, error } = await supabase
-            .from('AttendanceLog')
-            .insert(insertData)
-            .select()
-            .single();
-
-        if (error) {
-            console.error('Failed to insert manual attendance:', {
-                error: error.message,
-                code: error.code,
-                details: error.details,
-                insertData
-            });
-            return errorResponse(error.message, 400);
-        }
-
-
-        // Now verify it can be retrieved
-        const { data: verification, error: verifyError } = await supabase
-            .from('AttendanceLog')
-            .select('*')
-            .eq('log_id', log.log_id)
-            .single();
-
-        if (verifyError) {
-            console.error('Failed to verify saved attendance:', verifyError);
-        } else {
-
-        }
-
-        // Notify owner and managers of attendance event (async, no await)
-        notifyAttendanceEvent(
-            employee_id,
-            event_type as EventType,
-            body.timestamp || localTimestamp,
-            authUser.business_id
-        ).catch(err => console.error('Failed to send attendance notification:', err));
-
-        return successResponse(log, 'Manual attendance entry recorded', 201);
     } catch (err) {
         console.error('Manual attendance error:', err);
         return errorResponse('Internal server error', 500);

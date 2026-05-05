@@ -21,7 +21,8 @@ interface ManualEntryModalProps {
     toDate?: string;
 }
 
-const EVENT_TYPES: { value: EventType; label: string }[] = [
+const EVENT_TYPES: { value: EventType | "FULL_SHIFT"; label: string }[] = [
+    { value: "FULL_SHIFT", label: "Full Shift (In & Out)" },
     { value: "CLOCK_IN", label: "Clock In" },
     { value: "CLOCK_OUT", label: "Clock Out" },
     { value: "BREAK_START", label: "Break Start" },
@@ -51,9 +52,10 @@ export function ManualEntryModal({
 
     const [formData, setFormData] = useState({
         employee_id: "",
-        event_type: "CLOCK_IN" as EventType,
+        event_type: "FULL_SHIFT" as EventType | "FULL_SHIFT",
         date: todayDate,
-        time: "01:00",
+        inTime: "09:00",
+        outTime: "17:00",
         override_reason: "",
     });
 
@@ -63,12 +65,7 @@ export function ManualEntryModal({
     const [success, setSuccess] = useState("");
 
     const mutation = useMutation({
-        mutationFn: async (data: {
-            employee_id: string;
-            event_type: EventType;
-            timestamp: string;
-            override_reason?: string;
-        }) => {
+        mutationFn: async (data: any) => {
             const response = await apiPost("/attendance", data);
             return response;
         },
@@ -77,9 +74,10 @@ export function ManualEntryModal({
             setSuccess("Manual entry recorded successfully");
             setFormData({
                 employee_id: "",
-                event_type: "CLOCK_IN",
+                event_type: "FULL_SHIFT",
                 date: newDate,
-                time: newTime,
+                inTime: "09:00",
+                outTime: "17:00",
                 override_reason: "",
             });
             setError("");
@@ -105,7 +103,10 @@ export function ManualEntryModal({
     });
 
     const [searchTerm, setSearchTerm] = useState("");
-    const [isTimeDropdownOpen, setIsTimeDropdownOpen] = useState(false);
+    const [isInTimeDropdownOpen, setIsInTimeDropdownOpen] = useState(false);
+    const [isOutTimeDropdownOpen, setIsOutTimeDropdownOpen] = useState(false);
+    const [inTimeSearch, setInTimeSearch] = useState("");
+    const [outTimeSearch, setOutTimeSearch] = useState("");
 
     const filteredEmployees = employees.filter((emp) =>
         `${emp.first_name} ${emp.last_name}`
@@ -125,19 +126,50 @@ export function ManualEntryModal({
             return;
         }
 
-        if (!formData.date || !formData.time) {
-            setError("Please select date and time");
-            return;
+        if (formData.event_type === "FULL_SHIFT") {
+            if (!formData.date || !formData.inTime || !formData.outTime) {
+                setError("Please select date, clock-in and clock-out times");
+                return;
+            }
+
+            const inTimestamp = createBusinessTimestamp(formData.date, formData.inTime, businessTimezone);
+            const outTimestamp = createBusinessTimestamp(formData.date, formData.outTime, businessTimezone);
+
+            // Basic validation: Out must be after In
+            if (new Date(outTimestamp) <= new Date(inTimestamp)) {
+                setError("Clock out time must be after clock in time");
+                return;
+            }
+
+            mutation.mutate([
+                {
+                    employee_id: formData.employee_id,
+                    event_type: "CLOCK_IN",
+                    timestamp: inTimestamp,
+                    override_reason: formData.override_reason || undefined,
+                },
+                {
+                    employee_id: formData.employee_id,
+                    event_type: "CLOCK_OUT",
+                    timestamp: outTimestamp,
+                    override_reason: formData.override_reason || undefined,
+                }
+            ] as any);
+        } else {
+            if (!formData.date || !formData.inTime) {
+                setError("Please select date and time");
+                return;
+            }
+
+            const timestamp = createBusinessTimestamp(formData.date, formData.inTime, businessTimezone);
+
+            mutation.mutate({
+                employee_id: formData.employee_id,
+                event_type: formData.event_type as EventType,
+                timestamp,
+                override_reason: formData.override_reason || undefined,
+            } as any);
         }
-
-        const timestamp = createBusinessTimestamp(formData.date, formData.time, businessTimezone);
-
-        mutation.mutate({
-            employee_id: formData.employee_id,
-            event_type: formData.event_type,
-            timestamp,
-            override_reason: formData.override_reason || undefined,
-        });
     };
 
     if (!isOpen) return null;
@@ -274,75 +306,121 @@ export function ManualEntryModal({
                         {/* Date & Time */}
                         <div className="space-y-2">
                             <label className="text-sm font-semibold text-[hsl(var(--foreground))]">
-                                3. Date & Time <span className="text-red-500">*</span>
+                                3. {formData.event_type === 'FULL_SHIFT' ? 'Shift Times' : 'Date & Time'} <span className="text-red-500">*</span>
                             </label>
-                            <div className="flex gap-2">
+                            <div className="flex flex-col gap-3">
                                 <input
                                     type="date"
                                     value={formData.date}
                                     onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-                                    className="flex-1 h-11 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-3 text-xs focus:outline-none focus:ring-2 focus:ring-[hsl(var(--brand))]/20 focus:border-[hsl(var(--brand))]"
+                                    className="w-full h-11 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-3 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--brand))]/20 focus:border-[hsl(var(--brand))]"
                                 />
-                                <div className="relative w-24">
-                                    <button
-                                        type="button"
-                                        onClick={() => setIsTimeDropdownOpen(!isTimeDropdownOpen)}
-                                        className="w-full h-11 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-3 text-xs flex items-center justify-between focus:outline-none focus:ring-2 focus:ring-[hsl(var(--brand))]/20 focus:border-[hsl(var(--brand))]"
-                                    >
-                                        <span>{formData.time}</span>
-                                        <Clock size={12} className="text-[hsl(var(--muted-foreground))]" />
-                                    </button>
+                                
+                                <div className="flex gap-2">
+                                    {/* Clock In / Event Time */}
+                                    <div className="flex-1 relative">
+                                        <p className="text-[10px] uppercase font-bold text-[hsl(var(--muted-foreground))] mb-1 ml-1">
+                                            {formData.event_type === 'FULL_SHIFT' ? 'Clock In' : 'Time'}
+                                        </p>
+                                        <button
+                                            type="button"
+                                            onClick={() => setIsInTimeDropdownOpen(!isInTimeDropdownOpen)}
+                                            className="w-full h-11 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-3 text-xs flex items-center justify-between focus:outline-none focus:ring-2 focus:ring-[hsl(var(--brand))]/20 focus:border-[hsl(var(--brand))]"
+                                        >
+                                            <span>{formData.inTime}</span>
+                                            <Clock size={12} className="text-[hsl(var(--muted-foreground))]" />
+                                        </button>
 
-                                    {isTimeDropdownOpen && (
-                                        <>
-                                            <div
-                                                className="fixed inset-0 z-70"
-                                                onClick={() => setIsTimeDropdownOpen(false)}
-                                            />
-                                            <div className="absolute mb-2 -left-20 top-12 w-40 bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-lg shadow-xl z-71 overflow-hidden animate-in slide-in-from-bottom-2 duration-200 flex flex-col">
-                                                <div className="p-2 border-b bg-[hsl(var(--muted))]/30 sticky top-0">
-                                                    <input
-                                                        autoFocus
-                                                        type="text"
-                                                        placeholder="Search time..."
-                                                        value={timeSearch}
-                                                        onChange={e => setTimeSearch(e.target.value)}
-                                                        className="w-full h-8 px-2 text-[10px] rounded-md border bg-[hsl(var(--background))] focus:ring-1 focus:ring-[hsl(var(--brand))]"
-                                                    />
+                                        {isInTimeDropdownOpen && (
+                                            <>
+                                                <div className="fixed inset-0 z-70" onClick={() => setIsInTimeDropdownOpen(false)} />
+                                                <div className="absolute mb-2 left-0 top-14 w-40 bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-lg shadow-xl z-71 overflow-hidden animate-in slide-in-from-top-2 duration-200 flex flex-col">
+                                                    <div className="p-2 border-b bg-[hsl(var(--muted))]/30 sticky top-0">
+                                                        <input
+                                                            autoFocus
+                                                            type="text"
+                                                            placeholder="Search..."
+                                                            value={inTimeSearch}
+                                                            onChange={e => setInTimeSearch(e.target.value)}
+                                                            className="w-full h-8 px-2 text-[10px] rounded-md border bg-[hsl(var(--background))] focus:ring-1 focus:ring-[hsl(var(--brand))]"
+                                                        />
+                                                    </div>
+                                                    <div className="max-h-36 overflow-y-auto p-1">
+                                                        {TIME_OPTIONS.filter(t => t.includes(inTimeSearch)).map(time => (
+                                                            <button
+                                                                key={time}
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    setFormData({ ...formData, inTime: time });
+                                                                    setIsInTimeDropdownOpen(false);
+                                                                }}
+                                                                className={cn(
+                                                                    "w-full text-left px-3 py-2 text-xs rounded-lg transition-colors",
+                                                                    formData.inTime === time
+                                                                        ? "bg-[hsl(var(--brand))] text-white"
+                                                                        : "hover:bg-[hsl(var(--muted))] text-[hsl(var(--foreground))]"
+                                                                )}
+                                                            >
+                                                                {time}
+                                                            </button>
+                                                        ))}
+                                                    </div>
                                                 </div>
-                                                <div className="max-h-36 overflow-y-auto p-1">
-                                                    {TIME_OPTIONS.filter(t => t.includes(timeSearch)).map(time => (
-                                                        <button
-                                                            key={time}
-                                                            type="button"
-                                                            onClick={() => {
-                                                                setFormData({ ...formData, time });
-                                                                setIsTimeDropdownOpen(false);
-                                                            }}
-                                                            className={cn(
-                                                                "w-full text-left px-3 py-2 text-xs rounded-lg transition-colors",
-                                                                formData.time === time
-                                                                    ? "bg-[hsl(var(--brand))] text-white"
-                                                                    : "hover:bg-[hsl(var(--muted))] text-[hsl(var(--foreground))]"
-                                                            )}
-                                                        >
-                                                            {time}
-                                                        </button>
-                                                    ))}
-                                                    {!TIME_OPTIONS.includes(formData.time) && (
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => {
-                                                                setIsTimeDropdownOpen(false);
-                                                            }}
-                                                            className="w-full text-left px-3 py-2 text-xs rounded-lg mt-1 bg-[hsl(var(--brand-light))]/30 text-[hsl(var(--brand))] font-bold"
-                                                        >
-                                                            {formData.time} (Current)
-                                                        </button>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        </>
+                                            </>
+                                        )}
+                                    </div>
+
+                                    {/* Clock Out (Only for Full Shift) */}
+                                    {formData.event_type === 'FULL_SHIFT' && (
+                                        <div className="flex-1 relative">
+                                            <p className="text-[10px] uppercase font-bold text-[hsl(var(--muted-foreground))] mb-1 ml-1">Clock Out</p>
+                                            <button
+                                                type="button"
+                                                onClick={() => setIsOutTimeDropdownOpen(!isOutTimeDropdownOpen)}
+                                                className="w-full h-11 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-3 text-xs flex items-center justify-between focus:outline-none focus:ring-2 focus:ring-[hsl(var(--brand))]/20 focus:border-[hsl(var(--brand))]"
+                                            >
+                                                <span>{formData.outTime}</span>
+                                                <Clock size={12} className="text-[hsl(var(--muted-foreground))]" />
+                                            </button>
+
+                                            {isOutTimeDropdownOpen && (
+                                                <>
+                                                    <div className="fixed inset-0 z-70" onClick={() => setIsOutTimeDropdownOpen(false)} />
+                                                    <div className="absolute mb-2 right-0 top-14 w-40 bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-lg shadow-xl z-71 overflow-hidden animate-in slide-in-from-top-2 duration-200 flex flex-col">
+                                                        <div className="p-2 border-b bg-[hsl(var(--muted))]/30 sticky top-0">
+                                                            <input
+                                                                autoFocus
+                                                                type="text"
+                                                                placeholder="Search..."
+                                                                value={outTimeSearch}
+                                                                onChange={e => setOutTimeSearch(e.target.value)}
+                                                                className="w-full h-8 px-2 text-[10px] rounded-md border bg-[hsl(var(--background))] focus:ring-1 focus:ring-[hsl(var(--brand))]"
+                                                            />
+                                                        </div>
+                                                        <div className="max-h-36 overflow-y-auto p-1">
+                                                            {TIME_OPTIONS.filter(t => t.includes(outTimeSearch)).map(time => (
+                                                                <button
+                                                                    key={time}
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        setFormData({ ...formData, outTime: time });
+                                                                        setIsOutTimeDropdownOpen(false);
+                                                                    }}
+                                                                    className={cn(
+                                                                        "w-full text-left px-3 py-2 text-xs rounded-lg transition-colors",
+                                                                        formData.outTime === time
+                                                                            ? "bg-[hsl(var(--brand))] text-white"
+                                                                            : "hover:bg-[hsl(var(--muted))] text-[hsl(var(--foreground))]"
+                                                                    )}
+                                                                >
+                                                                    {time}
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                </>
+                                            )}
+                                        </div>
                                     )}
                                 </div>
                             </div>
