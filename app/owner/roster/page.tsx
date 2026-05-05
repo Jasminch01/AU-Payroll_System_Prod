@@ -1724,25 +1724,33 @@ export default function OwnerRosterPage() {
                                                 />
                                             </div>
                                             <div className="max-h-48 overflow-y-auto p-1">
-                                                {TIME_OPTIONS.filter(t => t.includes(timeSearch)).map(time => (
-                                                    <button
-                                                        key={time}
-                                                        type="button"
-                                                        onClick={() => {
-                                                            setShiftStart(time);
-                                                            setIsStartDropdownOpen(false);
-                                                            setTimeSearch("");
-                                                        }}
-                                                        className={cn(
-                                                            "w-full text-left px-3 py-2 text-xs rounded-lg transition-colors",
-                                                            shiftStart === time
-                                                                ? "bg-[hsl(var(--brand))] text-white"
-                                                                : "hover:bg-[hsl(var(--muted))] text-[hsl(var(--foreground))]"
-                                                        )}
-                                                    >
-                                                        {time}
-                                                    </button>
-                                                ))}
+                                                {(() => {
+                                                    const filtered = TIME_OPTIONS.filter(t => t.includes(timeSearch));
+                                                    const currentIndex = filtered.indexOf(shiftStart);
+                                                    const rotated = currentIndex > 0 
+                                                        ? [...filtered.slice(currentIndex), ...filtered.slice(0, currentIndex)]
+                                                        : filtered;
+                                                    
+                                                    return rotated.map(time => (
+                                                        <button
+                                                            key={time}
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setShiftStart(time);
+                                                                setIsStartDropdownOpen(false);
+                                                                setTimeSearch("");
+                                                            }}
+                                                            className={cn(
+                                                                "w-full text-left px-3 py-2 text-xs rounded-lg transition-colors",
+                                                                shiftStart === time
+                                                                    ? "bg-[hsl(var(--brand))] text-white"
+                                                                    : "hover:bg-[hsl(var(--muted))] text-[hsl(var(--foreground))]"
+                                                            )}
+                                                        >
+                                                            {time}
+                                                        </button>
+                                                    ));
+                                                })()}
                                             </div>
                                         </div>
                                     </>
@@ -1778,25 +1786,33 @@ export default function OwnerRosterPage() {
                                                 />
                                             </div>
                                             <div className="max-h-48 overflow-y-auto p-1">
-                                                {TIME_OPTIONS.filter(t => t.includes(timeSearch)).map(time => (
-                                                    <button
-                                                        key={time}
-                                                        type="button"
-                                                        onClick={() => {
-                                                            setShiftEnd(time);
-                                                            setIsEndDropdownOpen(false);
-                                                            setTimeSearch("");
-                                                        }}
-                                                        className={cn(
-                                                            "w-full text-left px-3 py-2 text-xs rounded-lg transition-colors",
-                                                            shiftEnd === time
-                                                                ? "bg-[hsl(var(--brand))] text-white"
-                                                                : "hover:bg-[hsl(var(--muted))] text-[hsl(var(--foreground))]"
-                                                        )}
-                                                    >
-                                                        {time}
-                                                    </button>
-                                                ))}
+                                                {(() => {
+                                                    const filtered = TIME_OPTIONS.filter(t => t.includes(timeSearch));
+                                                    const currentIndex = filtered.indexOf(shiftEnd);
+                                                    const rotated = currentIndex > 0 
+                                                        ? [...filtered.slice(currentIndex), ...filtered.slice(0, currentIndex)]
+                                                        : filtered;
+
+                                                    return rotated.map(time => (
+                                                        <button
+                                                            key={time}
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setShiftEnd(time);
+                                                                setIsEndDropdownOpen(false);
+                                                                setTimeSearch("");
+                                                            }}
+                                                            className={cn(
+                                                                "w-full text-left px-3 py-2 text-xs rounded-lg transition-colors",
+                                                                shiftEnd === time
+                                                                    ? "bg-[hsl(var(--brand))] text-white"
+                                                                    : "hover:bg-[hsl(var(--muted))] text-[hsl(var(--foreground))]"
+                                                            )}
+                                                        >
+                                                            {time}
+                                                        </button>
+                                                    ));
+                                                })()}
                                             </div>
                                         </div>
                                     </>

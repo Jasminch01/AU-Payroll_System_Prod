@@ -3,19 +3,13 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
-import { Bell, Menu, User, Settings, LogOut, ChevronDown } from "lucide-react";
+import { User, Settings, LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
 import { NotificationBell } from "@/components/ui/notification-bell";
 import { motion, AnimatePresence } from "framer-motion";
 
-interface TopNavProps {
-    onMenuClick?: () => void;
-}
-
-export function TopNav({
-    onMenuClick,
-}: TopNavProps) {
+export function TopNav() {
     const router = useRouter();
     const queryClient = useQueryClient();
     const { user, fullName, initials, isLoading } = useAuth();
@@ -61,19 +55,19 @@ export function TopNav({
     };
 
     return (
-        <header className="sticky top-0 z-100 flex h-16 items-center justify-between border-b border-[hsl(var(--border))] bg-[hsl(var(--card))]/80 px-6 backdrop-blur-md">
-            {/* Left — Mobile Menu Toggle */}
-            <div className="flex items-center">
-                <button
-                    onClick={onMenuClick}
-                    className="rounded-lg p-2 text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted))] transition-colors lg:hidden"
-                >
-                    <Menu size={20} />
-                </button>
+        <header className="sticky top-0 z-40 flex h-16 items-center justify-between border-b border-[hsl(var(--border))] bg-[hsl(var(--card))]/80 px-6 backdrop-blur-md">
+            {/* Left — Business Brand (mobile only) */}
+            <div className="flex items-center gap-3 lg:hidden">
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[hsl(var(--brand))] text-white font-bold text-sm shadow-sm shadow-[hsl(var(--brand))]/20">
+                    {(user?.business?.business_name || "A").charAt(0).toUpperCase()}
+                </div>
+                <span className="text-sm font-bold tracking-tight text-[hsl(var(--foreground))]">
+                    {user?.business?.business_name || "AU Payroll"}
+                </span>
             </div>
 
             {/* Right — Notifications + Profile */}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 ml-auto">
                 <NotificationBell />
                 {/* User Profile Dropdown */}
                 <div ref={dropdownRef} className="relative">
