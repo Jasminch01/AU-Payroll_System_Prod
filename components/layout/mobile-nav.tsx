@@ -43,6 +43,7 @@ const navConfig = {
     employee: [
         { label: "Home", href: "/employee/dashboard", icon: <LayoutDashboard size={20} /> },
         { label: "Shifts", href: "/employee/shifts", icon: <CalendarDays size={20} /> },
+        { label: "Availability", href: "/employee/availability", icon: <CalendarDays size={20} /> },
         { label: "Timesheets", href: "/employee/timesheets", icon: <FileText size={20} /> },
         { label: "Leave", href: "/employee/leave", icon: <Clock size={20} /> },
         { label: "Profile", href: "/profile", icon: <User size={20} /> },
@@ -56,7 +57,7 @@ export function MobileNav({ role }: MobileNavProps) {
     return (
         <nav className="fixed bottom-0 left-0 right-0 z-50 lg:hidden px-4 pb-4 pt-2">
             <div className="mx-auto max-w-md rounded-2xl bg-[hsl(var(--card))]/80 backdrop-blur-lg border border-[hsl(var(--border))] shadow-2xl flex items-center justify-around p-1">
-                {items.slice(0, 5).map((item) => {
+                {items.slice(0, 6).map((item) => {
                     const isActive = pathname === item.href || (item.href !== "/profile" && pathname?.startsWith(item.href));
                     
                     return (
