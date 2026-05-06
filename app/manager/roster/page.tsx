@@ -313,6 +313,11 @@ export default function ManagerRosterPage() {
         queryFn: () => apiGet<any[]>("/rosters"),
     });
 
+    const { data: availability = [] } = useQuery({
+        queryKey: ["availability", rangeStart, rangeEnd],
+        queryFn: () => apiGet<any[]>("/availability", { from: rangeStart, to: rangeEnd }),
+    });
+
     // Real-time listener
     const { user } = useAuth();
     useEffect(() => {
@@ -559,6 +564,13 @@ export default function ManagerRosterPage() {
         const start = new Date(`${selectedDate}T${shiftStart}:00`);
         if (start < now && !editingShiftId) {
             toast.error("Cannot create a shift that starts in the past.");
+            return;
+        }
+
+        // Check availability
+        const isAvailable = availability.find((a: any) => a.employee_id === shiftEmployee && a.date === selectedDate)?.is_available !== false;
+        if (!isAvailable) {
+            toast.error("Employee is unavailable on this date");
             return;
         }
 
@@ -1574,6 +1586,8 @@ export default function ManagerRosterPage() {
                                                 const dMidnight = new Date(d);
                                                 dMidnight.setHours(0, 0, 0, 0);
                                                 const isPast = dMidnight < today;
+                                                const isAvailable = availability.find((a: any) => a.employee_id === emp.employee_id && a.date === dateStr)?.is_available !== false;
+                                                const availRecord = availability.find((a: any) => a.employee_id === emp.employee_id && a.date === dateStr);
 
                                                 return (
                                                     <td
@@ -1582,12 +1596,42 @@ export default function ManagerRosterPage() {
                                                             "border-b border-l border-[hsl(var(--border))] align-top transition-colors relative group/cell",
                                                             rosterPeriod === "monthly" ? "p-1 min-w-0" : "p-2 min-w-[140px]",
                                                             formatDate(d) === formatDate(new Date()) ? "bg-[hsl(var(--brand-light))]/5" : "",
-                                                            isPast ? "bg-[hsl(var(--muted))]/10" : "hover:bg-[hsl(var(--brand))]/5"
+                                                            isPast ? "bg-[hsl(var(--muted))]/10" : (!isAvailable ? "bg-[hsl(var(--danger))]/5" : "hover:bg-[hsl(var(--brand))]/5")
                                                         )}
-                                                        onClick={() => !isPast && rosterPeriod !== "monthly" && openAddShift(dateStr, emp.employee_id)}
+                                                        onClick={() => {
+                                                            if (isPast || rosterPeriod === "monthly") return;
+                                                            if (!isAvailable) {
+                                                                toast.error("Employee is unavailable on this date");
+                                                                return;
+                                                            }
+                                                            openAddShift(dateStr, emp.employee_id);
+                                                        }}
                                                     >
+                                                        {/* Unavailable indicator */}
+                                                        {!isAvailable && dayShifts.length === 0 && (
+                                                            <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-40">
+                                                                <span className="text-[10px] font-bold text-[hsl(var(--danger))] uppercase tracking-widest rotate-[-15deg]">Unavailable</span>
+                                                            </div>
+                                                        )}
+
+                                                        {/* Availability time badge - shown even when shifts exist */}
+                                                        {isAvailable && availRecord?.available_from && rosterPeriod !== "monthly" && (
+                                                            <div className="flex flex-col gap-0 px-1.5 py-1 rounded-md bg-[hsl(var(--brand-light))]/50 border border-[hsl(var(--brand))]/25 w-fit mt-1 mb-0.5">
+                                                                <span className="text-[8px] font-black uppercase tracking-widest text-[hsl(var(--brand))]/70 leading-none mb-0.5">Avail. Time</span>
+                                                                <span className="text-[10px] font-bold tabular-nums text-[hsl(var(--brand))] leading-none">
+                                                                    {availRecord.available_from?.substring(0, 5)} – {availRecord.available_to?.substring(0, 5)}
+                                                                </span>
+                                                            </div>
+                                                        )}
+                                                        {isAvailable && !availRecord?.available_from && availRecord && rosterPeriod !== "monthly" && (
+                                                            <div className="flex flex-col gap-0 px-1.5 py-1 rounded-md bg-[hsl(var(--success-light))]/40 border border-[hsl(var(--success))]/20 w-fit mt-1 mb-0.5">
+                                                                <span className="text-[8px] font-black uppercase tracking-widest text-[hsl(var(--success))]/80 leading-none mb-0.5">Avail. Time</span>
+                                                                <span className="text-[10px] font-bold text-[hsl(var(--success))] leading-none">All Day</span>
+                                                            </div>
+                                                        )}
+
                                                         {/* Hover Plus Icon for Quick Add - Only for empty cells */}
-                                                        {!isPast && dayShifts.length === 0 && (
+                                                        {!isPast && isAvailable && dayShifts.length === 0 && (
                                                             <button
                                                                 className="absolute top-1 right-1 z-10 p-0.5 rounded-md bg-[hsl(var(--brand))] text-white opacity-0 group-hover/cell:opacity-100 transition-opacity shadow-sm hover:scale-110 active:scale-95"
                                                                 onClick={(e) => {

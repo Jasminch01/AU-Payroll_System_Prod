@@ -344,6 +344,17 @@ export interface XeroSync {
   created_at: string;
 }
 
+export interface EmployeeAvailability {
+  availability_id: string;
+  business_id: string;
+  employee_id: string;
+  date: string;
+  is_available: boolean;
+  reason: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 // ==================== INSERT TYPES (for creating new records) ====================
 
 export type BusinessInsert = Omit<Business, 'business_id' | 'created_at' | 'updated_at'> & {
@@ -424,6 +435,11 @@ export type XeroConfigInsert = Omit<XeroConfig, 'config_id' | 'created_at' | 'up
 
 export type XeroSyncInsert = Omit<XeroSync, 'sync_id' | 'created_at'> & {
   sync_id?: string;
+};
+
+export type EmployeeAvailabilityInsert = Omit<EmployeeAvailability, 'availability_id' | 'created_at' | 'updated_at'> & {
+  availability_id?: string;
+  updated_at?: string;
 };
 
 // ==================== API RESPONSE TYPES ====================
