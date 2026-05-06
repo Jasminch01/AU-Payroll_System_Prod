@@ -43,6 +43,7 @@ const primaryNav = {
     employee: [
         { label: "Home", href: "/employee/dashboard", icon: <LayoutDashboard size={20} /> },
         { label: "Shifts", href: "/employee/shifts", icon: <CalendarDays size={20} /> },
+        { label: "Availability", href: "/employee/availability", icon: <CalendarDays size={20} /> },
         { label: "Timesheets", href: "/employee/timesheets", icon: <FileText size={20} /> },
         { label: "Leave", href: "/employee/leave", icon: <Palmtree size={20} /> },
     ],
