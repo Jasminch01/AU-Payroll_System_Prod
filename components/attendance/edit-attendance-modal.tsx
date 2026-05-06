@@ -288,16 +288,25 @@ export function EditAttendanceModal({
                                                         className="w-full h-8 px-2 text-[10px] rounded-lg border bg-[hsl(var(--background))]"
                                                     />
                                                 </div>
-                                                <div className="max-h-36 overflow-y-auto p-1">
+                                                <div className="max-h-36 overflow-y-auto p-1" ref={el => {
+                                                    if (el && !el.dataset.scrolled) {
+                                                        const selected = el.querySelector('[data-selected="true"]');
+                                                        if (selected) {
+                                                            selected.scrollIntoView({ block: "center" });
+                                                            el.dataset.scrolled = "true";
+                                                        }
+                                                    }
+                                                }}>
                                                     {(() => {
                                                         const filtered = TIME_OPTIONS.filter(t => t.includes(timeSearch));
-                                                        const currentIndex = filtered.indexOf(inForm.time);
-                                                        const rotated = currentIndex > 0
-                                                            ? [...filtered.slice(currentIndex), ...filtered.slice(0, currentIndex)]
-                                                            : filtered;
 
-                                                        return rotated.map(t => (
-                                                            <button key={t} type="button" onClick={() => { setInForm({ ...inForm, time: t }); setActiveDropdown(null); setTimeSearch(""); }} className="w-full text-left px-3 py-2 text-xs hover:bg-[hsl(var(--muted))] rounded-lg transition-colors">{t}</button>
+                                                        return filtered.map(t => (
+                                                            <button key={t} type="button" onClick={() => { setInForm({ ...inForm, time: t }); setActiveDropdown(null); setTimeSearch(""); }} data-selected={inForm.time === t} className={cn(
+                                                                "w-full text-left px-3 py-2 text-xs rounded-lg transition-colors",
+                                                                inForm.time === t
+                                                                    ? "bg-[hsl(var(--brand))] text-white font-medium"
+                                                                    : "hover:bg-[hsl(var(--muted))]"
+                                                            )}>{t}</button>
                                                         ));
                                                     })()}
                                                 </div>
@@ -358,14 +367,27 @@ export function EditAttendanceModal({
                                                             <>
                                                                 <div className="fixed inset-0 z-40" onClick={() => setActiveDropdown(null)} />
                                                                 <div className="absolute top-10 left-0 w-28 bg-[hsl(var(--card))] border rounded-xl shadow-xl z-50 overflow-hidden flex flex-col">
-                                                                    <div className="max-h-32 overflow-y-auto p-1">
+                                                                    <div className="max-h-32 overflow-y-auto p-1" ref={el => {
+                                                                        if (el && !el.dataset.scrolled) {
+                                                                            const selected = el.querySelector('[data-selected="true"]');
+                                                                            if (selected) {
+                                                                                selected.scrollIntoView({ block: "center" });
+                                                                                el.dataset.scrolled = "true";
+                                                                            }
+                                                                        }
+                                                                    }}>
                                                                         {TIME_OPTIONS.map(t => (
                                                                             <button key={t} type="button" onClick={() => {
                                                                                 const newBreaks = [...breaks];
                                                                                 newBreaks[idx].start.time = t;
                                                                                 setBreaks(newBreaks);
                                                                                 setActiveDropdown(null);
-                                                                            }} className="w-full text-left px-2.5 py-1.5 text-[11px] hover:bg-[hsl(var(--muted))] rounded-lg transition-colors">{t}</button>
+                                                                            }} data-selected={b.start.time === t} className={cn(
+                                                                                "w-full text-left px-2.5 py-1.5 text-[11px] rounded-lg transition-colors",
+                                                                                b.start.time === t
+                                                                                    ? "bg-[hsl(var(--brand))] text-white font-medium"
+                                                                                    : "hover:bg-[hsl(var(--muted))]"
+                                                                            )}>{t}</button>
                                                                         ))}
                                                                     </div>
                                                                 </div>
@@ -389,14 +411,27 @@ export function EditAttendanceModal({
                                                             <>
                                                                 <div className="fixed inset-0 z-40" onClick={() => setActiveDropdown(null)} />
                                                                 <div className="absolute top-10 left-0 w-28 bg-[hsl(var(--card))] border rounded-xl shadow-xl z-50 overflow-hidden flex flex-col">
-                                                                    <div className="max-h-32 overflow-y-auto p-1">
+                                                                    <div className="max-h-32 overflow-y-auto p-1" ref={el => {
+                                                                        if (el && !el.dataset.scrolled) {
+                                                                            const selected = el.querySelector('[data-selected="true"]');
+                                                                            if (selected) {
+                                                                                selected.scrollIntoView({ block: "center" });
+                                                                                el.dataset.scrolled = "true";
+                                                                            }
+                                                                        }
+                                                                    }}>
                                                                         {TIME_OPTIONS.map(t => (
                                                                             <button key={t} type="button" onClick={() => {
                                                                                 const newBreaks = [...breaks];
                                                                                 newBreaks[idx].end.time = t;
                                                                                 setBreaks(newBreaks);
                                                                                 setActiveDropdown(null);
-                                                                            }} className="w-full text-left px-2.5 py-1.5 text-[11px] hover:bg-[hsl(var(--muted))] rounded-lg transition-colors">{t}</button>
+                                                                            }} data-selected={b.end.time === t} className={cn(
+                                                                                "w-full text-left px-2.5 py-1.5 text-[11px] rounded-lg transition-colors",
+                                                                                b.end.time === t
+                                                                                    ? "bg-[hsl(var(--brand))] text-white font-medium"
+                                                                                    : "hover:bg-[hsl(var(--muted))]"
+                                                                            )}>{t}</button>
                                                                         ))}
                                                                     </div>
                                                                 </div>
@@ -449,16 +484,25 @@ export function EditAttendanceModal({
                                                         className="w-full h-8 px-2 text-[10px] rounded-lg border bg-[hsl(var(--background))]"
                                                     />
                                                 </div>
-                                                <div className="max-h-36 overflow-y-auto p-1">
+                                                <div className="max-h-36 overflow-y-auto p-1" ref={el => {
+                                                    if (el && !el.dataset.scrolled) {
+                                                        const selected = el.querySelector('[data-selected="true"]');
+                                                        if (selected) {
+                                                            selected.scrollIntoView({ block: "center" });
+                                                            el.dataset.scrolled = "true";
+                                                        }
+                                                    }
+                                                }}>
                                                     {(() => {
                                                         const filtered = TIME_OPTIONS.filter(t => t.includes(timeSearch));
-                                                        const currentIndex = filtered.indexOf(outForm.time);
-                                                        const rotated = currentIndex > 0
-                                                            ? [...filtered.slice(currentIndex), ...filtered.slice(0, currentIndex)]
-                                                            : filtered;
 
-                                                        return rotated.map(t => (
-                                                            <button key={t} type="button" onClick={() => { setOutForm({ ...outForm, time: t }); setActiveDropdown(null); setTimeSearch(""); }} className="w-full text-left px-3 py-2 text-xs hover:bg-[hsl(var(--muted))] rounded-lg transition-colors">{t}</button>
+                                                        return filtered.map(t => (
+                                                            <button key={t} type="button" onClick={() => { setOutForm({ ...outForm, time: t }); setActiveDropdown(null); setTimeSearch(""); }} data-selected={outForm.time === t} className={cn(
+                                                                "w-full text-left px-3 py-2 text-xs rounded-lg transition-colors",
+                                                                outForm.time === t
+                                                                    ? "bg-[hsl(var(--brand))] text-white font-medium"
+                                                                    : "hover:bg-[hsl(var(--muted))]"
+                                                            )}>{t}</button>
                                                         ));
                                                     })()}
                                                 </div>

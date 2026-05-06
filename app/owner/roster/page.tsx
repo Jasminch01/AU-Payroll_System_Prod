@@ -1823,15 +1823,19 @@ export default function OwnerRosterPage() {
                                                     className="w-full h-8 px-2 text-[10px] rounded-md border bg-[hsl(var(--background))]"
                                                 />
                                             </div>
-                                            <div className="max-h-48 overflow-y-auto p-1">
+                                            <div className="max-h-48 overflow-y-auto p-1" ref={el => {
+                                                if (el && !el.dataset.scrolled) {
+                                                    const selected = el.querySelector('[data-selected="true"]');
+                                                    if (selected) {
+                                                        selected.scrollIntoView({ block: "center" });
+                                                        el.dataset.scrolled = "true";
+                                                    }
+                                                }
+                                            }}>
                                                 {(() => {
                                                     const filtered = TIME_OPTIONS.filter(t => t.includes(timeSearch));
-                                                    const currentIndex = filtered.indexOf(shiftStart);
-                                                    const rotated = currentIndex > 0
-                                                        ? [...filtered.slice(currentIndex), ...filtered.slice(0, currentIndex)]
-                                                        : filtered;
 
-                                                    return rotated.map(time => (
+                                                    return filtered.map(time => (
                                                         <button
                                                             key={time}
                                                             type="button"
@@ -1840,6 +1844,7 @@ export default function OwnerRosterPage() {
                                                                 setIsStartDropdownOpen(false);
                                                                 setTimeSearch("");
                                                             }}
+                                                            data-selected={shiftStart === time}
                                                             className={cn(
                                                                 "w-full text-left px-3 py-2 text-xs rounded-lg transition-colors",
                                                                 shiftStart === time
@@ -1885,15 +1890,19 @@ export default function OwnerRosterPage() {
                                                     className="w-full h-8 px-2 text-[10px] rounded-md border bg-[hsl(var(--background))]"
                                                 />
                                             </div>
-                                            <div className="max-h-48 overflow-y-auto p-1">
+                                            <div className="max-h-48 overflow-y-auto p-1" ref={el => {
+                                                if (el && !el.dataset.scrolled) {
+                                                    const selected = el.querySelector('[data-selected="true"]');
+                                                    if (selected) {
+                                                        selected.scrollIntoView({ block: "center" });
+                                                        el.dataset.scrolled = "true";
+                                                    }
+                                                }
+                                            }}>
                                                 {(() => {
                                                     const filtered = TIME_OPTIONS.filter(t => t.includes(timeSearch));
-                                                    const currentIndex = filtered.indexOf(shiftEnd);
-                                                    const rotated = currentIndex > 0
-                                                        ? [...filtered.slice(currentIndex), ...filtered.slice(0, currentIndex)]
-                                                        : filtered;
 
-                                                    return rotated.map(time => (
+                                                    return filtered.map(time => (
                                                         <button
                                                             key={time}
                                                             type="button"
@@ -1902,6 +1911,7 @@ export default function OwnerRosterPage() {
                                                                 setIsEndDropdownOpen(false);
                                                                 setTimeSearch("");
                                                             }}
+                                                            data-selected={shiftEnd === time}
                                                             className={cn(
                                                                 "w-full text-left px-3 py-2 text-xs rounded-lg transition-colors",
                                                                 shiftEnd === time
