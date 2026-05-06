@@ -7,11 +7,11 @@
  */
 export function getShiftTypeFromTime(timeStr: string): 'morning' | 'afternoon' | 'evening' {
     if (!timeStr) return 'morning';
-    
+
     // Parse HH:mm
     const [hours, minutes] = timeStr.split(':').map(Number);
     const totalMinutes = hours * 60 + (isNaN(minutes) ? 0 : minutes);
-    
+
     if (totalMinutes < 12 * 60) {
         return 'morning';
     } else if (totalMinutes < 17 * 60) {
@@ -27,23 +27,36 @@ export function getShiftTypeFromTime(timeStr: string): 'morning' | 'afternoon' |
  */
 export function calculateShiftDuration(start: string, end: string): number {
     if (!start || !end) return 0;
-    
+
     let [startH, startM] = start.split(':').map(Number);
     let [endH, endM] = end.split(':').map(Number);
-    
+
     if (isNaN(startH) || isNaN(endH)) return 0;
-    
+
     // Normalize 24:00 to 24 for math, but handle overflow if needed
     // In our system 24:00 is used as end of day.
-    
+
     let startMinutes = startH * 60 + (startM || 0);
     let endMinutes = endH * 60 + (endM || 0);
-    
+
     if (endMinutes <= startMinutes) {
         // Crosses midnight (e.g. 22:00 to 06:00)
         endMinutes += 24 * 60;
     }
-    
+
     return (endMinutes - startMinutes) / 60;
 }
 
+/**
+ * Formats a decimal hour duration into a human-readable format like 'XhYm'.
+ * Example: 2.75 -> '2h45m', 8 -> '8h'.
+ */
+export function formatDurationHours(decimalHours: number): string {
+    if (isNaN(decimalHours) || decimalHours < 0) return "0h";
+    const hrs = Math.floor(decimalHours);
+    const mins = Math.round((decimalHours - hrs) * 60);
+
+    if (mins === 0) return `${hrs}h`;
+    if (hrs === 0) return `${mins}m`;
+    return `${hrs}h${mins}m`;
+}
