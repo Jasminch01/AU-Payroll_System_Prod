@@ -6,7 +6,7 @@ import { DashboardLayout } from "@/components/layout";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { apiGet } from "@/lib/api-client";
-import { Clock, AlertCircle, Edit3, Timer } from "lucide-react";
+import { Clock, AlertCircle, Edit3, Timer, Coffee } from "lucide-react";
 import { useBusinessTimezone } from "@/lib/timezone-context";
 import { StatusBadge } from "@/components/ui/badge";
 import { AttendanceRequestModal } from "@/components/attendance/attendance-request-modal";
@@ -72,6 +72,7 @@ export default function EmployeeAttendancePage() {
                                         <th className="px-6 py-4 text-left font-semibold">Date</th>
                                         <th className="px-6 py-4 text-left font-semibold">Clock In</th>
                                         <th className="px-6 py-4 text-left font-semibold">Clock Out</th>
+                                        <th className="px-6 py-4 text-left font-semibold">Total Break</th>
                                         <th className="px-6 py-4 text-left font-semibold">Total Hours</th>
                                         <th className="px-6 py-4 text-right font-semibold">Actions</th>
                                     </tr>
@@ -131,6 +132,14 @@ export default function EmployeeAttendancePage() {
                                                                 <AlertCircle size={14} /> Missing
                                                             </span>
                                                         )}
+                                                    </td>
+                                                    <td className="px-6 py-4">
+                                                        <div className="flex items-center gap-2">
+                                                            <Coffee size={14} className="text-amber-600 shrink-0" />
+                                                            <span className="text-sm font-medium tabular-nums text-amber-700">
+                                                                {formatDuration(session.break_minutes || 0)}
+                                                            </span>
+                                                        </div>
                                                     </td>
                                                     <td className="px-6 py-4">
                                                         <div className="flex items-center gap-2">
