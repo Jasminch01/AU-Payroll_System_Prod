@@ -90,12 +90,12 @@ export function DashboardLayout({
                     initial={{ opacity: 0, y: 8 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
-                    className="flex-1 p-6 pb-28 lg:pb-6"
+                    className="flex-1 px-6 pt-3 lg:pt-6 pb-28 lg:pb-6"
                 >
                     {/* Page Content with fade-in animation */}
                     {(pageTitle || actions) && (
-                        <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
-                            <div>
+                        <div className="flex flex-col md:flex-row md:items-center justify-between mb-4 lg:mb-8 gap-4">
+                            <div className="hidden lg:block">
                                 <h1 className="text-2xl font-bold tracking-tight text-[hsl(var(--foreground))]">{pageTitle}</h1>
                                 {pageDescription && (
                                     <p className="text-[hsl(var(--muted-foreground))] mt-1">{pageDescription}</p>

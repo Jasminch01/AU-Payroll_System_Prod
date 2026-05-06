@@ -8,6 +8,14 @@ import { createBusinessTimestamp, getDateTimeForInput } from "@/lib/timezone-uti
 import { useBusinessTimezone } from "@/lib/timezone-context";
 import { ConfirmationModal } from "@/components/ui/confirmation-modal";
 import { cn } from "@/lib/utils";
+import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+    DialogDescription,
+    DialogFooter,
+} from "@/components/ui/dialog";
 
 interface EditAttendanceModalProps {
     isOpen: boolean;
@@ -53,7 +61,7 @@ export function EditAttendanceModal({
 
     const [inForm, setInForm] = useState({ date: inData.date, time: inData.time });
     const [outForm, setOutForm] = useState({ date: outData.date, time: outData.time, exists: !!clockOutLog });
-    
+
     // Breaks logic
     const initialBreaks: BreakState[] = [];
     const sortedBreakLogs = logs
@@ -218,293 +226,287 @@ export function EditAttendanceModal({
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-100 flex items-center justify-center p-4">
-            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-
-            <div
-                className="relative w-full max-w-md rounded-2xl bg-[hsl(var(--background))] p-0 shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200"
-                onClick={(e) => e.stopPropagation()}
-            >
-                <div className="bg-[hsl(var(--warning))] p-6 text-[hsl(var(--warning-foreground))]">
-                    <button onClick={onClose} className="absolute right-4 top-4 rounded-full p-1.5 hover:bg-black/10 transition-colors">
-                        <X size={20} />
-                    </button>
-                    <h2 className="text-xl font-bold flex items-center gap-2">
-                        <Clock size={22} />
+        <Dialog open={isOpen} onOpenChange={onClose}>
+            <DialogContent className="max-w-md p-0 overflow-hidden border-none shadow-2xl">
+                <div className="bg-[hsl(var(--warning))] p-5 sm:p-6 text-[hsl(var(--warning-foreground))] relative">
+                    <DialogTitle className="text-lg sm:text-xl font-bold flex items-center gap-2">
+                        <Clock size={20} className="shrink-0" />
                         Edit Session
-                    </h2>
-                    <p className="text-sm opacity-80 mt-1">Employee: <span className="font-bold">{log.Employee?.first_name} {log.Employee?.last_name}</span></p>
+                    </DialogTitle>
+                    <DialogDescription className="text-xs sm:text-sm text-[hsl(var(--warning-foreground))] opacity-90 mt-1 truncate">
+                        Employee: <span className="font-bold">{log.Employee?.first_name} {log.Employee?.last_name}</span>
+                    </DialogDescription>
                 </div>
 
-                <form onSubmit={handleSubmit} className="p-6 space-y-6">
-                    {error && <div className="p-3 bg-red-50 text-red-700 rounded-lg text-xs flex items-center gap-2"><AlertCircle size={14} />{error}</div>}
-                    {success && <div className="p-3 bg-green-50 text-green-700 rounded-lg text-xs flex items-center gap-2"><CheckCircle size={14} />{success}</div>}
+                <div className="max-h-[80vh] overflow-y-auto custom-scrollbar">
+                    <form onSubmit={handleSubmit} className="p-5 sm:p-6 space-y-5 sm:space-y-6">
+                        {error && (
+                            <div className="p-3 bg-red-50 text-red-700 rounded-xl text-[11px] sm:text-xs flex items-center gap-2 animate-in fade-in slide-in-from-top-1">
+                                <AlertCircle size={14} className="shrink-0" />
+                                {error}
+                            </div>
+                        )}
+                        {success && (
+                            <div className="p-3 bg-green-50 text-green-700 rounded-xl text-[11px] sm:text-xs flex items-center gap-2 animate-in fade-in slide-in-from-top-1">
+                                <CheckCircle size={14} className="shrink-0" />
+                                {success}
+                            </div>
+                        )}
 
-                    {/* Clock In Section */}
-                    <div className="space-y-3">
-                        <label className="text-[10px] font-black uppercase text-[hsl(var(--muted-foreground))] tracking-widest">Clock In Time</label>
-                        <div className="flex gap-2">
-                            <input
-                                type="date"
-                                value={inForm.date}
-                                onChange={e => setInForm({ ...inForm, date: e.target.value })}
-                                className="flex-1 h-11 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-3 text-sm focus:ring-2 focus:ring-[hsl(var(--brand))]/20"
-                            />
-                            <div className="relative w-32">
-                                <button
-                                    type="button"
-                                    onClick={() => setActiveDropdown(activeDropdown === 'in' ? null : 'in')}
-                                    className="w-full h-11 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-3 text-sm flex items-center justify-between"
-                                >
-                                    <span>{inForm.time || "--:--"}</span>
-                                    <Clock size={14} className="opacity-40" />
-                                </button>
-                                {activeDropdown === 'in' && (
-                                    <>
-                                        <div className="fixed inset-0 z-40" onClick={() => setActiveDropdown(null)} />
-                                        <div className="absolute top-12 right-0 w-40 bg-[hsl(var(--card))] border rounded-lg shadow-xl z-50 overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-100">
-                                            <div className="p-2 border-b bg-[hsl(var(--muted))]/30 sticky top-0">
-                                                <input
-                                                    autoFocus
-                                                    type="text"
-                                                    placeholder="Search..."
-                                                    value={timeSearch}
-                                                    onChange={e => setTimeSearch(e.target.value)}
-                                                    className="w-full h-8 px-2 text-[10px] rounded-md border bg-[hsl(var(--background))]"
-                                                />
+                        {/* Clock In Section */}
+                        <div className="space-y-2.5">
+                            <label className="text-[10px] font-black uppercase text-[hsl(var(--muted-foreground))] tracking-widest">
+                                Clock In Time
+                            </label>
+                            <div className="flex gap-2">
+                                <input
+                                    type="date"
+                                    value={inForm.date}
+                                    onChange={e => setInForm({ ...inForm, date: e.target.value })}
+                                    className="flex-1 h-10 sm:h-11 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-3 text-sm focus:ring-2 focus:ring-[hsl(var(--brand))]/20 transition-all outline-none"
+                                />
+                                <div className="relative w-28 sm:w-32">
+                                    <button
+                                        type="button"
+                                        onClick={() => setActiveDropdown(activeDropdown === 'in' ? null : 'in')}
+                                        className="w-full h-10 sm:h-11 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-3 text-sm flex items-center justify-between hover:bg-[hsl(var(--muted))]/30 transition-colors"
+                                    >
+                                        <span className="tabular-nums">{inForm.time || "--:--"}</span>
+                                        <Clock size={14} className="opacity-40" />
+                                    </button>
+                                    {activeDropdown === 'in' && (
+                                        <>
+                                            <div className="fixed inset-0 z-40" onClick={() => setActiveDropdown(null)} />
+                                            <div className="absolute top-11 sm:top-12 right-0 w-36 sm:w-40 bg-[hsl(var(--card))] border rounded-xl shadow-xl z-50 overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-100">
+                                                <div className="p-2 border-b bg-[hsl(var(--muted))]/30 sticky top-0">
+                                                    <input
+                                                        autoFocus
+                                                        type="text"
+                                                        placeholder="Search..."
+                                                        value={timeSearch}
+                                                        onChange={e => setTimeSearch(e.target.value)}
+                                                        className="w-full h-8 px-2 text-[10px] rounded-lg border bg-[hsl(var(--background))]"
+                                                    />
+                                                </div>
+                                                <div className="max-h-36 overflow-y-auto p-1">
+                                                    {(() => {
+                                                        const filtered = TIME_OPTIONS.filter(t => t.includes(timeSearch));
+                                                        const currentIndex = filtered.indexOf(inForm.time);
+                                                        const rotated = currentIndex > 0
+                                                            ? [...filtered.slice(currentIndex), ...filtered.slice(0, currentIndex)]
+                                                            : filtered;
+
+                                                        return rotated.map(t => (
+                                                            <button key={t} type="button" onClick={() => { setInForm({ ...inForm, time: t }); setActiveDropdown(null); setTimeSearch(""); }} className="w-full text-left px-3 py-2 text-xs hover:bg-[hsl(var(--muted))] rounded-lg transition-colors">{t}</button>
+                                                        ));
+                                                    })()}
+                                                </div>
                                             </div>
-                                            <div className="max-h-36 overflow-y-auto p-1">
-                                                {(() => {
-                                                    const filtered = TIME_OPTIONS.filter(t => t.includes(timeSearch));
-                                                    const currentIndex = filtered.indexOf(inForm.time);
-                                                    const rotated = currentIndex > 0 
-                                                        ? [...filtered.slice(currentIndex), ...filtered.slice(0, currentIndex)]
-                                                        : filtered;
-                                                    
-                                                    return rotated.map(t => (
-                                                        <button key={t} type="button" onClick={() => { setInForm({ ...inForm, time: t }); setActiveDropdown(null); setTimeSearch(""); }} className="w-full text-left px-4 py-2 text-sm hover:bg-[hsl(var(--muted))] rounded-md">{t}</button>
-                                                    ));
-                                                })()}
-                                            </div>
-                                        </div>
-                                    </>
-                                )}
+                                        </>
+                                    )}
+                                </div>
                             </div>
                         </div>
-                    </div>
 
-                    {/* Breaks Section */}
-                    <div className="space-y-4">
-                        <div className="flex items-center justify-between border-b border-[hsl(var(--border))]/50 pb-2">
-                            <label className="text-[10px] font-black uppercase text-[hsl(var(--muted-foreground))] tracking-widest flex items-center gap-1.5">
-                                <Coffee size={14} className="text-[hsl(var(--brand))]" />
-                                Breaks
-                            </label>
-                            <button
-                                type="button"
-                                onClick={() => setBreaks([...breaks, { tempId: Math.random().toString(36).substr(2, 9), start: { date: inForm.date, time: "" }, end: { date: inForm.date, time: "" } }])}
-                                className="text-[10px] font-bold text-[hsl(var(--brand))] flex items-center gap-1 hover:opacity-70 transition-opacity"
-                            >
-                                <Plus size={12} /> Add Break
-                            </button>
-                        </div>
+                        {/* Breaks Section */}
+                        <div className="space-y-3">
+                            <div className="flex items-center justify-between border-b border-[hsl(var(--border))]/50 pb-2">
+                                <label className="text-[10px] font-black uppercase text-[hsl(var(--muted-foreground))] tracking-widest flex items-center gap-1.5">
+                                    <Coffee size={13} className="text-[hsl(var(--brand))]" />
+                                    Breaks
+                                </label>
+                                <button
+                                    type="button"
+                                    onClick={() => setBreaks([...breaks, { tempId: Math.random().toString(36).substr(2, 9), start: { date: inForm.date, time: "" }, end: { date: inForm.date, time: "" } }])}
+                                    className="text-[10px] font-bold text-[hsl(var(--brand))] flex items-center gap-1 hover:opacity-70 transition-opacity bg-[hsl(var(--brand-light))] px-2 py-1 rounded-lg"
+                                >
+                                    <Plus size={10} /> Add Break
+                                </button>
+                            </div>
 
-                        {breaks.length === 0 ? (
-                            <p className="text-[10px] text-[hsl(var(--muted-foreground))] italic text-center py-2">No breaks recorded</p>
-                        ) : (
-                            <div className="space-y-4">
-                                {breaks.map((b, idx) => (
-                                    <div key={b.tempId} className="p-3 rounded-xl bg-[hsl(var(--muted))]/30 border border-[hsl(var(--border))]/50 relative group">
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                if (b.start.log_id) setDeletedLogIds(prev => [...prev, b.start.log_id!]);
-                                                if (b.end.log_id) setDeletedLogIds(prev => [...prev, b.end.log_id!]);
-                                                setBreaks(breaks.filter((_, i) => i !== idx));
-                                            }}
-                                            className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-white border border-red-100 text-red-500 flex items-center justify-center shadow-sm hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100"
-                                        >
-                                            <Trash2 size={12} />
-                                        </button>
+                            {breaks.length === 0 ? (
+                                <p className="text-[10px] text-[hsl(var(--muted-foreground))] italic text-center py-2">No breaks recorded</p>
+                            ) : (
+                                <div className="space-y-3">
+                                    {breaks.map((b, idx) => (
+                                        <div key={b.tempId} className="p-3 rounded-xl bg-[hsl(var(--muted))]/30 border border-[hsl(var(--border))]/50 relative group animate-in slide-in-from-left-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    if (b.start.log_id) setDeletedLogIds(prev => [...prev, b.start.log_id!]);
+                                                    if (b.end.log_id) setDeletedLogIds(prev => [...prev, b.end.log_id!]);
+                                                    setBreaks(breaks.filter((_, i) => i !== idx));
+                                                }}
+                                                className="absolute -top-1.5 -right-1.5 h-5 w-5 rounded-full bg-white border border-red-100 text-red-500 flex items-center justify-center shadow-sm hover:bg-red-50 transition-colors"
+                                            >
+                                                <Trash2 size={10} />
+                                            </button>
 
-                                        <div className="grid grid-cols-2 gap-3">
-                                            <div className="space-y-1.5">
-                                                <span className="text-[9px] font-bold text-[hsl(var(--muted-foreground))] uppercase">Start</span>
-                                                <div className="relative">
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setActiveDropdown(activeDropdown === `break-${idx}-start` ? null : `break-${idx}-start`)}
-                                                        className="w-full h-9 rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-2 text-xs flex items-center justify-between"
-                                                    >
-                                                        <span>{b.start.time || "--:--"}</span>
-                                                        <Clock size={12} className="opacity-40" />
-                                                    </button>
-                                                    {activeDropdown === `break-${idx}-start` && (
-                                                        <>
-                                                            <div className="fixed inset-0 z-40" onClick={() => setActiveDropdown(null)} />
-                                                            <div className="absolute top-10 left-0 w-32 bg-[hsl(var(--card))] border rounded-lg shadow-xl z-50 overflow-hidden flex flex-col">
-                                                                <div className="p-1.5 border-b bg-[hsl(var(--muted))]/30">
-                                                                    <input autoFocus type="text" placeholder="Search..." value={timeSearch} onChange={e => setTimeSearch(e.target.value)} className="w-full h-7 px-2 text-[10px] rounded border bg-[hsl(var(--background))]" />
-                                                                </div>
-                                                                <div className="max-h-32 overflow-y-auto p-1">
-                                                                    {(() => {
-                                                                        const filtered = TIME_OPTIONS.filter(t => t.includes(timeSearch));
-                                                                        const currentIndex = filtered.indexOf(b.start.time);
-                                                                        const rotated = currentIndex > 0 ? [...filtered.slice(currentIndex), ...filtered.slice(0, currentIndex)] : filtered;
-                                                                        return rotated.map(t => (
-                                                                            <button key={t} type="button" onClick={() => { 
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <div className="space-y-1.5">
+                                                    <span className="text-[9px] font-bold text-[hsl(var(--muted-foreground))] uppercase">Start</span>
+                                                    <div className="relative">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setActiveDropdown(activeDropdown === `break-${idx}-start` ? null : `break-${idx}-start`)}
+                                                            className="w-full h-9 rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-2 text-xs flex items-center justify-between"
+                                                        >
+                                                            <span className="tabular-nums">{b.start.time || "--:--"}</span>
+                                                            <Clock size={12} className="opacity-40" />
+                                                        </button>
+                                                        {activeDropdown === `break-${idx}-start` && (
+                                                            <>
+                                                                <div className="fixed inset-0 z-40" onClick={() => setActiveDropdown(null)} />
+                                                                <div className="absolute top-10 left-0 w-28 bg-[hsl(var(--card))] border rounded-xl shadow-xl z-50 overflow-hidden flex flex-col">
+                                                                    <div className="max-h-32 overflow-y-auto p-1">
+                                                                        {TIME_OPTIONS.map(t => (
+                                                                            <button key={t} type="button" onClick={() => {
                                                                                 const newBreaks = [...breaks];
                                                                                 newBreaks[idx].start.time = t;
                                                                                 setBreaks(newBreaks);
                                                                                 setActiveDropdown(null);
-                                                                                setTimeSearch("");
-                                                                            }} className="w-full text-left px-3 py-1.5 text-xs hover:bg-[hsl(var(--muted))] rounded">{t}</button>
-                                                                        ));
-                                                                    })()}
+                                                                            }} className="w-full text-left px-2.5 py-1.5 text-[11px] hover:bg-[hsl(var(--muted))] rounded-lg transition-colors">{t}</button>
+                                                                        ))}
+                                                                    </div>
                                                                 </div>
-                                                            </div>
-                                                        </>
-                                                    )}
+                                                            </>
+                                                        )}
+                                                    </div>
                                                 </div>
-                                            </div>
 
-                                            <div className="space-y-1.5">
-                                                <span className="text-[9px] font-bold text-[hsl(var(--muted-foreground))] uppercase">End</span>
-                                                <div className="relative">
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setActiveDropdown(activeDropdown === `break-${idx}-end` ? null : `break-${idx}-end`)}
-                                                        className="w-full h-9 rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-2 text-xs flex items-center justify-between"
-                                                    >
-                                                        <span>{b.end.time || "--:--"}</span>
-                                                        <Clock size={12} className="opacity-40" />
-                                                    </button>
-                                                    {activeDropdown === `break-${idx}-end` && (
-                                                        <>
-                                                            <div className="fixed inset-0 z-40" onClick={() => setActiveDropdown(null)} />
-                                                            <div className="absolute top-10 left-0 w-32 bg-[hsl(var(--card))] border rounded-lg shadow-xl z-50 overflow-hidden flex flex-col">
-                                                                <div className="p-1.5 border-b bg-[hsl(var(--muted))]/30">
-                                                                    <input autoFocus type="text" placeholder="Search..." value={timeSearch} onChange={e => setTimeSearch(e.target.value)} className="w-full h-7 px-2 text-[10px] rounded border bg-[hsl(var(--background))]" />
-                                                                </div>
-                                                                <div className="max-h-32 overflow-y-auto p-1">
-                                                                    {(() => {
-                                                                        const filtered = TIME_OPTIONS.filter(t => t.includes(timeSearch));
-                                                                        const currentIndex = filtered.indexOf(b.end.time);
-                                                                        const rotated = currentIndex > 0 ? [...filtered.slice(currentIndex), ...filtered.slice(0, currentIndex)] : filtered;
-                                                                        return rotated.map(t => (
-                                                                            <button key={t} type="button" onClick={() => { 
+                                                <div className="space-y-1.5">
+                                                    <span className="text-[9px] font-bold text-[hsl(var(--muted-foreground))] uppercase">End</span>
+                                                    <div className="relative">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setActiveDropdown(activeDropdown === `break-${idx}-end` ? null : `break-${idx}-end`)}
+                                                            className="w-full h-9 rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-2 text-xs flex items-center justify-between"
+                                                        >
+                                                            <span className="tabular-nums">{b.end.time || "--:--"}</span>
+                                                            <Clock size={12} className="opacity-40" />
+                                                        </button>
+                                                        {activeDropdown === `break-${idx}-end` && (
+                                                            <>
+                                                                <div className="fixed inset-0 z-40" onClick={() => setActiveDropdown(null)} />
+                                                                <div className="absolute top-10 left-0 w-28 bg-[hsl(var(--card))] border rounded-xl shadow-xl z-50 overflow-hidden flex flex-col">
+                                                                    <div className="max-h-32 overflow-y-auto p-1">
+                                                                        {TIME_OPTIONS.map(t => (
+                                                                            <button key={t} type="button" onClick={() => {
                                                                                 const newBreaks = [...breaks];
                                                                                 newBreaks[idx].end.time = t;
                                                                                 setBreaks(newBreaks);
                                                                                 setActiveDropdown(null);
-                                                                                setTimeSearch("");
-                                                                            }} className="w-full text-left px-3 py-1.5 text-xs hover:bg-[hsl(var(--muted))] rounded">{t}</button>
-                                                                        ));
-                                                                    })()}
-                                                                 </div>
-                                                            </div>
-                                                        </>
-                                                    )}
+                                                                            }} className="w-full text-left px-2.5 py-1.5 text-[11px] hover:bg-[hsl(var(--muted))] rounded-lg transition-colors">{t}</button>
+                                                                        ))}
+                                                                    </div>
+                                                                </div>
+                                                            </>
+                                                        )}
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-
-                    {/* Clock Out Section */}
-                    <div className="space-y-3 pt-2 border-t border-[hsl(var(--border))]/50">
-                        <div className="flex items-center justify-between">
-                            <label className="text-[10px] font-black uppercase text-[hsl(var(--muted-foreground))] tracking-widest">Clock Out Time</label>
-                            {!outForm.exists && <span className="text-[10px] font-bold text-orange-600 bg-orange-50 px-2 py-0.5 rounded-full">Missing</span>}
+                                    ))}
+                                </div>
+                            )}
                         </div>
-                        <div className="flex gap-2">
-                            <input
-                                type="date"
-                                value={outForm.date}
-                                onChange={e => setOutForm({ ...outForm, date: e.target.value })}
-                                className="flex-1 h-11 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-3 text-sm focus:ring-2 focus:ring-[hsl(var(--brand))]/20"
+
+                        {/* Clock Out Section */}
+                        <div className="space-y-2.5 pt-2 border-t border-[hsl(var(--border))]/50">
+                            <div className="flex items-center justify-between">
+                                <label className="text-[10px] font-black uppercase text-[hsl(var(--muted-foreground))] tracking-widest">
+                                    Clock Out Time
+                                </label>
+                                {!outForm.exists && <span className="text-[9px] font-bold text-orange-600 bg-orange-50 px-2 py-0.5 rounded-full border border-orange-100">Missing</span>}
+                            </div>
+                            <div className="flex gap-2">
+                                <input
+                                    type="date"
+                                    value={outForm.date}
+                                    onChange={e => setOutForm({ ...outForm, date: e.target.value })}
+                                    className="flex-1 h-10 sm:h-11 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-3 text-sm focus:ring-2 focus:ring-[hsl(var(--brand))]/20 transition-all outline-none"
+                                />
+                                <div className="relative w-28 sm:w-32">
+                                    <button
+                                        type="button"
+                                        onClick={() => setActiveDropdown(activeDropdown === 'out' ? null : 'out')}
+                                        className="w-full h-10 sm:h-11 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-3 text-sm flex items-center justify-between hover:bg-[hsl(var(--muted))]/30 transition-colors"
+                                    >
+                                        <span className="tabular-nums">{outForm.time || "--:--"}</span>
+                                        {outForm.exists ? <Clock size={14} className="opacity-40" /> : <PlusCircle size={14} className="text-orange-500" />}
+                                    </button>
+                                    {activeDropdown === 'out' && (
+                                        <>
+                                            <div className="fixed inset-0 z-40" onClick={() => setActiveDropdown(null)} />
+                                            <div className="absolute top-11 sm:top-12 right-0 w-36 sm:w-40 bg-[hsl(var(--card))] border rounded-xl shadow-xl z-50 overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-100">
+                                                <div className="p-2 border-b bg-[hsl(var(--muted))]/30 sticky top-0">
+                                                    <input
+                                                        autoFocus
+                                                        type="text"
+                                                        placeholder="Search..."
+                                                        value={timeSearch}
+                                                        onChange={e => setTimeSearch(e.target.value)}
+                                                        className="w-full h-8 px-2 text-[10px] rounded-lg border bg-[hsl(var(--background))]"
+                                                    />
+                                                </div>
+                                                <div className="max-h-36 overflow-y-auto p-1">
+                                                    {(() => {
+                                                        const filtered = TIME_OPTIONS.filter(t => t.includes(timeSearch));
+                                                        const currentIndex = filtered.indexOf(outForm.time);
+                                                        const rotated = currentIndex > 0
+                                                            ? [...filtered.slice(currentIndex), ...filtered.slice(0, currentIndex)]
+                                                            : filtered;
+
+                                                        return rotated.map(t => (
+                                                            <button key={t} type="button" onClick={() => { setOutForm({ ...outForm, time: t }); setActiveDropdown(null); setTimeSearch(""); }} className="w-full text-left px-3 py-2 text-xs hover:bg-[hsl(var(--muted))] rounded-lg transition-colors">{t}</button>
+                                                        ));
+                                                    })()}
+                                                </div>
+                                            </div>
+                                        </>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-black uppercase text-[hsl(var(--muted-foreground))] tracking-widest">
+                                Override Reason <span className="text-red-500">*</span>
+                            </label>
+                            <textarea
+                                value={overrideReason}
+                                onChange={e => setOverrideReason(e.target.value)}
+                                placeholder="Reason for editing this session..."
+                                className="w-full p-3 rounded-xl border bg-[hsl(var(--card))] text-sm focus:ring-2 focus:ring-[hsl(var(--brand))]/20 transition-all outline-none resize-none"
+                                rows={2}
                             />
-                            <div className="relative w-32">
+                        </div>
+
+                        <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                            {role === 'owner' && (
                                 <button
                                     type="button"
-                                    onClick={() => setActiveDropdown(activeDropdown === 'out' ? null : 'out')}
-                                    className="w-full h-11 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-3 text-sm flex items-center justify-between"
+                                    onClick={handleDelete}
+                                    disabled={mutation.isPending || deleteMutation.isPending}
+                                    className="flex-1 py-3.5 rounded-xl border border-red-200 bg-red-50 text-red-600 font-bold hover:bg-red-100 transition-all flex items-center justify-center gap-2 text-xs sm:text-sm"
                                 >
-                                    <span>{outForm.time || "--:--"}</span>
-                                    {outForm.exists ? <Clock size={14} className="opacity-40" /> : <PlusCircle size={14} className="text-orange-500" />}
+                                    {deleteMutation.isPending ? "Deleting..." : "Delete Session"}
                                 </button>
-                                {activeDropdown === 'out' && (
-                                    <>
-                                        <div className="fixed inset-0 z-40" onClick={() => setActiveDropdown(null)} />
-                                        <div className="absolute top-12 right-0 w-40 bg-[hsl(var(--card))] border rounded-lg shadow-xl z-50 overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-100">
-                                            <div className="p-2 border-b bg-[hsl(var(--muted))]/30 sticky top-0">
-                                                <input
-                                                    autoFocus
-                                                    type="text"
-                                                    placeholder="Search..."
-                                                    value={timeSearch}
-                                                    onChange={e => setTimeSearch(e.target.value)}
-                                                    className="w-full h-8 px-2 text-[10px] rounded-md border bg-[hsl(var(--background))]"
-                                                />
-                                            </div>
-                                            <div className="max-h-36 overflow-y-auto p-1">
-                                                {(() => {
-                                                    const filtered = TIME_OPTIONS.filter(t => t.includes(timeSearch));
-                                                    const currentIndex = filtered.indexOf(outForm.time);
-                                                    const rotated = currentIndex > 0 
-                                                        ? [...filtered.slice(currentIndex), ...filtered.slice(0, currentIndex)]
-                                                        : filtered;
-                                                    
-                                                    return rotated.map(t => (
-                                                        <button key={t} type="button" onClick={() => { setOutForm({ ...outForm, time: t }); setActiveDropdown(null); setTimeSearch(""); }} className="w-full text-left px-4 py-2 text-sm hover:bg-[hsl(var(--muted))] rounded-md">{t}</button>
-                                                    ));
-                                                })()}
-                                            </div>
-                                        </div>
-                                    </>
-                                )}
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="space-y-2">
-                        <label className="text-[10px] font-black uppercase text-[hsl(var(--muted-foreground))] tracking-widest">Override Reason <span className="text-red-500">*</span></label>
-                        <textarea
-                            value={overrideReason}
-                            onChange={e => setOverrideReason(e.target.value)}
-                            placeholder="Reason for editing this session..."
-                            className="w-full p-3 rounded-xl border bg-[hsl(var(--card))] text-sm focus:ring-2 focus:ring-[hsl(var(--brand))]/20"
-                            rows={3}
-                        />
-                    </div>
-
-                    <div className="flex gap-3">
-                        {role === 'owner' && (
-                            <button
-                                type="button"
-                                onClick={handleDelete}
-                                disabled={mutation.isPending || deleteMutation.isPending}
-                                className="flex-1 h-12 rounded-xl border border-red-200 bg-red-50 text-red-600 font-bold hover:bg-red-100 transition-all flex items-center justify-center gap-2"
-                            >
-                                {deleteMutation.isPending ? "Deleting..." : "Delete Session"}
-                            </button>
-                        )}
-                        <button
-                            type="submit"
-                            disabled={mutation.isPending || deleteMutation.isPending}
-                            className={cn(
-                                "h-12 rounded-xl font-bold shadow-lg transition-all flex items-center justify-center gap-2",
-                                role === 'owner' ? "flex-2 bg-[hsl(var(--warning))] text-[hsl(var(--warning-foreground))]" : "w-full bg-[hsl(var(--warning))] text-[hsl(var(--warning-foreground))]"
                             )}
-                        >
-                            {mutation.isPending ? "Saving Changes..." : <><Save size={18} /> Update Session</>}
-                        </button>
-                    </div>
-                </form>
-            </div>
+                            <button
+                                type="submit"
+                                disabled={mutation.isPending || deleteMutation.isPending}
+                                className={cn(
+                                    "py-3.5 rounded-xl font-bold shadow-lg transition-all flex items-center justify-center gap-2 text-xs sm:text-sm",
+                                    role === 'owner' ? "flex-[1.5] bg-[hsl(var(--warning))] text-[hsl(var(--warning-foreground))] hover:opacity-90" : "w-full bg-[hsl(var(--warning))] text-[hsl(var(--warning-foreground))] hover:opacity-90"
+                                )}
+                            >
+                                {mutation.isPending ? "Saving..." : <><Save size={16} /> Update Session</>}
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </DialogContent>
 
             <ConfirmationModal
                 isOpen={isDeleteConfirmOpen}
@@ -517,6 +519,6 @@ export function EditAttendanceModal({
                 variant="danger"
                 isLoading={deleteMutation.isPending}
             />
-        </div>
+        </Dialog>
     );
 }

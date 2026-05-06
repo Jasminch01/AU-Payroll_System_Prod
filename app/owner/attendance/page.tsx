@@ -6,11 +6,11 @@ import { DashboardLayout } from "@/components/layout";
 import { DataTable, Column } from "@/components/ui/data-table";
 import { StatusBadge } from "@/components/ui/badge";
 import { apiGet } from "@/lib/api-client";
-import { 
-    groupAttendanceIntoSessions, 
-    GroupedAttendanceSession, 
-    WorkSession, 
-    calculateTotalHours 
+import {
+    groupAttendanceIntoSessions,
+    GroupedAttendanceSession,
+    WorkSession,
+    calculateTotalHours
 } from "@/lib/attendance-grouper";
 import { ManualEntryModal } from "@/components/attendance/manual-entry-modal";
 import { AttendanceCalendar, getStartOfWeek } from "@/components/attendance/attendance-calendar";
@@ -31,6 +31,7 @@ import {
     List,
     CalendarDays
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import type { AttendanceLog } from "@/types/database";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
@@ -57,6 +58,7 @@ interface Session {
     break_minutes: number;
     is_manual: boolean;
     device_info: string;
+    raw_logs: any[];
 }
 
 interface GroupedAttendance {
@@ -113,7 +115,7 @@ export default function OwnerAttendancePage() {
     const { businessTimezone } = useBusinessTimezone();
     const [fromDate, setFromDate] = useState<string>("");
     const [toDate, setToDate] = useState<string>("");
-    
+
     // Initialize dates once timezone is available
     useEffect(() => {
         if (businessTimezone && !fromDate && !toDate) {
@@ -231,7 +233,8 @@ export default function OwnerAttendancePage() {
                         ]
                             .filter(Boolean)
                             .join(", "),
-                        breaks: session.breaks || []
+                        breaks: session.breaks || [],
+                        raw_logs: session.all_logs || []
                     };
 
                     const totalMinutes = session.duration_minutes ?? 0;
@@ -698,13 +701,13 @@ export default function OwnerAttendancePage() {
                     )}
                 </div>
 
-                <button
+                <Button
                     onClick={() => setIsManualEntryModalOpen(true)}
-                    className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[hsl(var(--brand))] text-white text-sm font-medium hover:bg-[hsl(var(--brand))]/90 transition-colors shadow-sm"
+                    className="fixed bottom-24 right-6 size-10 lg:h-9 lg:w-auto p-0 lg:px-4 lg:py-2 gap-2 shadow-2xl shadow-[hsl(var(--brand))]/40 lg:shadow-md hover:shadow-lg transition-all lg:ml-2 rounded-full lg:rounded-lg z-50 lg:static"
                 >
-                    <Plus size={16} />
-                    Manual Entry
-                </button>
+                    <Plus size={24} className="lg:w-4 lg:h-4" />
+                    <span className="hidden lg:inline">Manual Entry</span>
+                </Button>
             </div>
 
             {/* View: List or Calendar */}
@@ -742,7 +745,16 @@ export default function OwnerAttendancePage() {
                                         <span className="text-sm font-black text-[hsl(var(--brand))]">{formatDuration(row.total_hours)}</span>
                                         <span className="text-[10px] text-[hsl(var(--muted-foreground))] uppercase font-bold">{row.sessions.length} {row.sessions.length === 1 ? 'session' : 'sessions'}</span>
                                     </div>
-                                    <ChevronRight size={16} className="text-[hsl(var(--muted-foreground))]/40" />
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setEditingLog({ ...row.raw_logs[0], all_logs: row.raw_logs, Employee: row.Employee });
+                                            setIsEditModalOpen(true);
+                                        }}
+                                        className="p-2 -mr-2 rounded-full hover:bg-[hsl(var(--brand-light))]/50 transition-colors"
+                                    >
+                                        <Edit2 size={16} className="text-[hsl(var(--brand))]" />
+                                    </button>
                                 </div>
                             </div>
 
@@ -794,11 +806,11 @@ export default function OwnerAttendancePage() {
             {/* ── Slide-Over Detail Panel ── */}
             {detailRow && (
                 <>
-                <div
-                    className="fixed inset-0 z-40 bg-black/30 backdrop-blur-sm animate-in fade-in"
-                    onClick={() => setDetailRow(null)}
-                />
-                <div className="fixed inset-y-0 right-0 z-50 w-full max-w-lg flex flex-col bg-[hsl(var(--card))] border-l border-[hsl(var(--border))] shadow-2xl animate-in slide-in-from-right">
+                    <div
+                        className="fixed inset-0 z-40 bg-black/30 backdrop-blur-sm animate-in fade-in"
+                        onClick={() => setDetailRow(null)}
+                    />
+                    <div className="fixed inset-y-0 right-0 z-50 w-full max-w-lg flex flex-col bg-[hsl(var(--card))] border-l border-[hsl(var(--border))] shadow-2xl animate-in slide-in-from-right">
                         {/* Header */}
                         <div className="flex items-center justify-between gap-4 px-6 py-5 border-b border-[hsl(var(--border))] bg-[hsl(var(--muted))]/20">
                             <div className="flex items-center gap-3 min-w-0">
@@ -846,7 +858,7 @@ export default function OwnerAttendancePage() {
                         </div>
 
                         {/* Sessions */}
-                        <div className="flex-1 overflow-y-auto px-6 py-4">
+                        <div className="flex-1 overflow-y-auto px-6 py-4 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
                             <p className="text-[10px] uppercase font-bold text-[hsl(var(--muted-foreground))] tracking-wider mb-3 flex items-center gap-1.5">
                                 <Layers size={12} />
                                 {detailRow.sessions.length} {detailRow.sessions.length === 1 ? "Session" : "Sessions"}
@@ -918,6 +930,23 @@ export default function OwnerAttendancePage() {
                                                     </div>
                                                 </div>
 
+                                                {/* Edit Button - Mobile Only */}
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        // Pass only logs for this specific session
+                                                        setEditingLog({
+                                                            ...s.raw_logs[0],
+                                                            all_logs: s.raw_logs,
+                                                            Employee: detailRow.Employee
+                                                        });
+                                                        setIsEditModalOpen(true);
+                                                    }}
+                                                    className="flex sm:hidden h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[hsl(var(--warning-light))]/50 text-[hsl(var(--warning-foreground))] hover:bg-[hsl(var(--warning))] hover:text-white transition-all shadow-sm"
+                                                    title="Edit this session"
+                                                >
+                                                    <Edit2 size={14} />
+                                                </button>
                                             </div>
 
                                             {/* Breaks Section */}
@@ -971,7 +1000,7 @@ export default function OwnerAttendancePage() {
                         </div>
 
                         {/* Footer */}
-                        <div className="flex items-center justify-between px-6 py-4 border-t border-[hsl(var(--border))] bg-[hsl(var(--muted))]/20">
+                        <div className="flex items-center justify-between px-6 pt-4 pb-10 sm:pb-4 border-t border-[hsl(var(--border))] bg-[hsl(var(--muted))]/20">
                             <div className="flex items-center gap-2 text-sm text-[hsl(var(--muted-foreground))]">
                                 {detailRow.is_manual && <StatusBadge status="manual" label="Manual Entry" />}
                             </div>
@@ -980,9 +1009,9 @@ export default function OwnerAttendancePage() {
                                     setEditingLog({ ...detailRow.raw_logs[0], all_logs: detailRow.raw_logs, Employee: detailRow.Employee });
                                     setIsEditModalOpen(true);
                                 }}
-                                className="flex items-center gap-1.5 text-xs font-medium text-[hsl(var(--brand))] bg-[hsl(var(--brand-light))] hover:bg-[hsl(var(--brand))]/15 px-3 py-2 rounded-lg transition-colors"
+                                className="flex items-center gap-1.5 text-xs font-bold text-[hsl(var(--brand))] bg-[hsl(var(--brand-light))] hover:bg-[hsl(var(--brand))]/15 px-4 py-3 rounded-xl transition-colors shadow-sm"
                             >
-                                <Edit2 size={12} /> Edit Session
+                                <Edit2 size={14} /> Edit Session
                             </button>
                         </div>
                     </div>
