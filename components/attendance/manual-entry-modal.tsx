@@ -395,16 +395,25 @@ export function ManualEntryModal({
                                                                 className="w-full h-7 px-2 text-[10px] rounded border bg-[hsl(var(--background))] focus:outline-none focus:ring-1 focus:ring-[hsl(var(--brand))]"
                                                             />
                                                         </div>
-                                                        <div className="max-h-40 overflow-y-auto p-1">
+                                                        <div className="max-h-40 overflow-y-auto p-1" ref={el => {
+                                                            if (el && !el.dataset.scrolled) {
+                                                                const selected = el.querySelector('[data-selected="true"]');
+                                                                if (selected) {
+                                                                    selected.scrollIntoView({ block: "center" });
+                                                                    el.dataset.scrolled = "true";
+                                                                }
+                                                            }
+                                                        }}>
                                                              {(() => {
                                                                  const filtered = TIME_OPTIONS.filter(t => t.includes(breakSearch['shift_in'] || ''));
-                                                                 const currentIndex = filtered.indexOf(formData.inTime);
-                                                                 const rotated = currentIndex > 0 
-                                                                     ? [...filtered.slice(currentIndex), ...filtered.slice(0, currentIndex)]
-                                                                     : filtered;
                                                                  
-                                                                 return rotated.map(t => (
-                                                                     <button key={t} type="button" onClick={() => { setFormData({ ...formData, inTime: t }); setIsBreakDropdownOpen({}); }} className="w-full text-left px-2 py-1.5 text-xs hover:bg-[hsl(var(--muted))] rounded transition-colors">{t}</button>
+                                                                 return filtered.map(t => (
+                                                                     <button key={t} type="button" onClick={() => { setFormData({ ...formData, inTime: t }); setIsBreakDropdownOpen({}); }} data-selected={formData.inTime === t} className={cn(
+                                                                         "w-full text-left px-2 py-1.5 text-xs rounded transition-colors",
+                                                                         formData.inTime === t
+                                                                             ? "bg-[hsl(var(--brand))] text-white font-medium"
+                                                                             : "hover:bg-[hsl(var(--muted))]"
+                                                                     )}>{t}</button>
                                                                  ));
                                                              })()}
                                                          </div>
@@ -440,16 +449,25 @@ export function ManualEntryModal({
                                                                  className="w-full h-7 px-2 text-[10px] rounded border bg-[hsl(var(--background))] focus:outline-none focus:ring-1 focus:ring-[hsl(var(--brand))]"
                                                              />
                                                          </div>
-                                                         <div className="max-h-40 overflow-y-auto p-1">
+                                                         <div className="max-h-40 overflow-y-auto p-1" ref={el => {
+                                                             if (el && !el.dataset.scrolled) {
+                                                                 const selected = el.querySelector('[data-selected="true"]');
+                                                                 if (selected) {
+                                                                     selected.scrollIntoView({ block: "center" });
+                                                                     el.dataset.scrolled = "true";
+                                                                 }
+                                                             }
+                                                         }}>
                                                              {(() => {
                                                                  const filtered = TIME_OPTIONS.filter(t => t.includes(breakSearch['shift_out'] || ''));
-                                                                 const currentIndex = filtered.indexOf(formData.outTime);
-                                                                 const rotated = currentIndex > 0 
-                                                                     ? [...filtered.slice(currentIndex), ...filtered.slice(0, currentIndex)]
-                                                                     : filtered;
                                                                  
-                                                                 return rotated.map(t => (
-                                                                     <button key={t} type="button" onClick={() => { setFormData({ ...formData, outTime: t }); setIsBreakDropdownOpen({}); }} className="w-full text-left px-2 py-1.5 text-xs hover:bg-[hsl(var(--muted))] rounded transition-colors">{t}</button>
+                                                                 return filtered.map(t => (
+                                                                     <button key={t} type="button" onClick={() => { setFormData({ ...formData, outTime: t }); setIsBreakDropdownOpen({}); }} data-selected={formData.outTime === t} className={cn(
+                                                                         "w-full text-left px-2 py-1.5 text-xs rounded transition-colors",
+                                                                         formData.outTime === t
+                                                                             ? "bg-[hsl(var(--brand))] text-white font-medium"
+                                                                             : "hover:bg-[hsl(var(--muted))]"
+                                                                     )}>{t}</button>
                                                                  ));
                                                              })()}
                                                          </div>
@@ -490,16 +508,25 @@ export function ManualEntryModal({
                                                                              className="w-full h-6 px-1.5 text-[9px] rounded border bg-[hsl(var(--background))] focus:outline-none"
                                                                          />
                                                                      </div>
-                                                                     <div className="max-h-32 overflow-y-auto p-1">
+                                                                     <div className="max-h-32 overflow-y-auto p-1" ref={el => {
+                                                                         if (el && !el.dataset.scrolled) {
+                                                                             const selected = el.querySelector('[data-selected="true"]');
+                                                                             if (selected) {
+                                                                                 selected.scrollIntoView({ block: "center" });
+                                                                                 el.dataset.scrolled = "true";
+                                                                             }
+                                                                         }
+                                                                     }}>
                                                                          {(() => {
                                                                              const filtered = TIME_OPTIONS.filter(t => t.includes(breakSearch[b.id] || ''));
-                                                                             const currentIndex = filtered.indexOf(b.start);
-                                                                             const rotated = currentIndex > 0 
-                                                                                 ? [...filtered.slice(currentIndex), ...filtered.slice(0, currentIndex)]
-                                                                                 : filtered;
                                                                              
-                                                                             return rotated.map(t => (
-                                                                                 <button key={t} type="button" onClick={() => { const newBreaks = [...formData.breaks]; newBreaks[idx].start = t; setFormData({ ...formData, breaks: newBreaks }); setIsBreakDropdownOpen({}); }} className="w-full text-left px-2 py-1 text-xs hover:bg-[hsl(var(--muted))] rounded">{t}</button>
+                                                                             return filtered.map(t => (
+                                                                                 <button key={t} type="button" onClick={() => { const newBreaks = [...formData.breaks]; newBreaks[idx].start = t; setFormData({ ...formData, breaks: newBreaks }); setIsBreakDropdownOpen({}); }} data-selected={b.start === t} className={cn(
+                                                                                     "w-full text-left px-2 py-1 text-xs rounded",
+                                                                                     b.start === t
+                                                                                         ? "bg-[hsl(var(--brand))] text-white font-medium"
+                                                                                         : "hover:bg-[hsl(var(--muted))]"
+                                                                                 )}>{t}</button>
                                                                              ));
                                                                          })()}
                                                                      </div>
@@ -531,16 +558,25 @@ export function ManualEntryModal({
                                                                              className="w-full h-6 px-1.5 text-[9px] rounded border bg-[hsl(var(--background))] focus:outline-none"
                                                                          />
                                                                      </div>
-                                                                     <div className="max-h-32 overflow-y-auto p-1">
+                                                                     <div className="max-h-32 overflow-y-auto p-1" ref={el => {
+                                                                         if (el && !el.dataset.scrolled) {
+                                                                             const selected = el.querySelector('[data-selected="true"]');
+                                                                             if (selected) {
+                                                                                 selected.scrollIntoView({ block: "center" });
+                                                                                 el.dataset.scrolled = "true";
+                                                                             }
+                                                                         }
+                                                                     }}>
                                                                          {(() => {
                                                                              const filtered = TIME_OPTIONS.filter(t => t.includes(breakSearch[b.id + '_end'] || ''));
-                                                                             const currentIndex = filtered.indexOf(b.end);
-                                                                             const rotated = currentIndex > 0 
-                                                                                 ? [...filtered.slice(currentIndex), ...filtered.slice(0, currentIndex)]
-                                                                                 : filtered;
                                                                              
-                                                                             return rotated.map(t => (
-                                                                                 <button key={t} type="button" onClick={() => { const newBreaks = [...formData.breaks]; newBreaks[idx].end = t; setFormData({ ...formData, breaks: newBreaks }); setIsBreakDropdownOpen({}); }} className="w-full text-left px-2 py-1 text-xs hover:bg-[hsl(var(--muted))] rounded">{t}</button>
+                                                                             return filtered.map(t => (
+                                                                                 <button key={t} type="button" onClick={() => { const newBreaks = [...formData.breaks]; newBreaks[idx].end = t; setFormData({ ...formData, breaks: newBreaks }); setIsBreakDropdownOpen({}); }} data-selected={b.end === t} className={cn(
+                                                                                     "w-full text-left px-2 py-1 text-xs rounded",
+                                                                                     b.end === t
+                                                                                         ? "bg-[hsl(var(--brand))] text-white font-medium"
+                                                                                         : "hover:bg-[hsl(var(--muted))]"
+                                                                                 )}>{t}</button>
                                                                              ));
                                                                          })()}
                                                                      </div>
@@ -583,16 +619,25 @@ export function ManualEntryModal({
                                                     className="w-full h-8 px-2 text-xs rounded border bg-[hsl(var(--background))] focus:outline-none focus:ring-1 focus:ring-[hsl(var(--brand))]"
                                                 />
                                             </div>
-                                            <div className="max-h-48 overflow-y-auto p-1">
+                                            <div className="max-h-48 overflow-y-auto p-1" ref={el => {
+                                                if (el && !el.dataset.scrolled) {
+                                                    const selected = el.querySelector('[data-selected="true"]');
+                                                    if (selected) {
+                                                        selected.scrollIntoView({ block: "center" });
+                                                        el.dataset.scrolled = "true";
+                                                    }
+                                                }
+                                            }}>
                                                 {(() => {
                                                     const filtered = TIME_OPTIONS.filter(t => t.includes(breakSearch['single_time'] || ''));
-                                                    const currentIndex = filtered.indexOf(formData.inTime);
-                                                    const rotated = currentIndex > 0 
-                                                        ? [...filtered.slice(currentIndex), ...filtered.slice(0, currentIndex)]
-                                                        : filtered;
                                                     
-                                                    return rotated.map(t => (
-                                                        <button key={t} type="button" onClick={() => { setFormData({ ...formData, inTime: t }); setIsBreakDropdownOpen({}); }} className="w-full text-left px-4 py-2.5 text-sm hover:bg-[hsl(var(--muted))] rounded-lg transition-colors">{t}</button>
+                                                    return filtered.map(t => (
+                                                        <button key={t} type="button" onClick={() => { setFormData({ ...formData, inTime: t }); setIsBreakDropdownOpen({}); }} data-selected={formData.inTime === t} className={cn(
+                                                            "w-full text-left px-4 py-2.5 text-sm rounded-lg transition-colors",
+                                                            formData.inTime === t
+                                                                ? "bg-[hsl(var(--brand))] text-white font-medium"
+                                                                : "hover:bg-[hsl(var(--muted))]"
+                                                        )}>{t}</button>
                                                     ));
                                                 })()}
                                             </div>

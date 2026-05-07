@@ -7,8 +7,14 @@ import { DashboardLayout } from "@/components/layout";
 import { DataTable, Column } from "@/components/ui/data-table";
 import { StatusBadge } from "@/components/ui/badge";
 import { apiGet } from "@/lib/api-client";
-import { groupAttendanceIntoSessions } from "@/lib/attendance-grouper";
+import { 
+    groupAttendanceIntoSessions, 
+    GroupedAttendanceSession, 
+    WorkSession, 
+    calculateTotalHours 
+} from "@/lib/attendance-grouper";
 import { ManualEntryModal } from "@/components/attendance/manual-entry-modal";
+import { AttendanceCalendar, getStartOfWeek } from "@/components/attendance/attendance-calendar";
 import {
     Clock,
     ArrowDownCircle,
@@ -22,8 +28,11 @@ import {
     Plus,
     Edit2,
     Coffee,
-    ArrowRight
+    ArrowRight,
+    List,
+    CalendarDays
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import type { AttendanceLog } from "@/types/database";
 import { cn } from "@/lib/utils";
 import { EditAttendanceModal } from "@/components/attendance/edit-attendance-modal";
@@ -50,9 +59,11 @@ interface Session {
     is_manual: boolean;
     device_info: string;
     has_pending_request?: boolean;
+    raw_logs: any[];
 }
 
 interface GroupedAttendance {
+    rostered_minutes: number;
     id: string;
     employee_id: string;
     Employee?: {
@@ -120,6 +131,9 @@ export default function ManagerAttendancePage() {
     const [editingLog, setEditingLog] = useState<any | null>(null);
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [searchQuery, setSearchQuery] = useState("");
+    const [viewMode, setViewMode] = useState<"list" | "calendar">("list");
+    const [calendarAnchor, setCalendarAnchor] = useState<Date>(() => getStartOfWeek(new Date()));
+    const [calendarPeriod, setCalendarPeriod] = useState<"week" | "fortnight" | "month">("week");
     const queryClient = useQueryClient();
 
     // Supabase Realtime Subscription for live updates
@@ -159,14 +173,34 @@ export default function ManagerAttendancePage() {
         queryFn: () => apiGet<any[]>("/attendance/requests?status=pending"),
     });
 
-    const { data: records = [], isLoading } = useQuery({
+    const { data: records = [], isLoading: isLoadingAttendance } = useQuery({
         queryKey: ["attendance-raw", fromDate, toDate],
         queryFn: () =>
             apiGet<AttendanceRecord[]>("/attendance", queryParams),
     });
 
+    const { data: shifts = [], isLoading: isLoadingShifts } = useQuery({
+        queryKey: ["attendance-shifts", fromDate, toDate],
+        queryFn: () => apiGet<any[]>("/shift", queryParams),
+        enabled: !!fromDate && !!toDate
+    });
+
+    const isLoading = isLoadingAttendance || isLoadingShifts;
+
     /* ── Session-aware grouping ── */
     const groupedRecords = useMemo(() => {
+        // Build roster map for lookup
+        const rosterMap = new Map<string, number>();
+        for (const shift of shifts) {
+            if (!shift.employee_id || !shift.start_time || !shift.end_time) continue;
+            const dateStr = shift.start_time.split('T')[0];
+            const key = `${shift.employee_id}_${dateStr}`;
+            const start = new Date(shift.start_time);
+            const end = new Date(shift.end_time);
+            const diffMinutes = Math.max(0, (end.getTime() - start.getTime()) / (1000 * 60));
+            rosterMap.set(key, (rosterMap.get(key) || 0) + diffMinutes);
+        }
+
         // Use the new cross-midnight aware grouping function
         const groupedSessions = groupAttendanceIntoSessions(records, businessTimezone);
 
@@ -203,14 +237,16 @@ export default function ManagerAttendancePage() {
                         ]
                             .filter(Boolean)
                             .join(", "),
-                        breaks: undefined,
-                        has_pending_request: attendanceRequests.some((r: any) => 
+                        breaks: session.breaks || [],
+                        raw_logs: session.all_logs || [],
+                        has_pending_request: attendanceRequests.some((r: any) =>
                             r.attendance_log_id === session.clock_in?.log_id && r.status === 'pending'
                         )
                     };
 
                     const totalMinutes = session.duration_minutes ?? 0;
                     const totalBreakMinutes = session.break_minutes ?? 0;
+                    const rosterMinutes = rosterMap.get(`${group.employee_id}_${group.clock_in_date}`) || 0;
 
                     return {
                         id: `${group.employee_id}_${group.clock_in_date}_${session.clock_in?.timestamp}`,
@@ -222,6 +258,7 @@ export default function ManagerAttendancePage() {
                         sessions: [sessionObj],
                         total_hours: totalMinutes,
                         total_break_minutes: totalBreakMinutes,
+                        rostered_minutes: rosterMinutes,
                         is_manual:
                             !!session.clock_in?.override_by ||
                             !!session.clock_out?.override_by,
@@ -246,11 +283,11 @@ export default function ManagerAttendancePage() {
                 const dateB = new Date(b.first_in || b.date).getTime();
                 return dateB - dateA;
             });
-    }, [records, businessTimezone]);
+    }, [records, shifts, attendanceRequests, fromDate, toDate, businessTimezone]);
 
     const filteredData = useMemo(() => {
         if (!searchQuery) return groupedRecords;
-        
+
         const q = searchQuery.toLowerCase();
         return groupedRecords.filter(row => {
             const firstName = row.Employee?.first_name?.toLowerCase() || "";
@@ -399,6 +436,21 @@ export default function ManagerAttendancePage() {
             },
         },
         {
+            key: "rostered_hours",
+            label: "Rostered",
+            render: (row) => (
+                <div className="flex items-center gap-2">
+                    <CalendarDays size={14} className="text-[hsl(var(--muted-foreground))] shrink-0" />
+                    <span className={cn(
+                        "text-sm font-medium tabular-nums",
+                        row.rostered_minutes > 0 ? "text-[hsl(var(--foreground))]" : "text-[hsl(var(--muted-foreground))]/40"
+                    )}>
+                        {row.rostered_minutes > 0 ? formatDuration(row.rostered_minutes) : "—"}
+                    </span>
+                </div>
+            ),
+        },
+        {
             key: "total_break",
             label: "Total Break",
             render: (row) => (
@@ -431,7 +483,7 @@ export default function ManagerAttendancePage() {
             label: "Status",
             render: (row) => {
                 const hasPending = row.sessions.some((s: any) => s.has_pending_request);
-                
+
                 if (hasPending) {
                     return (
                         <div className="flex flex-col gap-1">
@@ -479,15 +531,15 @@ export default function ManagerAttendancePage() {
     /* ── Summary stats ── */
     const totalSessions = filteredData.length;
     const missingPunch = filteredData.filter(
-        (r) => r.sessions.some((s) => !s.clock_in || !s.clock_out)
+        (r: GroupedAttendance) => r.sessions.some((s: Session) => !s.clock_in || !s.clock_out)
     ).length;
-    const manualEntries = filteredData.filter((r) => r.is_manual).length;
+    const manualEntries = filteredData.filter((r: GroupedAttendance) => r.is_manual).length;
     const totalWorkedMinutes = filteredData.reduce(
-        (sum, r) => sum + r.total_hours,
+        (sum, r: GroupedAttendance) => sum + r.total_hours,
         0
     );
     const totalBreakMinutesAll = filteredData.reduce(
-        (sum, r) => sum + r.total_break_minutes,
+        (sum, r: GroupedAttendance) => sum + r.total_break_minutes,
         0
     );
 
@@ -568,160 +620,214 @@ export default function ManagerAttendancePage() {
                 </div>
             </div>
 
-            {/* Filters */}
+            {/* Filters & View Toggle */}
             <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
                 <div className="flex flex-wrap items-center gap-3">
-                    <div className="flex items-center gap-2 rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-3 py-1.5 shadow-sm">
-                        <span className="text-xs font-medium text-[hsl(var(--muted-foreground))]">
-                            From
-                        </span>
-                        <input
-                            type="date"
-                            value={fromDate}
-                            onChange={(e) => setFromDate(e.target.value)}
-                            className="bg-transparent text-sm focus:outline-none"
-                        />
-                    </div>
-                    <div className="flex items-center gap-2 rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-3 py-1.5 shadow-sm">
-                        <span className="text-xs font-medium text-[hsl(var(--muted-foreground))]">
-                            To
-                        </span>
-                        <input
-                            type="date"
-                            value={toDate}
-                            onChange={(e) => setToDate(e.target.value)}
-                            className="bg-transparent text-sm focus:outline-none"
-                        />
-                    </div>
-                    <button
-                        onClick={() => {
-                            setFromDate(today);
-                            setToDate(today);
-                        }}
-                        className={cn(
-                            "text-xs font-medium px-3 py-1.5 rounded-lg transition-colors",
-                            fromDate === today && toDate === today
-                                ? "bg-[hsl(var(--brand))] text-white"
-                                : "bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--brand-light))] hover:text-[hsl(var(--brand))]"
-                        )}
-                    >
-                        Today
-                    </button>
-                    {(fromDate !== today || toDate !== today) && (
+                    {/* View Toggle */}
+                    <div className="flex items-center bg-[hsl(var(--muted))] rounded-lg p-0.5">
                         <button
-                            onClick={() => {
-                                setFromDate("");
-                                setToDate("");
-                            }}
-                            className="text-xs font-medium text-[hsl(var(--brand))] hover:underline underline-offset-4"
+                            onClick={() => setViewMode("list")}
+                            className={cn(
+                                "p-2 rounded-md transition-all",
+                                viewMode === "list"
+                                    ? "bg-[hsl(var(--card))] text-[hsl(var(--foreground))] shadow-sm"
+                                    : "text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"
+                            )}
+                            title="List View"
                         >
-                            All Time
+                            <List size={16} />
                         </button>
+                        <button
+                            onClick={() => setViewMode("calendar")}
+                            className={cn(
+                                "p-2 rounded-md transition-all",
+                                viewMode === "calendar"
+                                    ? "bg-[hsl(var(--card))] text-[hsl(var(--foreground))] shadow-sm"
+                                    : "text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"
+                            )}
+                            title="Calendar View"
+                        >
+                            <CalendarDays size={16} />
+                        </button>
+                    </div>
+
+                    {viewMode === "list" && (
+                        <>
+                            <div className="flex items-center gap-2 rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-3 py-1.5 shadow-sm">
+                                <span className="text-xs font-medium text-[hsl(var(--muted-foreground))]">From</span>
+                                <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className="bg-transparent text-sm focus:outline-none" />
+                            </div>
+                            <div className="flex items-center gap-2 rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-3 py-1.5 shadow-sm">
+                                <span className="text-xs font-medium text-[hsl(var(--muted-foreground))]">To</span>
+                                <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} className="bg-transparent text-sm focus:outline-none" />
+                            </div>
+                            <button onClick={() => { setFromDate(today); setToDate(today); }} className={cn("text-xs font-medium px-3 py-1.5 rounded-lg transition-colors", fromDate === today && toDate === today ? "bg-[hsl(var(--brand))] text-white" : "bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--brand-light))] hover:text-[hsl(var(--brand))]")}>Today</button>
+                            {(fromDate !== today || toDate !== today) && (
+                                <button onClick={() => { setFromDate(""); setToDate(""); }} className="text-xs font-medium text-[hsl(var(--brand))] hover:underline underline-offset-4">All Time</button>
+                            )}
+                        </>
                     )}
                 </div>
 
-                <button
+                <Button
                     onClick={() => setIsManualEntryModalOpen(true)}
-                    className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[hsl(var(--brand))] text-white text-sm font-medium hover:bg-[hsl(var(--brand))]/90 transition-colors shadow-sm"
+                    className="fixed bottom-24 right-6 h-14 w-14 lg:h-9 lg:w-auto p-0 lg:px-4 lg:py-2 gap-2 shadow-2xl shadow-[hsl(var(--brand))]/40 lg:shadow-md hover:shadow-lg transition-all lg:ml-2 rounded-full lg:rounded-lg z-50 lg:static"
                 >
-                    <Plus size={16} />
-                    Manual Entry
-                </button>
+                    <Plus size={24} className="lg:w-4 lg:h-4" />
+                    <span className="hidden lg:inline">Manual Entry</span>
+                </Button>
             </div>
 
-            {/* Table */}
-            <DataTable
-                columns={columns}
-                data={filteredData}
-                searchable
-                onSearchChange={setSearchQuery}
-                searchPlaceholder="Search by employee or date..."
-                emptyMessage="No attendance records found for this period"
-                emptyIcon={<Clock size={40} />}
-                loading={isLoading}
-                onRowClick={handleRowClick}
-                pageSize={10}
-                maxHeight="calc(100vh - 430px)"
-                mobileCardRender={(row) => (
-                    <div className="p-4 flex flex-col gap-3 border-b border-[hsl(var(--border))] last:border-0 active:bg-[hsl(var(--muted))]/30 transition-colors">
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[hsl(var(--brand-light))] text-[hsl(var(--brand))] text-sm font-bold shadow-sm">
-                                    {row.Employee?.first_name?.[0] ?? ""}{row.Employee?.last_name?.[0] ?? ""}
+            {/* View: List or Calendar */}
+            {viewMode === "list" ? (
+                <DataTable
+                    columns={columns}
+                    data={filteredData}
+                    searchable
+                    onSearchChange={setSearchQuery}
+                    searchPlaceholder="Search by employee or date..."
+                    emptyMessage="No attendance records found for this period"
+                    emptyIcon={<Clock size={40} />}
+                    loading={isLoading}
+                    onRowClick={handleRowClick}
+                    pageSize={10}
+                    maxHeight="calc(100vh - 430px)"
+                    mobileCardRender={(row) => (
+                        <div className="p-4 flex flex-col gap-3 border-b border-[hsl(var(--border))] last:border-0 active:bg-[hsl(var(--muted))]/30 transition-colors">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[hsl(var(--brand-light))] text-[hsl(var(--brand))] text-sm font-bold shadow-sm">
+                                        {row.Employee?.first_name?.[0] ?? ""}{row.Employee?.last_name?.[0] ?? ""}
+                                    </div>
+                                    <div className="flex flex-col">
+                                        <span className="font-bold text-[hsl(var(--foreground))]">
+                                            {row.Employee ? `${row.Employee.first_name} ${row.Employee.last_name}` : "Unknown"}
+                                        </span>
+                                        <span className="text-[10px] uppercase font-bold text-[hsl(var(--muted-foreground))] tracking-wider">
+                                            {new Date(row.date).toLocaleDateString("en-AU", { weekday: "short", day: "numeric", month: "short" })}
+                                        </span>
+                                    </div>
                                 </div>
-                                <div className="flex flex-col">
-                                    <span className="font-bold text-[hsl(var(--foreground))]">
-                                        {row.Employee ? `${row.Employee.first_name} ${row.Employee.last_name}` : "Unknown"}
-                                    </span>
-                                    <span className="text-[10px] uppercase font-bold text-[hsl(var(--muted-foreground))] tracking-wider">
-                                        {new Date(row.date).toLocaleDateString("en-AU", { weekday: "short", day: "numeric", month: "short" })}
-                                    </span>
+                                <div className="flex items-center gap-3">
+                                    <div className="flex flex-col items-end">
+                                        <span className="text-sm font-black text-[hsl(var(--brand))]">{formatDuration(row.total_hours)}</span>
+                                        <span className="text-[10px] text-[hsl(var(--muted-foreground))] uppercase font-bold">{row.sessions.length} {row.sessions.length === 1 ? 'session' : 'sessions'}</span>
+                                    </div>
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setEditingLog({ ...row.raw_logs[0], all_logs: row.raw_logs, Employee: row.Employee });
+                                            setIsEditModalOpen(true);
+                                        }}
+                                        className="p-2 -mr-2 rounded-full hover:bg-[hsl(var(--brand-light))]/50 transition-colors"
+                                    >
+                                        <Edit2 size={16} className="text-[hsl(var(--brand))]" />
+                                    </button>
                                 </div>
                             </div>
-                            <div className="flex items-center gap-3">
-                                <div className="flex flex-col items-end">
-                                    <span className="text-sm font-black text-[hsl(var(--brand))]">{formatDuration(row.total_hours)}</span>
-                                    <span className="text-[10px] text-[hsl(var(--muted-foreground))] uppercase font-bold">{row.sessions.length} {row.sessions.length === 1 ? 'session' : 'sessions'}</span>
+                            <div className="flex items-center gap-4">
+                                <div className="flex items-center gap-1.5 text-xs text-[hsl(var(--success))] font-bold bg-[hsl(var(--success-light))]/20 px-2 py-1 rounded-lg">
+                                    <ArrowDownCircle size={12} />
+                                    {formatTime(row.first_in, businessTimezone)}
                                 </div>
-                                <ChevronRight size={16} className="text-[hsl(var(--muted-foreground))]/40" />
+                                <div className="flex items-center gap-1.5 text-xs text-[hsl(var(--warning))] font-bold bg-[hsl(var(--warning-light))]/20 px-2 py-1 rounded-lg">
+                                    <ArrowUpCircle size={12} />
+                                    {formatTime(row.last_out, businessTimezone)}
+                                </div>
+                                {row.is_manual && <StatusBadge status="manual" className="scale-75 origin-left" />}
                             </div>
                         </div>
+                    )}
+                />
+            ) : (
+                <AttendanceCalendar
+                    data={filteredData}
+                    employees={employees.map((e: any) => ({
+                        employee_id: e.employee_id,
+                        first_name: e.first_name,
+                        last_name: e.last_name,
+                        role_title: e.role_title,
+                    }))}
+                    shifts={shifts}
+                    timezone={businessTimezone}
+                    loading={isLoading}
+                    anchor={calendarAnchor}
+                    onAnchorChange={setCalendarAnchor}
+                    period={calendarPeriod}
+                    onPeriodChange={setCalendarPeriod}
+                    onCellClick={(records, employee, date) => {
+                        if (records.length > 0) {
+                            setDetailRow(records[0] as GroupedAttendance);
+                        } else {
+                            setIsManualEntryModalOpen(true);
+                        }
+                    }}
+                    onDateRangeChange={(from, to) => {
+                        setFromDate(from);
+                        setToDate(to);
+                    }}
+                />
+            )}
 
-                        <div className="flex items-center gap-4">
-                            <div className="flex items-center gap-1.5 text-xs text-[hsl(var(--success))] font-bold bg-[hsl(var(--success-light))]/20 px-2 py-1 rounded-lg">
-                                <ArrowDownCircle size={12} />
-                                {formatTime(row.first_in, businessTimezone)}
-                            </div>
-                            <div className="flex items-center gap-1.5 text-xs text-[hsl(var(--warning))] font-bold bg-[hsl(var(--warning-light))]/20 px-2 py-1 rounded-lg">
-                                <ArrowUpCircle size={12} />
-                                {formatTime(row.last_out, businessTimezone)}
-                            </div>
-                            {row.is_manual && <StatusBadge status="manual" className="scale-75 origin-left" />}
-                        </div>
-                    </div>
-                )}
-            />
-
-            {/* ── Session Detail Modal ── */}
+            {/* ── Slide-Over Detail Panel ── */}
             {detailRow && (
+                <>
                 <div
-                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm animate-in fade-in"
+                    className="fixed inset-0 z-40 bg-black/30 backdrop-blur-sm animate-in fade-in"
                     onClick={() => setDetailRow(null)}
-                >
-                    <div
-                        className="relative w-full max-w-2xl mx-4 rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-2xl animate-in zoom-in-95 overflow-hidden"
-                        onClick={(e) => e.stopPropagation()}
-                    >
+                />
+                <div className="fixed inset-y-0 right-0 z-50 w-full max-w-lg flex flex-col bg-[hsl(var(--card))] border-l border-[hsl(var(--border))] shadow-2xl animate-in slide-in-from-right">
                         {/* Header */}
-                        <div className="flex items-center justify-between gap-4 px-6 py-5 border-b border-[hsl(var(--border))]">
-                            <div>
-                                <h3 className="text-base font-semibold text-[hsl(var(--foreground))]">
-                                    Session Breakdown
-                                </h3>
-                                <p className="text-xs text-[hsl(var(--muted-foreground))] mt-0.5">
-                                    {detailRow.Employee
-                                        ? `${detailRow.Employee.first_name} ${detailRow.Employee.last_name}`
-                                        : detailRow.employee_id?.slice(0, 8) + "…"}{" "}
-                                    ·{" "}
-                                    {new Date(detailRow.date).toLocaleDateString("en-AU", {
-                                        weekday: "long",
-                                        day: "numeric",
-                                        month: "long",
-                                        year: "numeric",
-                                    })}
-                                </p>
+                        <div className="flex items-center justify-between gap-4 px-6 py-5 border-b border-[hsl(var(--border))] bg-[hsl(var(--muted))]/20">
+                            <div className="flex items-center gap-3 min-w-0">
+                                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[hsl(var(--brand-light))] text-[hsl(var(--brand))] text-sm font-bold">
+                                    {detailRow.Employee?.first_name?.[0]}{detailRow.Employee?.last_name?.[0]}
+                                </div>
+                                <div className="min-w-0">
+                                    <h3 className="text-base font-bold text-[hsl(var(--foreground))] truncate">
+                                        {detailRow.Employee
+                                            ? `${detailRow.Employee.first_name} ${detailRow.Employee.last_name}`
+                                            : "Unknown"}
+                                    </h3>
+                                    <p className="text-xs text-[hsl(var(--muted-foreground))]">
+                                        {new Date(detailRow.date).toLocaleDateString("en-AU", {
+                                            weekday: "long", day: "numeric", month: "long", year: "numeric",
+                                        })}
+                                    </p>
+                                </div>
                             </div>
-                            <button
-                                onClick={() => setDetailRow(null)}
-                                className="p-1.5 rounded-lg hover:bg-[hsl(var(--muted))] transition-colors"
-                            >
+                            <button onClick={() => setDetailRow(null)} className="p-2 rounded-lg hover:bg-[hsl(var(--muted))] transition-colors">
                                 <X size={18} />
                             </button>
                         </div>
 
-                        <div className="px-6 py-4 max-h-[50vh] overflow-y-auto">
+                        {/* Summary Cards */}
+                        <div className="grid grid-cols-3 gap-3 px-6 py-4 border-b border-[hsl(var(--border))]">
+                            <div className="flex flex-col items-center gap-1 p-3 rounded-xl bg-[hsl(var(--brand-light))]/30 border border-[hsl(var(--brand))]/10">
+                                <Timer size={16} className="text-[hsl(var(--brand))]" />
+                                <span className="text-[10px] uppercase font-bold text-[hsl(var(--muted-foreground))] tracking-wider">Worked</span>
+                                <span className="text-lg font-black text-[hsl(var(--brand))] tabular-nums">{formatDuration(detailRow.total_hours)}</span>
+                            </div>
+                            <div className="flex flex-col items-center gap-1 p-3 rounded-xl bg-[hsl(var(--muted))]/30 border border-[hsl(var(--border))]">
+                                <CalendarDays size={16} className="text-[hsl(var(--muted-foreground))]" />
+                                <span className="text-[10px] uppercase font-bold text-[hsl(var(--muted-foreground))] tracking-wider">Rostered</span>
+                                <span className="text-lg font-black text-[hsl(var(--foreground))] tabular-nums">{formatDuration(detailRow.rostered_minutes)}</span>
+                            </div>
+                            <div className="flex flex-col items-center gap-1 p-3 rounded-xl bg-amber-50 border border-amber-200/30">
+                                <Coffee size={16} className="text-amber-600" />
+                                <span className="text-[10px] uppercase font-bold text-amber-600 tracking-wider">Breaks</span>
+                                <span className="text-lg font-black text-amber-700 tabular-nums">{formatDuration(detailRow.total_break_minutes)}</span>
+                            </div>
+                        </div>
+
+                        {/* Sessions */}
+                        <div className="flex-1 overflow-y-auto px-6 py-4 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+                            <p className="text-[10px] uppercase font-bold text-[hsl(var(--muted-foreground))] tracking-wider mb-3 flex items-center gap-1.5">
+                                <Layers size={12} />
+                                {detailRow.sessions.length} {detailRow.sessions.length === 1 ? "Session" : "Sessions"}
+                            </p>
                             <div className="space-y-3">
-                                {detailRow.sessions.map((s, i) => {
+                                {detailRow.sessions.map((s: Session, i: number) => {
                                     const isIncomplete = !s.clock_in || !s.clock_out;
                                     return (
                                         <div
@@ -785,6 +891,23 @@ export default function ManagerAttendancePage() {
                                                     </div>
                                                 </div>
 
+                                                {/* Edit Button - Mobile Only */}
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        // Pass only logs for this specific session
+                                                        setEditingLog({ 
+                                                            ...s.raw_logs[0], 
+                                                            all_logs: s.raw_logs, 
+                                                            Employee: detailRow.Employee 
+                                                        });
+                                                        setIsEditModalOpen(true);
+                                                    }}
+                                                    className="flex sm:hidden h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[hsl(var(--warning-light))]/50 text-[hsl(var(--warning-foreground))] hover:bg-[hsl(var(--warning))] hover:text-white transition-all shadow-sm"
+                                                    title="Edit this session"
+                                                >
+                                                    <Edit2 size={14} />
+                                                </button>
                                             </div>
 
                                             {/* Breaks Section */}
@@ -825,24 +948,23 @@ export default function ManagerAttendancePage() {
                             </div>
                         </div>
 
-                        {/* Footer summary */}
-                        <div className="flex items-center justify-between px-6 py-4 border-t border-[hsl(var(--border))] bg-[hsl(var(--muted))]/30 rounded-b-2xl">
+                        {/* Footer */}
+                        <div className="flex items-center justify-between px-6 pt-4 pb-10 sm:pb-4 border-t border-[hsl(var(--border))] bg-[hsl(var(--muted))]/20">
                             <div className="flex items-center gap-2 text-sm text-[hsl(var(--muted-foreground))]">
-                                <Layers size={14} />
-                                <span>
-                                    {detailRow.sessions.length}{" "}
-                                    {detailRow.sessions.length === 1 ? "session" : "sessions"}
-                                </span>
+                                {detailRow.is_manual && <StatusBadge status="manual" label="Manual Entry" />}
                             </div>
-                            <div className="flex items-center gap-2">
-                                <Timer size={14} className="text-[hsl(var(--brand))]" />
-                                <span className="text-sm font-bold">
-                                    Total: {formatDuration(detailRow.total_hours)}
-                                </span>
-                            </div>
+                            <button
+                                onClick={() => {
+                                    setEditingLog({ ...detailRow.raw_logs[0], all_logs: detailRow.raw_logs, Employee: detailRow.Employee });
+                                    setIsEditModalOpen(true);
+                                }}
+                                className="flex items-center gap-1.5 text-xs font-bold text-[hsl(var(--brand))] bg-[hsl(var(--brand-light))] hover:bg-[hsl(var(--brand))]/15 px-4 py-3 rounded-xl transition-colors shadow-sm"
+                            >
+                                <Edit2 size={14} /> Edit Session
+                            </button>
                         </div>
                     </div>
-                </div>
+                </>
             )}
 
             {/* ── Manual Entry Modal ── */}
