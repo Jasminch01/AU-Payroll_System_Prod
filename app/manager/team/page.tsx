@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { DashboardLayout } from "@/components/layout";
 import { DataTable, Column } from "@/components/ui/data-table";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Input, PasswordInput } from "@/components/ui";
 import { StatusBadge } from "@/components/ui/badge";
 import {
     Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter
@@ -886,7 +886,7 @@ export default function ManagerTeamPage() {
                                         </div>
                                         <h3 className="font-bold text-slate-800 tracking-tight">Access Security</h3>
                                     </div>
-                                    <Input label="Temporary Password (Optional)" type="password" placeholder="Min. 8 characters" value={manualData.password} onChange={(e) => setManualData({ ...manualData, password: e.target.value })} />
+                                    <PasswordInput label="Temporary Password (Optional)" placeholder="Min. 8 characters" value={manualData.password} onChange={(e) => setManualData({ ...manualData, password: e.target.value })} />
                                 </section>
 
                                 {/* Emergency Section */}

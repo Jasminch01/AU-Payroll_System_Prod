@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useRef, useEffect } from "react";
-import { Bell } from "lucide-react";
+import { Bell, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
@@ -87,13 +87,82 @@ export function NotificationBell() {
             });
             if (!res.ok) throw new Error("Failed to mark as read");
         },
-        onSuccess: () => {
+        onMutate: async (ids) => {
+            await queryClient.cancelQueries({ queryKey: ["notifications", user?.user_id] });
+            const previousNotifications = queryClient.getQueryData<NotificationData[]>(["notifications", user?.user_id]);
+
+            if (previousNotifications) {
+                queryClient.setQueryData<NotificationData[]>(["notifications", user?.user_id], (old) => {
+                    if (!old) return [];
+                    return old.map(n => {
+                        if (!ids || ids.includes(n.id)) {
+                            return { ...n, is_read: true };
+                        }
+                        return n;
+                    });
+                });
+            }
+
+            return { previousNotifications };
+        },
+        onError: (err, ids, context) => {
+            if (context?.previousNotifications) {
+                queryClient.setQueryData(["notifications", user?.user_id], context.previousNotifications);
+            }
+        },
+        onSettled: () => {
             queryClient.invalidateQueries({ queryKey: ["notifications", user?.user_id] });
         }
     });
 
-    const handleMarkAllRead = () => {
+    // Mutation to delete notifications
+    const deleteReadMutation = useMutation({
+        mutationFn: async (id?: string) => {
+            const url = id ? `/api/notifications?id=${id}` : "/api/notifications";
+            const res = await fetch(url, {
+                method: "DELETE",
+            });
+            if (!res.ok) throw new Error("Failed to delete notifications");
+        },
+        onMutate: async (id) => {
+            await queryClient.cancelQueries({ queryKey: ["notifications", user?.user_id] });
+            const previousNotifications = queryClient.getQueryData<NotificationData[]>(["notifications", user?.user_id]);
+
+            if (previousNotifications) {
+                queryClient.setQueryData<NotificationData[]>(["notifications", user?.user_id], (old) => {
+                    if (!old) return [];
+                    if (id) {
+                        return old.filter(n => n.id !== id);
+                    }
+                    return old.filter(n => !n.is_read);
+                });
+            }
+
+            return { previousNotifications };
+        },
+        onError: (err, variables, context) => {
+            if (context?.previousNotifications) {
+                queryClient.setQueryData(["notifications", user?.user_id], context.previousNotifications);
+            }
+        },
+        onSettled: () => {
+            queryClient.invalidateQueries({ queryKey: ["notifications", user?.user_id] });
+        }
+    });
+
+    const handleMarkAllRead = (e: React.MouseEvent) => {
+        e.stopPropagation();
         markAsReadMutation.mutate(undefined);
+    };
+
+    const handleDeleteRead = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        deleteReadMutation.mutate(undefined);
+    };
+
+    const handleDeleteOne = (e: React.MouseEvent, id: string) => {
+        e.stopPropagation();
+        deleteReadMutation.mutate(id);
     };
 
     const handleNotificationClick = (n: NotificationData) => {
@@ -145,15 +214,26 @@ export function NotificationBell() {
                         {/* Header */}
                         <div className="flex items-center justify-between border-b border-[hsl(var(--border))] px-4 py-3">
                             <h3 className="font-semibold text-[hsl(var(--foreground))]">Notifications</h3>
-                            {unreadCount > 0 && (
-                                <button
-                                    onClick={handleMarkAllRead}
-                                    className="text-xs font-medium text-[hsl(var(--brand))] hover:underline"
-                                    disabled={markAsReadMutation.isPending}
-                                >
-                                    Mark all read
-                                </button>
-                            )}
+                            <div className="flex items-center gap-3">
+                                {unreadCount > 0 && (
+                                    <button
+                                        onClick={handleMarkAllRead}
+                                        className="text-[10px] uppercase font-bold text-[hsl(var(--brand))] hover:opacity-80 transition-opacity cursor-pointer"
+                                        disabled={markAsReadMutation.isPending}
+                                    >
+                                        Mark all read
+                                    </button>
+                                )}
+                                {notifications.some(n => n.is_read) && (
+                                    <button
+                                        onClick={handleDeleteRead}
+                                        className="text-[10px] uppercase font-bold text-red-500 hover:opacity-80 transition-opacity cursor-pointer"
+                                        disabled={deleteReadMutation.isPending}
+                                    >
+                                        Clear read
+                                    </button>
+                                )}
+                            </div>
                         </div>
 
                         {/* List */}
@@ -170,15 +250,22 @@ export function NotificationBell() {
                                             key={notification.id}
                                             onClick={() => handleNotificationClick(notification)}
                                             className={cn(
-                                                "cursor-pointer border-b border-[hsl(var(--border))]/50 px-4 py-3 last:border-0 hover:bg-[hsl(var(--muted))]/50 transition-colors",
+                                                "group relative cursor-pointer border-b border-[hsl(var(--border))]/50 px-4 py-3 last:border-0 hover:bg-[hsl(var(--muted))]/50 transition-colors",
                                                 !notification.is_read ? "bg-[hsl(var(--muted))]/30" : "opacity-75"
                                             )}
                                         >
+                                            <button
+                                                onClick={(e) => handleDeleteOne(e, notification.id)}
+                                                className="absolute top-2 right-2 p-1 rounded-md text-[hsl(var(--muted-foreground))] opacity-0 group-hover:opacity-100 hover:bg-[hsl(var(--destructive))]/10 hover:text-[hsl(var(--destructive))] transition-all z-10"
+                                                title="Delete notification"
+                                            >
+                                                <X size={14} />
+                                            </button>
                                             <div className="flex items-start justify-between gap-2">
                                                 <div className="min-w-0 flex-1">
                                                     <div className="flex items-start justify-between gap-4 mb-0.5">
                                                         <p className={cn(
-                                                            "text-sm",
+                                                            "text-sm pr-4",
                                                             !notification.is_read ? "font-semibold text-[hsl(var(--foreground))]" : "font-medium text-[hsl(var(--foreground))]"
                                                         )}>
                                                             {notification.title}
