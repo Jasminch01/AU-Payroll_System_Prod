@@ -3,9 +3,9 @@
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Input, PasswordInput } from "@/components/ui";
 import { toast } from "sonner";
-import { Loader2, Store, Fan, Eye, EyeOff } from "lucide-react";
+import { Loader2, Store, Fan } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { apiGet, apiPost } from "@/lib/api-client";
 
@@ -28,8 +28,6 @@ export default function OnboardingPage() {
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [confirmPassword, setConfirmPassword] = useState("");
-    const [showPassword, setShowPassword] = useState(false);
-    const [showConfirmPassword, setShowConfirmPassword] = useState(false);
     
     const [bankAccountName, setBankAccountName] = useState("");
     const [bankBsb, setBankBsb] = useState("");
@@ -355,23 +353,19 @@ export default function OnboardingPage() {
                                 <Input label="Email address" showAsterisk type="email" placeholder="jane@email.com" value={email} onChange={e => setEmail(e.target.value)} required className="h-10 text-sm" />
                             </div>
                             <div className="space-y-[6px]">
-                                <Input 
+                                <PasswordInput 
                                     label="Set Password" showAsterisk 
-                                    type={showPassword ? "text" : "password"} 
                                     placeholder="6+ characters" 
                                     value={password} onChange={e => setPassword(e.target.value)} 
                                     required className="h-10 text-sm"
-                                    suffix={showPassword ? <EyeOff size={18} onClick={() => setShowPassword(false)} /> : <Eye size={18} onClick={() => setShowPassword(true)} />}
                                 />
                             </div>
                             <div className="space-y-[6px]">
-                                <Input 
+                                <PasswordInput 
                                     label="Confirm Password" showAsterisk 
-                                    type={showConfirmPassword ? "text" : "password"} 
                                     placeholder="Repeat password" 
                                     value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} 
                                     required className="h-10 text-sm"
-                                    suffix={showConfirmPassword ? <EyeOff size={18} onClick={() => setShowConfirmPassword(false)} /> : <Eye size={18} onClick={() => setShowConfirmPassword(true)} />}
                                 />
                             </div>
 
@@ -464,23 +458,19 @@ export default function OnboardingPage() {
                             {!isExistingUser && (
                                 <>
                                     <div className="space-y-[6px]">
-                                        <Input 
+                                        <PasswordInput 
                                             label="Set New Password" showAsterisk 
-                                            type={showPassword ? "text" : "password"} 
                                             placeholder="Minimum 6 characters" 
                                             value={password} onChange={(e) => setPassword(e.target.value)} 
                                             required className="h-10 text-sm"
-                                            suffix={showPassword ? <EyeOff size={18} onClick={() => setShowPassword(false)} /> : <Eye size={18} onClick={() => setShowPassword(true)} />}
                                         />
                                     </div>
                                     <div className="space-y-[6px]">
-                                        <Input 
+                                        <PasswordInput 
                                             label="Confirm Password" showAsterisk 
-                                            type={showConfirmPassword ? "text" : "password"} 
                                             placeholder="Repeat password" 
                                             value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} 
                                             required className="h-10 text-sm"
-                                            suffix={showConfirmPassword ? <EyeOff size={18} onClick={() => setShowConfirmPassword(false)} /> : <Eye size={18} onClick={() => setShowConfirmPassword(true)} />}
                                         />
                                     </div>
                                 </>
