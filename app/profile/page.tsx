@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { DashboardLayout } from "@/components/layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Input, PasswordInput } from "@/components/ui";
 import { apiGet, apiPut, apiPost } from "@/lib/api-client";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
@@ -221,15 +221,13 @@ export default function ProfilePage() {
                                     </Button>
                                 ) : (
                                     <div className="space-y-3 p-4 border border-[hsl(var(--border))] rounded-lg bg-[hsl(var(--muted))]/30">
-                                        <Input
+                                        <PasswordInput
                                             label="New Password"
-                                            type="password"
                                             value={newPwd}
                                             onChange={(e) => setNewPwd(e.target.value)}
                                         />
-                                        <Input
+                                        <PasswordInput
                                             label="Confirm Password"
-                                            type="password"
                                             value={confirmPwd}
                                             onChange={(e) => setConfirmPwd(e.target.value)}
                                         />
