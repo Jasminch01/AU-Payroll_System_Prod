@@ -12,7 +12,7 @@ import { StatusBadge } from "@/components/ui/badge";
 import { apiGet, apiPut, apiPost, apiDelete, apiPatch } from "@/lib/api-client";
 import { toast } from "sonner";
 import {
-    ArrowLeft, Save, Trash2, User, Phone, Mail, DollarSign, Shield, FileText,
+    ArrowLeft, MoveLeft, Save, Trash2, User, Phone, Mail, DollarSign, Shield, FileText,
     Plus, Lock, Clock, Calendar, Briefcase, CalendarClock, X, Edit3
 } from "lucide-react";
 import {
@@ -221,8 +221,8 @@ export default function OwnerEmployeeDetailPage() {
                 <Card>
                     <CardContent className="p-8 text-center">
                         <p className="text-[hsl(var(--muted-foreground))]">Employee not found</p>
-                        <Button className="mt-4" onClick={() => router.push("/owner/employees")}>
-                            <ArrowLeft size={16} /> Back to Employees
+                        <Button className="mt-4" onClick={() => router.back()}>
+                            <MoveLeft size={24} strokeWidth={2} className="mr-2" /> Back
                         </Button>
                     </CardContent>
                 </Card>
@@ -235,447 +235,501 @@ export default function OwnerEmployeeDetailPage() {
 
     return (
         <DashboardLayout role="owner" pageTitle="" pageDescription="" actions={null}>
-            <div className="flex bg-[hsl(var(--background))] rounded-xl border border-[hsl(var(--border))] overflow-hidden h-[calc(100vh-120px)] relative">
-                <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full flex h-full">
-                    {/* Minimal Sidebar Navigation */}
-                    <div className="w-64 bg-[hsl(var(--muted))]/20 flex flex-col shrink-0 border-r border-[hsl(var(--border))]">
-                        {/* Profile Info Section */}
-                        <div className="p-6">
-                            <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => router.push("/owner/employees")}
-                                className="flex items-center gap-2 text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] p-0 h-auto mb-8"
-                            >
-                                <ArrowLeft size={16} />
-                                <span className="text-xs font-medium">Back to Team</span>
-                            </Button>
+            <div className="flex flex-col gap-4">
+                <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => router.back()}
+                    className="flex items-center justify-center text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] hover:bg-[hsl(var(--muted))]/30 w-10 h-10 rounded-full transition-colors"
+                >
+                    <MoveLeft size={28} strokeWidth={2.5} />
+                </Button>
 
-                            <div className="flex flex-col items-center text-center space-y-4 mb-8">
-                                <div className="relative">
-                                    <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-[hsl(var(--brand))] text-white text-3xl font-bold shadow-sm">
-                                        {employee.first_name?.[0]}{employee.last_name?.[0]}
+                <div className="flex flex-col lg:flex-row bg-[hsl(var(--background))] rounded-xl border border-[hsl(var(--border))] lg:overflow-hidden lg:h-[calc(100vh-120px)] relative">
+                    <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full flex flex-col lg:flex-row h-full">
+                        {/* Minimal Sidebar Navigation */}
+                        <div className="w-full lg:w-64 bg-[hsl(var(--muted))]/20 flex flex-col shrink-0 border-b lg:border-b-0 lg:border-r border-[hsl(var(--border))]">
+                            {/* Profile Info Section */}
+                            <div className="p-4 lg:p-6">
+                                <div className="flex flex-row lg:flex-col items-center lg:text-center gap-4 lg:space-y-4 mb-2 lg:mb-8">
+                                    <div className="relative">
+                                        <div className="flex h-16 w-16 lg:h-20 lg:w-20 items-center justify-center rounded-2xl bg-[hsl(var(--brand))] text-white text-2xl lg:text-3xl font-bold shadow-sm">
+                                            {employee.first_name?.[0]}{employee.last_name?.[0]}
+                                        </div>
+                                        <div className="absolute -bottom-1 -right-1">
+                                            <StatusBadge status={employee.status} className="h-5 lg:h-6 border-2 border-[hsl(var(--background))] px-1.5 lg:px-2 text-[9px] lg:text-[10px]" />
+                                        </div>
                                     </div>
-                                    <div className="absolute -bottom-1 -right-1">
-                                        <StatusBadge status={employee.status} className="h-6 border-2 border-[hsl(var(--background))] px-2 text-[10px]" />
+                                    <div className="min-w-0">
+                                        <h1 className="text-base lg:text-lg font-bold text-[hsl(var(--foreground))] leading-tight truncate">
+                                            {employee.first_name} {employee.last_name}
+                                        </h1>
+                                        <p className="text-[10px] lg:text-xs text-[hsl(var(--muted-foreground))] mt-0.5 truncate">
+                                            {employee.role_title || 'Employee'}
+                                            {employee.role && <span className="opacity-70 ml-1">({employee.role})</span>}
+                                        </p>
                                     </div>
                                 </div>
-                                <div>
-                                    <h1 className="text-lg font-bold text-[hsl(var(--foreground))] leading-tight">
-                                        {employee.first_name} {employee.last_name}
-                                    </h1>
-                                    <p className="text-xs text-[hsl(var(--muted-foreground))] mt-1">
-                                        {employee.role_title || 'Employee'} 
-                                        {employee.role && <span className="opacity-70 ml-1">({employee.role})</span>}
-                                    </p>
-                                </div>
+                            </div>
+
+                            <div className="px-3 pb-3 lg:pb-0 flex-1 overflow-x-auto lg:overflow-x-visible no-scrollbar">
+                                <TabsList className="flex flex-row lg:flex-col h-auto bg-transparent p-0 gap-1 items-center lg:items-stretch w-max lg:w-full">
+                                    <TabsTrigger value="overview" className="justify-start px-4 py-2 lg:py-2.5 rounded-lg data-[state=active]:bg-[hsl(var(--background))] data-[state=active]:text-[hsl(var(--brand))] data-[state=active]:border-[hsl(var(--border))] transition-all text-xs lg:text-sm font-medium gap-2 lg:gap-3 hover:bg-[hsl(var(--muted))]/30 border border-transparent whitespace-nowrap">
+                                        <User size={16} className="shrink-0 lg:w-[18px] lg:h-[18px]" />
+                                        <span>Personal</span>
+                                    </TabsTrigger>
+                                    <TabsTrigger value="employment" className="justify-start px-4 py-2 lg:py-2.5 rounded-lg data-[state=active]:bg-[hsl(var(--background))] data-[state=active]:text-[hsl(var(--brand))] data-[state=active]:border-[hsl(var(--border))] transition-all text-xs lg:text-sm font-medium gap-2 lg:gap-3 hover:bg-[hsl(var(--muted))]/30 border border-transparent whitespace-nowrap">
+                                        <Briefcase size={16} className="shrink-0 lg:w-[18px] lg:h-[18px]" />
+                                        <span>Employment</span>
+                                    </TabsTrigger>
+                                    <TabsTrigger value="shifts" className="justify-start px-4 py-2 lg:py-2.5 rounded-lg data-[state=active]:bg-[hsl(var(--background))] data-[state=active]:text-[hsl(var(--brand))] data-[state=active]:border-[hsl(var(--border))] transition-all text-xs lg:text-sm font-medium gap-2 lg:gap-3 hover:bg-[hsl(var(--muted))]/30 border border-transparent whitespace-nowrap">
+                                        <CalendarClock size={16} className="shrink-0 lg:w-[18px] lg:h-[18px]" />
+                                        <span>Roster</span>
+                                    </TabsTrigger>
+                                    <TabsTrigger value="timesheets" className="justify-start px-4 py-2 lg:py-2.5 rounded-lg data-[state=active]:bg-[hsl(var(--background))] data-[state=active]:text-[hsl(var(--brand))] data-[state=active]:border-[hsl(var(--border))] transition-all text-xs lg:text-sm font-medium gap-2 lg:gap-3 hover:bg-[hsl(var(--muted))]/30 border border-transparent whitespace-nowrap">
+                                        <Clock size={16} className="shrink-0 lg:w-[18px] lg:h-[18px]" />
+                                        <span>Timesheets</span>
+                                    </TabsTrigger>
+                                    <TabsTrigger value="leave" className="justify-start px-4 py-2 lg:py-2.5 rounded-lg data-[state=active]:bg-[hsl(var(--background))] data-[state=active]:text-[hsl(var(--brand))] data-[state=active]:border-[hsl(var(--border))] transition-all text-xs lg:text-sm font-medium gap-2 lg:gap-3 hover:bg-[hsl(var(--muted))]/30 border border-transparent whitespace-nowrap">
+                                        <Calendar size={16} className="shrink-0 lg:w-[18px] lg:h-[18px]" />
+                                        <span>Leave</span>
+                                    </TabsTrigger>
+                                </TabsList>
                             </div>
                         </div>
 
-                        <div className="px-3 flex-1 space-y-1">
-                            <TabsList className="flex flex-col h-auto bg-transparent p-0 gap-1 items-stretch">
-                                <TabsTrigger value="overview" className="justify-start px-4 py-2.5 rounded-lg data-[state=active]:bg-[hsl(var(--background))] data-[state=active]:text-[hsl(var(--brand))] data-[state=active]:border-[hsl(var(--border))] transition-all text-sm font-medium gap-3 hover:bg-[hsl(var(--muted))]/30 border border-transparent">
-                                    <User size={18} className="shrink-0" />
-                                    <span>Personal</span>
-                                </TabsTrigger>
-                                <TabsTrigger value="employment" className="justify-start px-4 py-2.5 rounded-lg data-[state=active]:bg-[hsl(var(--background))] data-[state=active]:text-[hsl(var(--brand))] data-[state=active]:border-[hsl(var(--border))] transition-all text-sm font-medium gap-3 hover:bg-[hsl(var(--muted))]/30 border border-transparent">
-                                    <Briefcase size={18} className="shrink-0" />
-                                    <span>Employment</span>
-                                </TabsTrigger>
-                                <TabsTrigger value="shifts" className="justify-start px-4 py-2.5 rounded-lg data-[state=active]:bg-[hsl(var(--background))] data-[state=active]:text-[hsl(var(--brand))] data-[state=active]:border-[hsl(var(--border))] transition-all text-sm font-medium gap-3 hover:bg-[hsl(var(--muted))]/30 border border-transparent">
-                                    <CalendarClock size={18} className="shrink-0" />
-                                    <span>Roster</span>
-                                </TabsTrigger>
-                                <TabsTrigger value="timesheets" className="justify-start px-4 py-2.5 rounded-lg data-[state=active]:bg-[hsl(var(--background))] data-[state=active]:text-[hsl(var(--brand))] data-[state=active]:border-[hsl(var(--border))] transition-all text-sm font-medium gap-3 hover:bg-[hsl(var(--muted))]/30 border border-transparent">
-                                    <Clock size={18} className="shrink-0" />
-                                    <span>Timesheets</span>
-                                </TabsTrigger>
-                                <TabsTrigger value="leave" className="justify-start px-4 py-2.5 rounded-lg data-[state=active]:bg-[hsl(var(--background))] data-[state=active]:text-[hsl(var(--brand))] data-[state=active]:border-[hsl(var(--border))] transition-all text-sm font-medium gap-3 hover:bg-[hsl(var(--muted))]/30 border border-transparent">
-                                    <Calendar size={18} className="shrink-0" />
-                                    <span>Leave</span>
-                                </TabsTrigger>
-                            </TabsList>
-                        </div>
-                    </div>
+                        {/* Simple Content Area */}
+                        <div className="flex-1 flex flex-col min-h-0 bg-[hsl(var(--background))] relative">
+                            {/* Simple Actions Bar */}
+                            <div className="sticky lg:absolute top-0 lg:top-6 right-0 lg:right-8 z-30 flex items-center justify-end gap-3 p-4 lg:p-0 bg-[hsl(var(--background))]/80 lg:bg-transparent backdrop-blur-md lg:backdrop-blur-none border-b lg:border-b-0 border-[hsl(var(--border))]">
+                                {(activeTab === 'overview' || activeTab === 'employment') && editing && (
+                                    <div className="flex gap-2 w-full lg:w-auto">
+                                        <Button
+                                            variant="outline"
+                                            className="flex-1 lg:flex-none rounded-lg px-4 h-9 text-xs"
+                                            onClick={() => {
+                                                setEditing(false);
+                                                // Reset to original employee data
+                                                const normalizedData = {
+                                                    ...employee,
+                                                    date_of_birth: employee.date_of_birth || employee.dob || "",
+                                                    bank_account_name: employee.bank_account_name || "",
+                                                    bank_bsb: employee.bank_bsb || "",
+                                                    bank_account_number: employee.bank_account_number || "",
+                                                    abn: employee.abn || "",
+                                                    tfn: employee.tfn || "",
+                                                };
+                                                setFormData(normalizedData);
+                                            }}
+                                        >
+                                            Cancel
+                                        </Button>
+                                        <Button
+                                            className="flex-1 lg:flex-none rounded-lg px-4 h-9 font-bold bg-[hsl(var(--brand))] text-white text-xs"
+                                            onClick={handleSave}
+                                            loading={updateMutation.isPending}
+                                        >
+                                            Save
+                                        </Button>
+                                    </div>
+                                )}
+                            </div>
 
-                    {/* Simple Content Area */}
-                    <div className="flex-1 flex flex-col overflow-hidden bg-[hsl(var(--background))] relative">
-                        {/* Simple Actions Bar */}
-                        <div className="absolute top-6 right-8 z-50 flex items-center gap-3">
-                            {(activeTab === 'overview' || activeTab === 'employment') && editing && (
-                                <div className="flex gap-2">
-                                    <Button
-                                        variant="outline"
-                                        className="rounded-lg px-4 h-9 text-xs"
-                                        onClick={() => {
-                                            setEditing(false);
-                                            // Reset to original employee data
-                                            const normalizedData = {
-                                                ...employee,
-                                                date_of_birth: employee.date_of_birth || employee.dob || "",
-                                                bank_account_name: employee.bank_account_name || "",
-                                                bank_bsb: employee.bank_bsb || "",
-                                                bank_account_number: employee.bank_account_number || "",
-                                                abn: employee.abn || "",
-                                                tfn: employee.tfn || "",
-                                            };
-                                            setFormData(normalizedData);
-                                        }}
-                                    >
-                                        Cancel
-                                    </Button>
-                                    <Button
-                                        className="rounded-lg px-4 h-9 font-bold bg-[hsl(var(--brand))] text-white text-xs"
-                                        onClick={handleSave}
-                                        loading={updateMutation.isPending}
-                                    >
-                                        Save
-                                    </Button>
-                                </div>
-                            )}
-                            {/* <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => router.push("/owner/employees")}
-                                className="rounded-lg h-10 w-10 hover:bg-[hsl(var(--muted))]/50 text-[hsl(var(--muted-foreground))] border border-[hsl(var(--border))]"
-                            >
-                                <X size={20} />
-                            </Button> */}
-                        </div>
+                            {/* Scrollable Tab Content */}
+                            <div className="flex-1 overflow-y-auto pt-4 lg:pt-16 custom-scrollbar">
+                                <div className="w-full mx-auto px-4 lg:px-8 pb-16">
+                                    <TabsContent value="overview" className="mt-0 space-y-8 lg:space-y-12">
+                                        <Tabs defaultValue="general" className="w-full">
+                                            <div className="flex justify-center mb-6 lg:mb-8 overflow-x-auto no-scrollbar">
+                                                <TabsList className="bg-[hsl(var(--muted))]/30 p-1 rounded-lg w-max flex">
+                                                    <TabsTrigger value="general" className="rounded-md px-4 lg:px-6 py-1.5 text-[10px] lg:text-xs font-semibold data-[state=active]:bg-white data-[state=active]:shadow-sm whitespace-nowrap">General</TabsTrigger>
+                                                    <TabsTrigger value="auth" className="rounded-md px-4 lg:px-6 py-1.5 text-[10px] lg:text-xs font-semibold data-[state=active]:bg-white data-[state=active]:shadow-sm whitespace-nowrap">Security</TabsTrigger>
+                                                    <TabsTrigger value="compliance" className="rounded-md px-4 lg:px-6 py-1.5 text-[10px] lg:text-xs font-semibold data-[state=active]:bg-white data-[state=active]:shadow-sm whitespace-nowrap">Documents</TabsTrigger>
+                                                </TabsList>
+                                            </div>
 
-                        {/* Scrollable Tab Content */}
-                        <div className="flex-1 overflow-y-auto pt-16 custom-scrollbar">
-                            <div className="w-full mx-auto px-8 pb-16">
-                                <TabsContent value="overview" className="mt-0 space-y-12">
-                                    <Tabs defaultValue="general" className="w-full">
-                                        <div className="flex justify-center mb-8">
-                                            <TabsList className="bg-[hsl(var(--muted))]/30 p-1 rounded-lg">
-                                                <TabsTrigger value="general" className="rounded-md px-6 py-1.5 text-xs font-semibold data-[state=active]:bg-white data-[state=active]:shadow-sm">General</TabsTrigger>
-                                                <TabsTrigger value="auth" className="rounded-md px-6 py-1.5 text-xs font-semibold data-[state=active]:bg-white data-[state=active]:shadow-sm">Security</TabsTrigger>
-                                                <TabsTrigger value="compliance" className="rounded-md px-6 py-1.5 text-xs font-semibold data-[state=active]:bg-white data-[state=active]:shadow-sm">Documents</TabsTrigger>
-                                            </TabsList>
-                                        </div>
+                                            <TabsContent value="general" className="mt-0 space-y-10">
+                                                <section className="space-y-6">
+                                                    <div>
+                                                        <h3 className="text-lg font-bold text-[hsl(var(--foreground))]">Identity & Contact</h3>
+                                                        <p className="text-sm text-[hsl(var(--muted-foreground))]">Core information used for identification.</p>
+                                                    </div>
+                                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                                        <Input label="Employee ID" value={data.employee_id || ""} disabled={true} />
+                                                        <Input label="First Name" showAsterisk value={data.first_name || ""} onChange={(e) => updateField("first_name", e.target.value)} />
+                                                        <Input label="Last Name" showAsterisk value={data.last_name || ""} onChange={(e) => updateField("last_name", e.target.value)} />
+                                                        <Input label="Email Address" showAsterisk type="email" value={data.email || ""} onChange={(e) => updateField("email", e.target.value)} />
+                                                        <Input label="Phone Number" value={data.phone || ""} onChange={(e) => updateField("phone", e.target.value)} />
+                                                        <Input
+                                                            label="Date of Birth"
+                                                            type={data.date_of_birth ? "date" : "text"}
+                                                            placeholder="Not Set"
+                                                            value={data.date_of_birth || ""}
+                                                            onFocus={(e) => e.target.type = 'date'}
+                                                            onBlur={(e) => { if (!e.target.value) e.target.type = 'text' }}
+                                                            onChange={(e) => updateField("date_of_birth", e.target.value)}
+                                                        />
+                                                    </div>
+                                                </section>
 
-                                        <TabsContent value="general" className="mt-0 space-y-10">
-                                            <section className="space-y-6">
-                                                <div>
-                                                    <h3 className="text-lg font-bold text-[hsl(var(--foreground))]">Identity & Contact</h3>
-                                                    <p className="text-sm text-[hsl(var(--muted-foreground))]">Core information used for identification.</p>
-                                                </div>
-                                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                                                    <Input label="Employee ID" value={data.employee_id || ""} disabled={true} />
-                                                    <Input label="First Name" showAsterisk value={data.first_name || ""} onChange={(e) => updateField("first_name", e.target.value)} />
-                                                    <Input label="Last Name" showAsterisk value={data.last_name || ""} onChange={(e) => updateField("last_name", e.target.value)} />
-                                                    <Input label="Email Address" showAsterisk type="email" value={data.email || ""} onChange={(e) => updateField("email", e.target.value)} />
-                                                    <Input label="Phone Number" value={data.phone || ""} onChange={(e) => updateField("phone", e.target.value)} />
-                                                    <Input 
-                                                        label="Date of Birth" 
-                                                        type={data.date_of_birth ? "date" : "text"} 
-                                                        placeholder="Not Set"
-                                                        value={data.date_of_birth || ""} 
-                                                        onFocus={(e) => e.target.type = 'date'}
-                                                        onBlur={(e) => { if (!e.target.value) e.target.type = 'text' }}
-                                                        onChange={(e) => updateField("date_of_birth", e.target.value)} 
-                                                    />
-                                                </div>
-                                            </section>
+                                                <section className="space-y-6 pt-4">
+                                                    <div>
+                                                        <h3 className="text-lg font-bold text-[hsl(var(--foreground))]">Emergency Contacts</h3>
+                                                        <p className="text-sm text-[hsl(var(--muted-foreground))]">Contacts to reach in case of emergency.</p>
+                                                    </div>
+                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                                        <Input label="Primary Contact Name" value={data.emergency_contact_name || ""} onChange={(e) => updateField("emergency_contact_name", e.target.value)} />
+                                                        <Input label="Primary Contact Phone" value={data.emergency_contact_phone || ""} onChange={(e) => updateField("emergency_contact_phone", e.target.value)} />
+                                                    </div>
+                                                </section>
+                                            </TabsContent>
 
-                                            <section className="space-y-6 pt-4">
-                                                <div>
-                                                    <h3 className="text-lg font-bold text-[hsl(var(--foreground))]">Emergency Contacts</h3>
-                                                    <p className="text-sm text-[hsl(var(--muted-foreground))]">Contacts to reach in case of emergency.</p>
-                                                </div>
-                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                                    <Input label="Primary Contact Name" value={data.emergency_contact_name || ""} onChange={(e) => updateField("emergency_contact_name", e.target.value)} />
-                                                    <Input label="Primary Contact Phone" value={data.emergency_contact_phone || ""} onChange={(e) => updateField("emergency_contact_phone", e.target.value)} />
-                                                </div>
-                                            </section>
-                                        </TabsContent>
+                                            <TabsContent value="auth" className="mt-0">
+                                            </TabsContent>
 
-                                        <TabsContent value="auth" className="mt-0">
-                                        </TabsContent>
-
-                                        <TabsContent value="compliance" className="mt-0">
-                                            <div className="space-y-6">
-                                                <div>
-                                                    <h3 className="text-lg font-bold text-[hsl(var(--foreground))]">Compliance & Certifications</h3>
-                                                    <p className="text-sm text-[hsl(var(--muted-foreground))]">Active qualifications and documentation.</p>
-                                                </div>
-                                                {data.certificates && data.certificates.length > 0 ? (
-                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                        {data.certificates.map((cert: any) => (
-                                                            <div key={cert.certificate_id} className="flex items-center justify-between p-4 rounded-xl border border-[hsl(var(--border))] bg-white shadow-sm">
-                                                                <div>
-                                                                    <p className="font-bold text-sm">{cert.name}</p>
-                                                                    {cert.expiry_date && (
-                                                                        <p className="text-[10px] text-[hsl(var(--muted-foreground))] mt-0.5">Expires: {new Date(cert.expiry_date).toLocaleDateString()}</p>
-                                                                    )}
+                                            <TabsContent value="compliance" className="mt-0">
+                                                <div className="space-y-6">
+                                                    <div>
+                                                        <h3 className="text-lg font-bold text-[hsl(var(--foreground))]">Compliance & Certifications</h3>
+                                                        <p className="text-sm text-[hsl(var(--muted-foreground))]">Active qualifications and documentation.</p>
+                                                    </div>
+                                                    {data.certificates && data.certificates.length > 0 ? (
+                                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                            {data.certificates.map((cert: any) => (
+                                                                <div key={cert.certificate_id} className="flex items-center justify-between p-4 rounded-xl border border-[hsl(var(--border))] bg-white shadow-sm">
+                                                                    <div>
+                                                                        <p className="font-bold text-sm">{cert.name}</p>
+                                                                        {cert.expiry_date && (
+                                                                            <p className="text-[10px] text-[hsl(var(--muted-foreground))] mt-0.5">Expires: {new Date(cert.expiry_date).toLocaleDateString()}</p>
+                                                                        )}
+                                                                    </div>
+                                                                    <StatusBadge status={cert.expiry_date && new Date(cert.expiry_date) < new Date() ? "expired" : "active"} className="px-2 py-0.5" />
                                                                 </div>
-                                                                <StatusBadge status={cert.expiry_date && new Date(cert.expiry_date) < new Date() ? "expired" : "active"} className="px-2 py-0.5" />
-                                                            </div>
-                                                        ))}
+                                                            ))}
+                                                        </div>
+                                                    ) : (
+                                                        <div className="text-center p-12 rounded-xl border-2 border-dashed border-[hsl(var(--border))] bg-[hsl(var(--muted))]/5">
+                                                            <FileText size={32} className="text-[hsl(var(--muted-foreground))] opacity-30 mx-auto mb-3" />
+                                                            <p className="text-sm text-[hsl(var(--muted-foreground))] font-medium">No documentation records found</p>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </TabsContent>
+                                        </Tabs>
+
+                                        {/* Dangerous Zone */}
+                                        <div className="pt-8 lg:pt-12 border-t border-[hsl(var(--border))]">
+                                            <div className="bg-[hsl(var(--danger-light))]/10 rounded-xl p-6 lg:p-8 border border-[hsl(var(--danger))]/20 flex flex-col md:flex-row md:items-center justify-between gap-6">
+                                                <div className="space-y-2">
+                                                    <h3 className="text-sm lg:text-base font-bold text-[hsl(var(--danger))] flex items-center gap-2 uppercase tracking-wide">
+                                                        <Trash2 size={16} className="lg:w-[18px] lg:h-[18px]" /> Danger Zone
+                                                    </h3>
+                                                    <div>
+                                                        <p className="text-xs lg:text-sm font-bold text-[hsl(var(--foreground))]">Permanent Account Deletion</p>
+                                                        <p className="text-[10px] lg:text-xs text-[hsl(var(--muted-foreground))] max-w-md leading-relaxed">
+                                                            This will permanently remove the employee and all historical data. This action cannot be undone.
+                                                        </p>
                                                     </div>
-                                                ) : (
-                                                    <div className="text-center p-12 rounded-xl border-2 border-dashed border-[hsl(var(--border))] bg-[hsl(var(--muted))]/5">
-                                                        <FileText size={32} className="text-[hsl(var(--muted-foreground))] opacity-30 mx-auto mb-3" />
-                                                        <p className="text-sm text-[hsl(var(--muted-foreground))] font-medium">No documentation records found</p>
+                                                </div>
+                                                <Button
+                                                    variant="danger"
+                                                    className="shrink-0 rounded-lg px-6 h-10 font-bold text-xs w-full lg:w-auto"
+                                                    onClick={() => {
+                                                        setDeleteConfirmText("");
+                                                        setDeleteModalOpen(true);
+                                                    }}
+                                                    loading={deleteMutation.isPending}
+                                                >
+                                                    Delete Record
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    </TabsContent>
+
+                                    <TabsContent value="employment" className="mt-0 space-y-12">
+                                        <section className="space-y-6">
+                                            <div>
+                                                <h3 className="text-lg font-bold text-[hsl(var(--foreground))]">Employment Structure</h3>
+                                                <p className="text-sm text-[hsl(var(--muted-foreground))]">Role and contractual details.</p>
+                                            </div>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                                <Input label="Position / Role (Job Title)" value={data.role_title || ""} onChange={(e) => updateField("role_title", e.target.value)} />
+                                                <div className="space-y-1.5 focus-within:text-[hsl(var(--brand))] transition-colors group">
+                                                    <label className="text-xs font-semibold text-[hsl(var(--muted-foreground))] ml-0.5 group-focus-within:text-[hsl(var(--brand))]">
+                                                        System Access Level <span className="text-[#FF4A4A]">*</span>
+                                                    </label>
+                                                    <div className="relative">
+                                                        <select
+                                                            value={data.role || "employee"}
+                                                            onChange={(e) => updateField("role", e.target.value)}
+                                                            className="flex h-10 w-full rounded-md border border-[hsl(var(--input))] bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--brand))]/20 appearance-none capitalize cursor-pointer font-medium"
+                                                        >
+                                                            <option value="employee">Employee</option>
+                                                            <option value="manager">Manager</option>
+                                                        </select>
+                                                        <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-[hsl(var(--muted-foreground))]">
+                                                            <Shield size={14} />
+                                                        </div>
                                                     </div>
+                                                </div>
+                                                <div className="space-y-1.5">
+                                                    <label className="text-xs font-semibold text-[hsl(var(--muted-foreground))] ml-0.5">
+                                                        Employment Basis <span className={cn(
+                                                            "ml-0.5 transition-colors duration-200",
+                                                            data.employment_type ? "text-[hsl(var(--foreground))]" : "text-[#FF4A4A]"
+                                                        )}>*</span>
+                                                    </label>
+                                                    <select
+                                                        value={data.employment_type || "full_time"}
+                                                        onChange={(e) => updateField("employment_type", e.target.value)}
+                                                        className="flex h-10 w-full rounded-md border border-[hsl(var(--input))] bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--brand))]/20 appearance-none"
+                                                    >
+                                                        <option value="full_time">Full Time</option>
+                                                        <option value="part_time">Part Time</option>
+                                                        <option value="casual">Casual</option>
+                                                        <option value="contract">Contract</option>
+                                                    </select>
+                                                </div>
+                                                <div className="space-y-1.5">
+                                                    <label className="text-xs font-semibold text-[hsl(var(--muted-foreground))] ml-0.5">
+                                                        Pay Cycle <span className={cn(
+                                                            "ml-0.5 transition-colors duration-200",
+                                                            data.pay_cycle ? "text-[hsl(var(--foreground))]" : "text-[#FF4A4A]"
+                                                        )}>*</span>
+                                                    </label>
+                                                    <select
+                                                        value={data.pay_cycle || ""}
+                                                        onChange={(e) => updateField("pay_cycle", e.target.value)}
+                                                        className="flex h-10 w-full rounded-md border border-[hsl(var(--input))] bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--brand))]/20 appearance-none"
+                                                    >
+                                                        <option value="" disabled>Not Set</option>
+                                                        <option value="weekly">Weekly</option>
+                                                        <option value="fortnightly">Fortnightly</option>
+                                                        <option value="monthly">Monthly</option>
+                                                    </select>
+                                                </div>
+                                                <div className="space-y-1.5">
+                                                    <label className="text-xs font-semibold text-[hsl(var(--muted-foreground))] ml-0.5">Lifecycle Status</label>
+                                                    <select
+                                                        value={data.status || "active"}
+                                                        onChange={(e) => updateField("status", e.target.value)}
+                                                        disabled={data.status === 'invited'}
+                                                        className="flex h-10 w-full rounded-md border border-[hsl(var(--input))] bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--brand))]/20 appearance-none"
+                                                    >
+                                                        <option value="active">Active Service</option>
+                                                        <option value="inactive">Inactive</option>
+                                                        <option value="invited" disabled>Awaiting Onboarding</option>
+                                                    </select>
+                                                    {data.status === 'invited' && <p className="text-[10px] text-[hsl(var(--muted-foreground))] pt-1 ml-0.5">Locked until onboarding complete.</p>}
+                                                </div>
+                                                <Input
+                                                    label="TFN"
+                                                    showAsterisk
+                                                    value={data.tfn || ""}
+                                                    onChange={(e) => updateField("tfn", e.target.value)}
+                                                    placeholder="Format: 000 000 000"
+                                                />
+                                            </div>
+                                        </section>
+
+                                        <section className="space-y-6 pt-6 border-t border-[hsl(var(--border))]">
+                                            <div>
+                                                <h3 className="text-lg font-bold text-[hsl(var(--foreground))]">Bank & Identity</h3>
+                                                <p className="text-sm text-[hsl(var(--muted-foreground))]">Financial details for payroll processing.</p>
+                                            </div>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                                <Input label="Account Name" value={data.bank_account_name || ""} onChange={(e) => updateField("bank_account_name", e.target.value)} />
+                                                <Input label="BSB Number" value={data.bank_bsb || ""} onChange={(e) => updateField("bank_bsb", e.target.value)} />
+                                                <Input label="Account Number" value={data.bank_account_number || ""} onChange={(e) => updateField("bank_account_number", e.target.value)} />
+                                                {data.employment_type === 'contract' && (
+                                                    <Input
+                                                        label="ABN"
+                                                        showAsterisk
+                                                        value={data.abn || ""}
+                                                        onChange={(e) => updateField("abn", e.target.value)}
+                                                        placeholder="Format: 00 000 000 000"
+                                                    />
                                                 )}
                                             </div>
-                                        </TabsContent>
-                                    </Tabs>
+                                        </section>
 
-                                    {/* Dangerous Zone */}
-                                    <div className="pt-12 border-t border-[hsl(var(--border))]">
-                                        <div className="bg-[hsl(var(--danger-light))]/10 rounded-xl p-8 border border-[hsl(var(--danger))]/20 flex flex-col md:flex-row md:items-center justify-between gap-6">
-                                            <div className="space-y-2">
-                                                <h3 className="text-base font-bold text-[hsl(var(--danger))] flex items-center gap-2 uppercase tracking-wide">
-                                                    <Trash2 size={18} /> Danger Zone
-                                                </h3>
+                                        <section className="space-y-6 pt-6 border-t border-[hsl(var(--border))]">
+                                            <div className="flex items-center justify-between">
                                                 <div>
-                                                    <p className="text-sm font-bold text-[hsl(var(--foreground))]">Permanent Account Deletion</p>
-                                                    <p className="text-xs text-[hsl(var(--muted-foreground))] max-w-md leading-relaxed">
-                                                        This will permanently remove the employee and all historical data. This action cannot be undone.
-                                                    </p>
+                                                    <h3 className="text-lg font-bold text-[hsl(var(--foreground))]">Pay Scale History</h3>
+                                                    <p className="text-sm text-[hsl(var(--muted-foreground))]">Historical record of hourly rates.</p>
+                                                </div>
+                                                <Button
+                                                    size="sm"
+                                                    variant="outline"
+                                                    className="rounded-lg px-4"
+                                                    onClick={() => {
+                                                        setEditingRateId(null);
+                                                        setNewRate("");
+                                                        setEffectiveFrom("");
+                                                        setSaturdayMultiplier("1.25");
+                                                        setSundayMultiplier("1.50");
+                                                        setPublicHolidayMultiplier("2.50");
+                                                        setEveningRate("");
+                                                        setEveningStartTime("");
+                                                        setEveningEndTime("");
+                                                        setRateOpen(true);
+                                                    }}
+                                                >
+                                                    <Plus size={14} className="mr-2" /> Add Rate
+                                                </Button>
+                                            </div>
+
+                                            <div className="border border-[hsl(var(--border))] rounded-xl overflow-hidden shadow-sm bg-white">
+                                                {/* Desktop Table */}
+                                                <div className="hidden lg:block overflow-x-auto no-scrollbar">
+                                                    <table className="w-full text-sm text-left">
+                                                        <thead>
+                                                            <tr className="border-b border-[hsl(var(--border))] bg-[hsl(var(--muted))]/10 text-xs font-bold uppercase text-[hsl(var(--muted-foreground))]">
+                                                                <th className="px-6 py-4">Effective</th>
+                                                                <th className="px-6 py-4">Status</th>
+                                                                <th className="px-6 py-4">Base Rate</th>
+                                                                <th className="px-6 py-4">Sat Multi</th>
+                                                                <th className="px-6 py-4">Sun Multi</th>
+                                                                <th className="px-6 py-4">Holi Multi</th>
+                                                                <th className="px-6 py-4">Eve Rate</th>
+                                                                <th className="px-6 py-4">Eve Window</th>
+                                                                <th className="px-6 py-4 text-right">Actions</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody className="divide-y divide-[hsl(var(--border))]">
+                                                            {isLoadingRates ? (
+                                                                <tr><td colSpan={9} className="px-6 py-8 text-center text-xs text-[hsl(var(--muted-foreground))]">Loading...</td></tr>
+                                                            ) : rateHistory && rateHistory.length > 0 ? (
+                                                                rateHistory.map((rate: any) => (
+                                                                    <tr key={rate.rate_history_id} className="hover:bg-[hsl(var(--muted))]/5 transition-colors">
+                                                                        <td className="px-6 py-4 font-medium">{new Date(rate.effective_from).toLocaleDateString()}</td>
+                                                                        <td className="px-6 py-4">
+                                                                            {rate.effective_to ? (
+                                                                                <span className="text-[10px] font-medium text-[hsl(var(--muted-foreground))] bg-[hsl(var(--muted))]/20 px-2 py-0.5 rounded">Past</span>
+                                                                            ) : (
+                                                                                <span className="text-[10px] font-bold text-[hsl(var(--success))] bg-[hsl(var(--success))]/10 px-2 py-0.5 rounded">Current</span>
+                                                                            )}
+                                                                        </td>
+                                                                        <td className="px-6 py-4 font-bold text-[hsl(var(--brand))]">${rate.weekday_rate?.toFixed(2)}/hr</td>
+                                                                        <td className="px-6 py-4 text-xs">{rate.saturday_multiplier}x</td>
+                                                                        <td className="px-6 py-4 text-xs">{rate.sunday_multiplier}x</td>
+                                                                        <td className="px-6 py-4 text-xs">{rate.public_holiday_multiplier}x</td>
+                                                                        <td className="px-6 py-4 text-xs">{rate.evening_rate ? `$${rate.evening_rate.toFixed(2)}` : "—"}</td>
+                                                                        <td className="px-6 py-4 text-xs">
+                                                                            {rate.evening_start_time !== null && rate.evening_end_time !== null
+                                                                                ? `${rate.evening_start_time}:00 - ${rate.evening_end_time}:00`
+                                                                                : "—"}
+                                                                        </td>
+                                                                        <td className="px-6 py-4 text-right">
+                                                                            <Button
+                                                                                variant="ghost"
+                                                                                size="sm"
+                                                                                className="h-8 w-8 p-0"
+                                                                                onClick={() => {
+                                                                                    setEditingRateId(rate.rate_history_id);
+                                                                                    setNewRate(rate.weekday_rate.toString());
+                                                                                    setEffectiveFrom(rate.effective_from);
+                                                                                    setSaturdayMultiplier(rate.saturday_multiplier.toString());
+                                                                                    setSundayMultiplier(rate.sunday_multiplier.toString());
+                                                                                    setPublicHolidayMultiplier(rate.public_holiday_multiplier?.toString() || "2.50");
+                                                                                    setEveningRate(rate.evening_rate?.toString() || "");
+                                                                                    setEveningStartTime(rate.evening_start_time?.toString() || "");
+                                                                                    setEveningEndTime(rate.evening_end_time?.toString() || "");
+                                                                                    setRateOpen(true);
+                                                                                }}
+                                                                            >
+                                                                                <Edit3 size={14} className="text-[hsl(var(--muted-foreground))]" />
+                                                                            </Button>
+                                                                        </td>
+                                                                    </tr>
+                                                                ))
+                                                            ) : (
+                                                                <tr><td colSpan={9} className="px-6 py-12 text-center text-xs text-[hsl(var(--muted-foreground))] uppercase tracking-widest">No history found</td></tr>
+                                                            )}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+
+                                                {/* Mobile Card List */}
+                                                <div className="lg:hidden divide-y divide-[hsl(var(--border))]">
+                                                    {isLoadingRates ? (
+                                                        <div className="p-8 text-center text-xs text-[hsl(var(--muted-foreground))]">Loading...</div>
+                                                    ) : rateHistory && rateHistory.length > 0 ? (
+                                                        rateHistory.map((rate: any) => (
+                                                            <div key={rate.rate_history_id} className="p-4 space-y-3">
+                                                                <div className="flex items-center justify-between">
+                                                                    <div className="space-y-0.5">
+                                                                        <p className="text-[10px] font-bold text-[hsl(var(--muted-foreground))] uppercase tracking-wider">Effective Date</p>
+                                                                        <p className="font-bold text-sm">{new Date(rate.effective_from).toLocaleDateString()}</p>
+                                                                    </div>
+                                                                    {rate.effective_to ? (
+                                                                        <span className="text-[10px] font-medium text-[hsl(var(--muted-foreground))] bg-[hsl(var(--muted))]/20 px-2 py-0.5 rounded">Past</span>
+                                                                    ) : (
+                                                                        <span className="text-[10px] font-bold text-[hsl(var(--success))] bg-[hsl(var(--success))]/10 px-2 py-0.5 rounded">Current</span>
+                                                                    )}
+                                                                </div>
+                                                                <div className="grid grid-cols-2 gap-4 pt-2">
+                                                                    <div>
+                                                                        <p className="text-[10px] font-bold text-[hsl(var(--muted-foreground))] uppercase tracking-wider">Base Rate</p>
+                                                                        <p className="font-bold text-[hsl(var(--brand))]">${rate.weekday_rate?.toFixed(2)}/hr</p>
+                                                                    </div>
+                                                                    <div>
+                                                                        <p className="text-[10px] font-bold text-[hsl(var(--muted-foreground))] uppercase tracking-wider">Weekend Multipliers</p>
+                                                                        <p className="text-xs">Sat: {rate.saturday_multiplier}x · Sun: {rate.sunday_multiplier}x</p>
+                                                                    </div>
+                                                                </div>
+                                                                <div className="flex items-center justify-between pt-2">
+                                                                    <div>
+                                                                        <p className="text-[10px] font-bold text-[hsl(var(--muted-foreground))] uppercase tracking-wider">Evening Rate</p>
+                                                                        <p className="text-xs">{rate.evening_rate ? `$${rate.evening_rate.toFixed(2)} (${rate.evening_start_time}:00-${rate.evening_end_time}:00)` : "No evening rate"}</p>
+                                                                    </div>
+                                                                    <Button
+                                                                        variant="outline"
+                                                                        size="sm"
+                                                                        className="h-8 rounded-lg text-[10px]"
+                                                                        onClick={() => {
+                                                                            setEditingRateId(rate.rate_history_id);
+                                                                            setNewRate(rate.weekday_rate.toString());
+                                                                            setEffectiveFrom(rate.effective_from);
+                                                                            setSaturdayMultiplier(rate.saturday_multiplier.toString());
+                                                                            setSundayMultiplier(rate.sunday_multiplier.toString());
+                                                                            setPublicHolidayMultiplier(rate.public_holiday_multiplier?.toString() || "2.50");
+                                                                            setEveningRate(rate.evening_rate?.toString() || "");
+                                                                            setEveningStartTime(rate.evening_start_time?.toString() || "");
+                                                                            setEveningEndTime(rate.evening_end_time?.toString() || "");
+                                                                            setRateOpen(true);
+                                                                        }}
+                                                                    >
+                                                                        Edit Rate
+                                                                    </Button>
+                                                                </div>
+                                                            </div>
+                                                        ))
+                                                    ) : (
+                                                        <div className="p-12 text-center text-xs text-[hsl(var(--muted-foreground))] uppercase tracking-widest">No history found</div>
+                                                    )}
                                                 </div>
                                             </div>
-                                            <Button
-                                                variant="danger"
-                                                className="shrink-0 rounded-lg px-6 h-10 font-bold text-xs"
-                                                onClick={() => {
-                                                    setDeleteConfirmText("");
-                                                    setDeleteModalOpen(true);
-                                                }}
-                                                loading={deleteMutation.isPending}
-                                            >
-                                                Delete Record
-                                            </Button>
-                                        </div>
-                                    </div>
-                                </TabsContent>
+                                        </section>
+                                    </TabsContent>
 
-                                <TabsContent value="employment" className="mt-0 space-y-12">
-                                    <section className="space-y-6">
-                                        <div>
-                                            <h3 className="text-lg font-bold text-[hsl(var(--foreground))]">Employment Structure</h3>
-                                            <p className="text-sm text-[hsl(var(--muted-foreground))]">Role and contractual details.</p>
-                                        </div>
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                            <Input label="Position / Role (Job Title)" value={data.role_title || ""} onChange={(e) => updateField("role_title", e.target.value)} />
-                                            <div className="space-y-1.5 focus-within:text-[hsl(var(--brand))] transition-colors group">
-                                                <label className="text-xs font-semibold text-[hsl(var(--muted-foreground))] ml-0.5 group-focus-within:text-[hsl(var(--brand))]">
-                                                    System Access Level <span className="text-[#FF4A4A]">*</span>
-                                                </label>
-                                                <div className="relative">
-                                                    <select
-                                                        value={data.role || "employee"}
-                                                        onChange={(e) => updateField("role", e.target.value)}
-                                                        className="flex h-10 w-full rounded-md border border-[hsl(var(--input))] bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--brand))]/20 appearance-none capitalize cursor-pointer font-medium"
-                                                    >
-                                                        <option value="employee">Employee</option>
-                                                        <option value="manager">Manager</option>
-                                                    </select>
-                                                    <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-[hsl(var(--muted-foreground))]">
-                                                        <Shield size={14} />
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            <div className="space-y-1.5">
-                                                <label className="text-xs font-semibold text-[hsl(var(--muted-foreground))] ml-0.5">
-                                                    Employment Basis <span className={cn(
-                                                        "ml-0.5 transition-colors duration-200",
-                                                        data.employment_type ? "text-[hsl(var(--foreground))]" : "text-[#FF4A4A]"
-                                                    )}>*</span>
-                                                </label>
-                                                <select
-                                                    value={data.employment_type || "full_time"}
-                                                    onChange={(e) => updateField("employment_type", e.target.value)}
-                                                    className="flex h-10 w-full rounded-md border border-[hsl(var(--input))] bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--brand))]/20 appearance-none"
-                                                >
-                                                    <option value="full_time">Full Time</option>
-                                                    <option value="part_time">Part Time</option>
-                                                    <option value="casual">Casual</option>
-                                                    <option value="contract">Contract</option>
-                                                </select>
-                                            </div>
-                                            <div className="space-y-1.5">
-                                                <label className="text-xs font-semibold text-[hsl(var(--muted-foreground))] ml-0.5">
-                                                    Pay Cycle <span className={cn(
-                                                        "ml-0.5 transition-colors duration-200",
-                                                        data.pay_cycle ? "text-[hsl(var(--foreground))]" : "text-[#FF4A4A]"
-                                                    )}>*</span>
-                                                </label>
-                                                <select
-                                                    value={data.pay_cycle || ""}
-                                                    onChange={(e) => updateField("pay_cycle", e.target.value)}
-                                                    className="flex h-10 w-full rounded-md border border-[hsl(var(--input))] bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--brand))]/20 appearance-none"
-                                                >
-                                                    <option value="" disabled>Not Set</option>
-                                                    <option value="weekly">Weekly</option>
-                                                    <option value="fortnightly">Fortnightly</option>
-                                                    <option value="monthly">Monthly</option>
-                                                </select>
-                                            </div>
-                                            <div className="space-y-1.5">
-                                                <label className="text-xs font-semibold text-[hsl(var(--muted-foreground))] ml-0.5">Lifecycle Status</label>
-                                                <select
-                                                    value={data.status || "active"}
-                                                    onChange={(e) => updateField("status", e.target.value)}
-                                                    disabled={data.status === 'invited'}
-                                                    className="flex h-10 w-full rounded-md border border-[hsl(var(--input))] bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--brand))]/20 appearance-none"
-                                                >
-                                                    <option value="active">Active Service</option>
-                                                    <option value="inactive">Inactive</option>
-                                                    <option value="invited" disabled>Awaiting Onboarding</option>
-                                                </select>
-                                                {data.status === 'invited' && <p className="text-[10px] text-[hsl(var(--muted-foreground))] pt-1 ml-0.5">Locked until onboarding complete.</p>}
-                                            </div>
-                                            <Input 
-                                                label="TFN" 
-                                                showAsterisk
-                                                value={data.tfn || ""} 
-                                                onChange={(e) => updateField("tfn", e.target.value)} 
-                                                placeholder="Format: 000 000 000"
-                                            />
-                                        </div>
-                                    </section>
+                                    <TabsContent value="shifts" className="mt-0 animate-in slide-in-from-right-4 duration-300">
+                                        <EmployeeShifts employeeId={employeeId} />
+                                    </TabsContent>
 
-                                    <section className="space-y-6 pt-6 border-t border-[hsl(var(--border))]">
-                                        <div>
-                                            <h3 className="text-lg font-bold text-[hsl(var(--foreground))]">Bank & Identity</h3>
-                                            <p className="text-sm text-[hsl(var(--muted-foreground))]">Financial details for payroll processing.</p>
-                                        </div>
-                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                                            <Input label="Account Name" value={data.bank_account_name || ""} onChange={(e) => updateField("bank_account_name", e.target.value)} />
-                                            <Input label="BSB Number" value={data.bank_bsb || ""} onChange={(e) => updateField("bank_bsb", e.target.value)} />
-                                            <Input label="Account Number" value={data.bank_account_number || ""} onChange={(e) => updateField("bank_account_number", e.target.value)} />
-                                            {data.employment_type === 'contract' && (
-                                                <Input 
-                                                    label="ABN" 
-                                                    showAsterisk 
-                                                    value={data.abn || ""} 
-                                                    onChange={(e) => updateField("abn", e.target.value)} 
-                                                    placeholder="Format: 00 000 000 000"
-                                                />
-                                            )}
-                                        </div>
-                                    </section>
+                                    <TabsContent value="timesheets" className="mt-0 animate-in slide-in-from-right-4 duration-300">
+                                        <EmployeeTimesheets employeeId={employeeId} />
+                                    </TabsContent>
 
-                                    <section className="space-y-6 pt-6 border-t border-[hsl(var(--border))]">
-                                        <div className="flex items-center justify-between">
-                                            <div>
-                                                <h3 className="text-lg font-bold text-[hsl(var(--foreground))]">Pay Scale History</h3>
-                                                <p className="text-sm text-[hsl(var(--muted-foreground))]">Historical record of hourly rates.</p>
-                                            </div>
-                                            <Button
-                                                size="sm"
-                                                variant="outline"
-                                                className="rounded-lg px-4"
-                                                onClick={() => {
-                                                    setEditingRateId(null);
-                                                    setNewRate("");
-                                                    setEffectiveFrom("");
-                                                    setSaturdayMultiplier("1.25");
-                                                    setSundayMultiplier("1.50");
-                                                    setPublicHolidayMultiplier("2.50");
-                                                    setEveningRate("");
-                                                    setEveningStartTime("");
-                                                    setEveningEndTime("");
-                                                    setRateOpen(true);
-                                                }}
-                                            >
-                                                <Plus size={14} className="mr-2" /> Add Rate
-                                            </Button>
-                                        </div>
-
-                                        <div className="border border-[hsl(var(--border))] rounded-xl overflow-hidden shadow-sm bg-white">
-                                            <div className="overflow-x-auto">
-                                                <table className="w-full text-sm text-left">
-                                                    <thead>
-                                                        <tr className="border-b border-[hsl(var(--border))] bg-[hsl(var(--muted))]/10 text-xs font-bold uppercase text-[hsl(var(--muted-foreground))]">
-                                                            <th className="px-6 py-4">Effective</th>
-                                                            <th className="px-6 py-4">Status</th>
-                                                            <th className="px-6 py-4">Base Rate</th>
-                                                            <th className="px-6 py-4">Sat Multi</th>
-                                                            <th className="px-6 py-4">Sun Multi</th>
-                                                            <th className="px-6 py-4">Holi Multi</th>
-                                                            <th className="px-6 py-4">Eve Rate</th>
-                                                            <th className="px-6 py-4">Eve Window</th>
-                                                            <th className="px-6 py-4 text-right">Actions</th>
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody className="divide-y divide-[hsl(var(--border))]">
-                                                        {isLoadingRates ? (
-                                                            <tr><td colSpan={9} className="px-6 py-8 text-center text-xs text-[hsl(var(--muted-foreground))]">Loading...</td></tr>
-                                                        ) : rateHistory && rateHistory.length > 0 ? (
-                                                            rateHistory.map((rate: any) => (
-                                                                <tr key={rate.rate_history_id} className="hover:bg-[hsl(var(--muted))]/5 transition-colors">
-                                                                    <td className="px-6 py-4 font-medium">{new Date(rate.effective_from).toLocaleDateString()}</td>
-                                                                    <td className="px-6 py-4">
-                                                                        {rate.effective_to ? (
-                                                                            <span className="text-[10px] font-medium text-[hsl(var(--muted-foreground))] bg-[hsl(var(--muted))]/20 px-2 py-0.5 rounded">Past</span>
-                                                                        ) : (
-                                                                            <span className="text-[10px] font-bold text-[hsl(var(--success))] bg-[hsl(var(--success))]/10 px-2 py-0.5 rounded">Current</span>
-                                                                        )}
-                                                                    </td>
-                                                                    <td className="px-6 py-4 font-bold text-[hsl(var(--brand))]">${rate.weekday_rate?.toFixed(2)}/hr</td>
-                                                                    <td className="px-6 py-4 text-xs">{rate.saturday_multiplier}x</td>
-                                                                    <td className="px-6 py-4 text-xs">{rate.sunday_multiplier}x</td>
-                                                                    <td className="px-6 py-4 text-xs">{rate.public_holiday_multiplier}x</td>
-                                                                    <td className="px-6 py-4 text-xs">{rate.evening_rate ? `$${rate.evening_rate.toFixed(2)}` : "—"}</td>
-                                                                    <td className="px-6 py-4 text-xs">
-                                                                        {rate.evening_start_time !== null && rate.evening_end_time !== null
-                                                                            ? `${rate.evening_start_time}:00 - ${rate.evening_end_time}:00`
-                                                                            : "—"}
-                                                                    </td>
-                                                                    <td className="px-6 py-4 text-right">
-                                                                        <Button
-                                                                            variant="ghost"
-                                                                            size="sm"
-                                                                            className="h-8 w-8 p-0"
-                                                                            onClick={() => {
-                                                                                setEditingRateId(rate.rate_history_id);
-                                                                                setNewRate(rate.weekday_rate.toString());
-                                                                                setEffectiveFrom(rate.effective_from);
-                                                                                setSaturdayMultiplier(rate.saturday_multiplier.toString());
-                                                                                setSundayMultiplier(rate.sunday_multiplier.toString());
-                                                                                setPublicHolidayMultiplier(rate.public_holiday_multiplier?.toString() || "2.50");
-                                                                                setEveningRate(rate.evening_rate?.toString() || "");
-                                                                                setEveningStartTime(rate.evening_start_time?.toString() || "");
-                                                                                setEveningEndTime(rate.evening_end_time?.toString() || "");
-                                                                                setRateOpen(true);
-                                                                            }}
-                                                                        >
-                                                                            <Edit3 size={14} className="text-[hsl(var(--muted-foreground))]" />
-                                                                        </Button>
-                                                                    </td>
-                                                                </tr>
-                                                            ))
-                                                        ) : (
-                                                            <tr><td colSpan={9} className="px-6 py-12 text-center text-xs text-[hsl(var(--muted-foreground))] uppercase tracking-widest">No history found</td></tr>
-                                                        )}
-                                                    </tbody>
-                                                </table>
-                                            </div>
-                                        </div>
-                                    </section>
-                                </TabsContent>
-
-                                <TabsContent value="shifts" className="mt-0 animate-in slide-in-from-right-4 duration-300">
-                                    <EmployeeShifts employeeId={employeeId} />
-                                </TabsContent>
-
-                                <TabsContent value="timesheets" className="mt-0 animate-in slide-in-from-right-4 duration-300">
-                                    <EmployeeTimesheets employeeId={employeeId} />
-                                </TabsContent>
-
-                                <TabsContent value="leave" className="mt-0 animate-in slide-in-from-right-4 duration-300">
-                                    <EmployeeLeave employeeId={employeeId} />
-                                </TabsContent>
+                                    <TabsContent value="leave" className="mt-0 animate-in slide-in-from-right-4 duration-300">
+                                        <EmployeeLeave employeeId={employeeId} />
+                                    </TabsContent>
+                                </div>
                             </div>
                         </div>
-                    </div>
-                </Tabs>
+                    </Tabs>
+                </div>
             </div>
 
             {/* Pay Rate Dialog - Unchanged Logic */}

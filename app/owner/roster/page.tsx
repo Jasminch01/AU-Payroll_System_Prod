@@ -11,11 +11,11 @@ import {
     Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter
 } from "@/components/ui/dialog";
 import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/api-client";
-import { getShiftTypeFromTime, calculateShiftDuration } from "@/lib/shift-utils";
+import { getShiftTypeFromTime, calculateShiftDuration, formatDurationHours } from "@/lib/shift-utils";
 import { EmployeeSearchPicker } from "@/components/roster/employee-search-picker";
 import { useEffect } from "react";
 import { toast } from "sonner";
-import { Plus, ChevronLeft, ChevronRight, Clock, Trash2, CheckCircle2, FileText, RefreshCcw, Copy, Bell, CalendarDays, Search, Filter, ChevronsLeft, ChevronsRight, GripVertical, MoreHorizontal, Users, ChevronDown, ArrowUpDown, ArrowDownAZ, ArrowDownZA, Settings2, ChevronUp, Info } from "lucide-react";
+import { Plus, ChevronLeft, ChevronRight, Clock, Trash2, CheckCircle2, FileText, RefreshCcw, Copy, Bell, CalendarDays, Search, Filter, ChevronsLeft, ChevronsRight, GripVertical, MoreHorizontal, Users, ChevronDown, ArrowUpDown, ArrowDownAZ, ArrowDownZA, Settings2, ChevronUp, Info, X } from "lucide-react";
 import { Reorder, AnimatePresence, motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -215,6 +215,7 @@ export default function OwnerRosterPage() {
 
     // Search, Filter & Pagination State
     const [searchQuery, setSearchQuery] = useState("");
+    const [isSearchExpanded, setIsSearchExpanded] = useState(false);
     const [roleFilter, setRoleFilter] = useState("all");
     const [currentPage, setCurrentPage] = useState(1);
     const pageSize = 10;
@@ -259,7 +260,7 @@ export default function OwnerRosterPage() {
     }, [filteredEmployees, currentPage, pageSize]);
 
     const totalPages = Math.ceil(filteredEmployees.length / pageSize);
-    
+
     const { data: shifts = [], isLoading, isFetching } = useQuery({
         queryKey: ["shifts", rangeStart, rangeEnd],
         queryFn: () => apiGet<any[]>("/shift", { from: rangeStart, to: rangeEnd }),
@@ -684,12 +685,12 @@ export default function OwnerRosterPage() {
             if (d < rangeStart || d > rangeEnd) continue;
 
             total++;
-            
+
             // Calculate hours for ALL shifts in range
             if (s.start_time && s.end_time) {
                 const startTimeStr = s.start_time?.split('T')[1]?.substring(0, 5) || (typeof s.start_time === 'string' && s.start_time.length === 5 ? s.start_time : "00:00");
                 const endTimeStr = s.end_time?.split('T')[1]?.substring(0, 5) || (typeof s.end_time === 'string' && s.end_time.length === 5 ? s.end_time : "00:00");
-                
+
                 const hours = calculateShiftDuration(startTimeStr, endTimeStr);
                 if (hours > 0) {
                     totalHours += hours;
@@ -785,8 +786,77 @@ export default function OwnerRosterPage() {
                 </div>
             }
         >
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 gap-4 min-h-[44px]">
-                <div className="flex items-center gap-2">
+            <div className="flex flex-col sm:flex-row items-center justify-between mb-6 gap-4 min-h-[44px]">
+                {/* 1. Search & Filters (Top on Mobile, Middle on Desktop) */}
+                <div className="hidden sm:flex flex-wrap lg:flex-nowrap items-center gap-3 flex-1 w-full lg:max-w-xl sm:mx-4 order-1 sm:order-2">
+                    {/* Desktop Search */}
+                    <div className="relative group transition-all duration-300 flex-1 min-w-[150px]">
+                        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[hsl(var(--muted-foreground))] group-focus-within:text-[hsl(var(--brand))] transition-colors" />
+                        <Input
+                            placeholder="Search employee..."
+                            className="pl-9 h-10 w-full bg-white border-[hsl(var(--border))] rounded-xl focus:ring-2 focus:ring-[hsl(var(--brand))]/10 pr-10"
+                            value={searchQuery}
+                            autoFocus={isSearchExpanded}
+                            onChange={(e) => {
+                                setSearchQuery(e.target.value);
+                                setCurrentPage(1);
+                            }}
+                        />
+                        {isSearchExpanded && (
+                             <Button variant="ghost" size="icon" className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8 hover:bg-transparent" onClick={() => { setIsSearchExpanded(false); setSearchQuery(""); }}>
+                                 <X size={14} className="text-[hsl(var(--muted-foreground))]" />
+                             </Button>
+                        )}
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                        {/* Role Filter */}
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button variant="outline" className="h-10 rounded-xl gap-2 px-3 border-[hsl(var(--border))] bg-white hover:bg-[hsl(var(--muted))]/30 text-xs shadow-sm focus:ring-2 focus:ring-[hsl(var(--brand))]/10 focus:border-transparent">
+                                    <Filter size={14} className="text-[hsl(var(--muted-foreground))]" />
+                                    <span className="font-semibold">{roleFilter === 'all' ? 'All Roles' : (roleFilter === 'manager' ? 'Managers' : 'Staff')}</span>
+                                    <ChevronDown size={14} className="opacity-50" />
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-40 rounded-2xl shadow-xl p-1.5 border-[hsl(var(--border))] animate-in fade-in zoom-in-95 duration-200">
+                                <DropdownMenuItem onClick={() => { setRoleFilter("all"); setCurrentPage(1); }} className={cn("cursor-pointer font-medium text-xs rounded-lg py-2 transition-all", roleFilter === "all" && "bg-[hsl(var(--brand-light))]/50 text-[hsl(var(--brand))]")}>All Roles</DropdownMenuItem>
+                                <DropdownMenuSeparator className="my-1" />
+                                {roles.map(r => (
+                                    <DropdownMenuItem
+                                        key={r}
+                                        onClick={() => { setRoleFilter(r.toLowerCase()); setCurrentPage(1); }}
+                                        className={cn(
+                                            "cursor-pointer font-medium text-xs rounded-lg py-2 transition-all",
+                                            roleFilter === r.toLowerCase() && "bg-[hsl(var(--brand-light))]/50 text-[hsl(var(--brand))]"
+                                        )}
+                                    >
+                                        {r === 'manager' ? 'Managers' : r === 'employee' ? 'Staff' : r.split(' ').map((word: string) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join(' ')}
+                                    </DropdownMenuItem>
+                                ))}
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+
+                        {/* Weekly Hours Widget */}
+                        <div className="hidden sm:flex items-center gap-2 h-10 px-3 bg-white border border-[hsl(var(--border))] rounded-xl shadow-sm">
+                            <div className="flex flex-col justify-center border-r border-[hsl(var(--border))] pr-3">
+                                <span className="text-[8px] font-black uppercase text-emerald-600 tracking-widest leading-tight">Published</span>
+                                <span className="text-[11px] font-black text-emerald-900 leading-tight block">{formatDurationHours(statusSummary.totalPublishedHours)}</span>
+                            </div>
+                            <div className="flex flex-col justify-center pr-3 border-r border-[hsl(var(--border))]">
+                                <span className="text-[8px] font-black uppercase text-orange-600 tracking-widest leading-tight">Draft</span>
+                                <span className="text-[11px] font-black text-orange-900 leading-tight block">{formatDurationHours(statusSummary.totalDraftHours)}</span>
+                            </div>
+                            <div className="flex flex-col justify-center">
+                                <span className="text-[8px] font-black uppercase text-[hsl(var(--brand))] tracking-widest leading-tight">Total</span>
+                                <span className="text-[11px] font-black text-[hsl(var(--foreground))] leading-tight block">{formatDurationHours(statusSummary.totalHours)}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* 2. Date Navigation (Bottom on Mobile, Left on Desktop) */}
+                <div className="flex items-center justify-center w-full sm:w-auto gap-2 order-2 sm:order-1">
                     <Button variant="outline" size="icon" className="h-9 w-9 rounded-lg" onClick={() => setOffset(offset - 1)}>
                         <ChevronLeft size={18} />
                     </Button>
@@ -875,70 +945,10 @@ export default function OwnerRosterPage() {
                     <Button variant="outline" size="icon" className="h-9 w-9 rounded-lg" onClick={() => setOffset(offset + 1)}>
                         <ChevronRight size={18} />
                     </Button>
-
                 </div>
 
-                <div className="flex flex-wrap lg:flex-nowrap items-center gap-3 flex-1 w-full lg:max-w-xl mx-4">
-                    <div className="relative flex-1 group min-w-[150px]">
-                        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[hsl(var(--muted-foreground))] group-focus-within:text-[hsl(var(--brand))] transition-colors" />
-                        <Input
-                            placeholder="Search employee..."
-                            className="pl-9 h-10 w-full bg-white border-[hsl(var(--border))] rounded-xl focus:ring-2 focus:ring-[hsl(var(--brand))]/10"
-                            value={searchQuery}
-                            onChange={(e) => {
-                                setSearchQuery(e.target.value);
-                                setCurrentPage(1);
-                            }}
-                        />
-                    </div>
-
-                    <div className="flex items-center gap-2 shrink-0">
-                        {/* Role Filter */}
-                        <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                                <Button variant="outline" className="h-10 rounded-xl gap-2 px-3 border-[hsl(var(--border))] bg-white hover:bg-[hsl(var(--muted))]/30 text-xs shadow-sm focus:ring-2 focus:ring-[hsl(var(--brand))]/10 focus:border-transparent">
-                                    <Filter size={14} className="text-[hsl(var(--muted-foreground))]" />
-                                    <span className="font-semibold">{roleFilter === 'all' ? 'All Roles' : (roleFilter === 'manager' ? 'Managers' : 'Staff')}</span>
-                                    <ChevronDown size={14} className="opacity-50" />
-                                </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="w-40 rounded-2xl shadow-xl p-1.5 border-[hsl(var(--border))] animate-in fade-in zoom-in-95 duration-200">
-                                <DropdownMenuItem onClick={() => { setRoleFilter("all"); setCurrentPage(1); }} className={cn("cursor-pointer font-medium text-xs rounded-lg py-2 transition-all", roleFilter === "all" && "bg-[hsl(var(--brand-light))]/50 text-[hsl(var(--brand))]")}>All Roles</DropdownMenuItem>
-                                <DropdownMenuSeparator className="my-1" />
-                                {roles.map(r => (
-                                    <DropdownMenuItem
-                                        key={r}
-                                        onClick={() => { setRoleFilter(r.toLowerCase()); setCurrentPage(1); }}
-                                        className={cn(
-                                            "cursor-pointer font-medium text-xs rounded-lg py-2 transition-all",
-                                            roleFilter === r.toLowerCase() && "bg-[hsl(var(--brand-light))]/50 text-[hsl(var(--brand))]"
-                                        )}
-                                    >
-                                        {r === 'manager' ? 'Managers' : r === 'employee' ? 'Staff' : r.split(' ').map((word: string) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join(' ')}
-                                    </DropdownMenuItem>
-                                ))}
-                            </DropdownMenuContent>
-                        </DropdownMenu>
-
-                        {/* Weekly Hours Widget */}
-                        <div className="hidden sm:flex items-center gap-2 h-10 px-3 bg-white border border-[hsl(var(--border))] rounded-xl shadow-sm">
-                            <div className="flex flex-col justify-center border-r border-[hsl(var(--border))] pr-3">
-                                <span className="text-[8px] font-black uppercase text-emerald-600 tracking-widest leading-tight">Published</span>
-                                <span className="text-[11px] font-black text-emerald-900 leading-tight block">{statusSummary.totalPublishedHours.toFixed(1)}h</span>
-                            </div>
-                            <div className="flex flex-col justify-center pr-3 border-r border-[hsl(var(--border))]">
-                                <span className="text-[8px] font-black uppercase text-orange-600 tracking-widest leading-tight">Draft</span>
-                                <span className="text-[11px] font-black text-orange-900 leading-tight block">{statusSummary.totalDraftHours.toFixed(1)}h</span>
-                            </div>
-                            <div className="flex flex-col justify-center">
-                                <span className="text-[8px] font-black uppercase text-[hsl(var(--brand))] tracking-widest leading-tight">Total</span>
-                                <span className="text-[11px] font-black text-[hsl(var(--foreground))] leading-tight block">{statusSummary.totalHours.toFixed(1)}h</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div className="flex items-center gap-3">
+                {/* 3. Status/Sync (Right on both) */}
+                <div className="flex items-center gap-3 order-3">
                     {isFetching || isFetchingRosters ? (
                         <div className="flex items-center gap-2 text-xs text-[hsl(var(--muted-foreground))] animate-pulse">
                             <RefreshCcw size={14} className="animate-spin text-[hsl(var(--brand))]" />
@@ -1006,7 +1016,7 @@ export default function OwnerRosterPage() {
                                         )}
                                     </div>
                                     <span className="text-[10px] text-[hsl(var(--muted-foreground))] uppercase tracking-wider font-medium mt-1">
-                                        {statusSummary.published} published ({statusSummary.totalPublishedHours.toFixed(1)}h) • {statusSummary.drafts} drafts ({statusSummary.totalDraftHours.toFixed(1)}h)
+                                        {statusSummary.published} published ({formatDurationHours(statusSummary.totalPublishedHours)}) • {statusSummary.drafts} drafts ({formatDurationHours(statusSummary.totalDraftHours)})
                                     </span>
                                 </div>
                             </div>
@@ -1022,39 +1032,27 @@ export default function OwnerRosterPage() {
                 </div>
             </div>
 
-            <div className="w-full max-w-full rounded-xl border overflow-hidden relative z-0">
+            <div className={cn(
+                "w-full max-w-full relative overflow-hidden",
+                !isMobile && "rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-md"
+            )}>
                 {isMobile ? (
                     /* MOBILE DAY VIEW */
-                    <div className="flex flex-col h-[75vh] sm:h-[700px] relative">
+                    <div className="flex flex-col min-h-screen relative">
                         {/* Integrated Mobile Calendar Header */}
-                        <div className="bg-white px-3 pt-3 flex items-center justify-between border-b border-[hsl(var(--border))]">
-                            <button
+                        <div className="bg-white px-3 pt-4 flex flex-col items-center justify-center">
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                className={cn("h-10 w-10 text-[hsl(var(--muted-foreground))]", isCalendarExpanded && "text-[hsl(var(--brand))] bg-[hsl(var(--brand-light))]/30")}
                                 onClick={() => setIsCalendarExpanded(!isCalendarExpanded)}
-                                className="flex items-center gap-2 py-2 px-1 active:opacity-60 transition-opacity"
                             >
-                                <span className="text-xl font-black text-[hsl(var(--foreground))] tracking-tight">
-                                    {format(rosterDates[selectedDayIndex], "EEE, d MMM")}
+                                <CalendarDays size={24} />
+                            </Button>
+                            <div className="pb-2 text-center">
+                                <span className="text-[10px] font-black uppercase tracking-widest text-[hsl(var(--muted-foreground))] opacity-60">
+                                    {format(rosterDates[selectedDayIndex], "EEE d MMM")}
                                 </span>
-                                <ChevronRight
-                                    size={18}
-                                    className={cn(
-                                        "text-[hsl(var(--muted-foreground))] transition-transform duration-300",
-                                        isCalendarExpanded ? "rotate-90" : "rotate-0"
-                                    )}
-                                />
-                            </button>
-                            <div className="flex items-center gap-1">
-                                <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className={cn("h-10 w-10 text-[hsl(var(--muted-foreground))]", isCalendarExpanded && "text-[hsl(var(--brand))] bg-[hsl(var(--brand-light))]/30")}
-                                    onClick={() => setIsCalendarExpanded(!isCalendarExpanded)}
-                                >
-                                    <CalendarDays size={20} />
-                                </Button>
-                                <Button variant="ghost" size="icon" className="h-10 w-10 text-[hsl(var(--muted-foreground))]">
-                                    <MoreHorizontal size={20} />
-                                </Button>
                             </div>
                         </div>
 
@@ -1158,7 +1156,8 @@ export default function OwnerRosterPage() {
 
                         {/* Day Selector (Horizontal) */}
                         {!isCalendarExpanded && (
-                            <div className="flex overflow-x-auto p-3 bg-[hsl(var(--muted))]/10 border-b border-[hsl(var(--border))] scrollbar-none gap-2 sticky top-0 z-10 backdrop-blur-sm">
+                            <div className="flex flex-col sticky top-0 z-10 bg-white">
+                                <div className="flex overflow-x-auto p-3 no-scrollbar gap-2">
                                 {rosterDates.map((d, i) => {
                                     const isSelected = selectedDayIndex === i;
                                     const isToday = formatDate(d) === formatDate(new Date());
@@ -1177,10 +1176,10 @@ export default function OwnerRosterPage() {
                                             id={`day-btn-${i}`}
                                             onClick={() => setSelectedDayIndex(i)}
                                             className={cn(
-                                                "flex flex-col items-center justify-center min-w-[56px] h-14 rounded-xl transition-all border shrink-0",
+                                                "flex flex-col items-center justify-center min-w-[56px] h-14 rounded-xl transition-all shrink-0",
                                                 isSelected
-                                                    ? "bg-[hsl(var(--brand))] text-white border-[hsl(var(--brand))] shadow-md shadow-[hsl(var(--brand))]/20 scale-105"
-                                                    : "bg-white text-[hsl(var(--muted-foreground))] border-[hsl(var(--border))] hover:border-[hsl(var(--brand))]/30",
+                                                    ? "bg-[hsl(var(--brand))] text-white shadow-md shadow-[hsl(var(--brand))]/20 scale-105"
+                                                    : "bg-[hsl(var(--muted))]/10 text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted))]/20",
                                                 isToday && !isSelected && "ring-2 ring-[hsl(var(--brand))]/30",
                                                 isPastDay && !isSelected && "opacity-75 bg-[hsl(var(--muted))]/15"
                                             )}
@@ -1190,11 +1189,12 @@ export default function OwnerRosterPage() {
                                         </button>
                                     );
                                 })}
+                                </div>
                             </div>
                         )}
 
                         {/* Shifts List for selected day */}
-                        <div className="flex-1 overflow-y-auto p-4 space-y-6 pb-24 scrollbar-thin">
+                        <div className="flex-1 p-4 space-y-4 pb-24">
                             {(() => {
                                 const selectedDateStr = formatDate(rosterDates[selectedDayIndex]);
                                 const today = new Date();
@@ -1213,10 +1213,63 @@ export default function OwnerRosterPage() {
 
                                 return (
                                     <>
+                                        {/* Mobile Search/Filter (Centered, above employee list header) */}
+                                        <div className="sm:hidden flex flex-col items-center justify-center gap-3 mt-2 mb-6">
+                                            {!isSearchExpanded ? (
+                                                <div className="flex items-center justify-center gap-4 w-full">
+                                                    <Button variant="outline" size="icon" className="h-10 w-10 rounded-xl bg-white shadow-sm border-[hsl(var(--border))]" onClick={() => setIsSearchExpanded(true)}>
+                                                        <Search size={16} className="text-[hsl(var(--muted-foreground))]" />
+                                                    </Button>
+                                                    <DropdownMenu>
+                                                        <DropdownMenuTrigger asChild>
+                                                            <Button variant="outline" className="h-10 rounded-xl gap-2 px-4 bg-white border-[hsl(var(--border))] hover:bg-[hsl(var(--muted))]/30 text-xs shadow-sm focus:ring-2 focus:ring-[hsl(var(--brand))]/10">
+                                                                <Filter size={14} className="text-[hsl(var(--muted-foreground))]" />
+                                                                <span className="font-semibold">{roleFilter === 'all' ? 'All Roles' : (roleFilter === 'manager' ? 'Managers' : 'Staff')}</span>
+                                                                <ChevronDown size={14} className="opacity-50" />
+                                                            </Button>
+                                                        </DropdownMenuTrigger>
+                                                        <DropdownMenuContent align="center" className="w-48 rounded-2xl shadow-xl p-1.5 border-[hsl(var(--border))] animate-in fade-in zoom-in-95 duration-200">
+                                                            <DropdownMenuItem onClick={() => { setRoleFilter("all"); setCurrentPage(1); }} className={cn("cursor-pointer font-medium text-xs rounded-lg py-2 transition-all", roleFilter === "all" && "bg-[hsl(var(--brand-light))]/50 text-[hsl(var(--brand))]")}>All Roles</DropdownMenuItem>
+                                                            <DropdownMenuSeparator className="my-1" />
+                                                            {roles.map(r => (
+                                                                <DropdownMenuItem
+                                                                    key={r}
+                                                                    onClick={() => { setRoleFilter(r.toLowerCase()); setCurrentPage(1); }}
+                                                                    className={cn(
+                                                                        "cursor-pointer font-medium text-xs rounded-lg py-2 transition-all",
+                                                                        roleFilter === r.toLowerCase() && "bg-[hsl(var(--brand-light))]/50 text-[hsl(var(--brand))]"
+                                                                    )}
+                                                                >
+                                                                    {r === 'manager' ? 'Managers' : r === 'employee' ? 'Staff' : r.split(' ').map((word: string) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join(' ')}
+                                                                </DropdownMenuItem>
+                                                            ))}
+                                                        </DropdownMenuContent>
+                                                    </DropdownMenu>
+                                                </div>
+                                            ) : (
+                                                <div className="flex items-center w-full gap-2 relative">
+                                                     <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[hsl(var(--muted-foreground))]" />
+                                                     <Input
+                                                         placeholder="Search employee..."
+                                                         className="pl-9 h-10 w-full bg-white border-[hsl(var(--border))] rounded-xl focus:ring-2 focus:ring-[hsl(var(--brand))]/10 pr-10 shadow-sm"
+                                                         value={searchQuery}
+                                                         autoFocus
+                                                         onChange={(e) => {
+                                                             setSearchQuery(e.target.value);
+                                                             setCurrentPage(1);
+                                                         }}
+                                                     />
+                                                     <Button variant="ghost" size="icon" className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8 hover:bg-transparent" onClick={() => { setIsSearchExpanded(false); setSearchQuery(""); }}>
+                                                         <X size={14} className="text-[hsl(var(--muted-foreground))]" />
+                                                     </Button>
+                                                </div>
+                                            )}
+                                        </div>
+
                                         {/* Day Header/Actions */}
-                                        <div className="flex items-center justify-between mb-2">
-                                            <h3 className="text-sm font-black uppercase tracking-widest text-[hsl(var(--muted-foreground))]">
-                                                {activeEmployees.length} {activeEmployees.length === 1 ? 'Employee' : 'Employees'} in List
+                                        <div className="flex items-center justify-between mb-4">
+                                            <h3 className="text-[10px] sm:text-sm font-black uppercase tracking-widest text-[hsl(var(--muted-foreground))]">
+                                                {activeEmployees.length} {activeEmployees.length === 1 ? 'Employee' : 'Employees'}
                                             </h3>
                                             {dayDrafts > 0 && !isPastDay && (
                                                 <Button
@@ -1240,7 +1293,7 @@ export default function OwnerRosterPage() {
                                                 const dayShifts = shiftGrid[emp.employee_id]?.[selectedDateStr] || [];
 
                                                 return (
-                                                    <div key={emp.employee_id} className="space-y-3 p-4 rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/10">
+                                                    <div key={emp.employee_id} className="space-y-3 p-4 rounded-2xl border border-[hsl(var(--border))] bg-white shadow-sm">
                                                         <div className="flex items-center justify-between">
                                                             <div className="flex items-center gap-3">
                                                                 <div className="h-9 w-9 rounded-full bg-[hsl(var(--brand-light))] text-[hsl(var(--brand))] font-black flex items-center justify-center text-xs shadow-sm shadow-[hsl(var(--brand))]/10 border border-[hsl(var(--brand))]/10">
@@ -1279,10 +1332,15 @@ export default function OwnerRosterPage() {
                                                                             <div className="flex flex-col gap-0.5">
                                                                                 <div className="flex items-center gap-2">
                                                                                     <Clock size={12} className={cn("opacity-60", isPublished ? "text-green-700" : "text-[hsl(var(--brand))]")} />
-                                                                                    <span className="text-sm font-black tracking-tight tabular-nums">
+                                                                                    <span className="text-sm font-black tracking-tight tabular-nums flex items-center gap-1">
                                                                                         {s.start_time?.split('T')[1]?.substring(0, 5)}
                                                                                         {" – "}
                                                                                         {s.end_time?.split('T')[1]?.substring(0, 5)}
+                                                                                        {s.start_time && s.end_time && (
+                                                                                            <span className="text-xs opacity-60 ml-0.5 font-bold">
+                                                                                                ({formatDurationHours(calculateShiftDuration(s.start_time.split('T')[1]?.substring(0, 5) || "00:00", s.end_time.split('T')[1]?.substring(0, 5) || "00:00"))})
+                                                                                            </span>
+                                                                                        )}
                                                                                     </span>
                                                                                 </div>
                                                                                 <Badge variant="secondary" className={cn(
@@ -1321,15 +1379,13 @@ export default function OwnerRosterPage() {
                         </div>
 
                         {/* Floating Action Button (FAB) for adding shifts */}
-                        <div className="absolute bottom-6 right-6">
-                            <Button
-                                size="icon"
-                                onClick={() => openAddShift(formatDate(rosterDates[selectedDayIndex]), "")}
-                                className="h-14 w-14 rounded-2xl bg-[hsl(var(--brand))] text-white shadow-xl shadow-[hsl(var(--brand))]/30 hover:scale-105 transition-transform"
-                            >
-                                <Plus size={28} strokeWidth={3} />
-                            </Button>
-                        </div>
+                        <Button
+                            onClick={() => openAddShift(formatDate(rosterDates[selectedDayIndex]), "")}
+                            className="fixed bottom-24 right-6 size-10 lg:h-9 lg:w-auto p-0 lg:px-4 lg:py-2 gap-2 shadow-2xl shadow-[hsl(var(--brand))]/40 lg:shadow-md hover:shadow-lg transition-all lg:ml-2 rounded-full lg:rounded-lg z-50 lg:static"
+                        >
+                            <Plus size={24} className="lg:w-4 lg:h-4" />
+                            <span className="hidden lg:inline">Add Shift</span>
+                        </Button>
                     </div>
                 ) : (
                     /* DESKTOP GRID VIEW */
@@ -1604,7 +1660,7 @@ export default function OwnerRosterPage() {
                                                                                     {endTimeStr}
                                                                                 </span>
                                                                                 <span className="text-[9px] font-black mt-1 text-[hsl(var(--muted-foreground))]">
-                                                                                    ({calculateShiftDuration(startTimeStr, endTimeStr).toFixed(1)}h)
+                                                                                    ({formatDurationHours(calculateShiftDuration(startTimeStr, endTimeStr))})
                                                                                 </span>
                                                                             </div>
                                                                             <div className="mt-auto pt-1">
@@ -1758,35 +1814,48 @@ export default function OwnerRosterPage() {
                                         <div className="fixed inset-0 z-60" onClick={() => setIsStartDropdownOpen(false)} />
                                         <div className="absolute top-full mb-2 left-0 w-full bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-xl shadow-2xl z-61 overflow-hidden flex flex-col animate-in slide-in-from-bottom-2 duration-200">
                                             <div className="p-2 border-b bg-[hsl(var(--muted))]/30 sticky top-0">
-                                                <input 
+                                                <input
                                                     autoFocus
-                                                    type="text" 
-                                                    placeholder="Search..." 
+                                                    type="text"
+                                                    placeholder="Search..."
                                                     value={timeSearch}
                                                     onChange={e => setTimeSearch(e.target.value)}
                                                     className="w-full h-8 px-2 text-[10px] rounded-md border bg-[hsl(var(--background))]"
                                                 />
                                             </div>
-                                            <div className="max-h-48 overflow-y-auto p-1">
-                                                {TIME_OPTIONS.filter(t => t.includes(timeSearch)).map(time => (
-                                                    <button
-                                                        key={time}
-                                                        type="button"
-                                                        onClick={() => {
-                                                            setShiftStart(time);
-                                                            setIsStartDropdownOpen(false);
-                                                            setTimeSearch("");
-                                                        }}
-                                                        className={cn(
-                                                            "w-full text-left px-3 py-2 text-xs rounded-lg transition-colors",
-                                                            shiftStart === time
-                                                                ? "bg-[hsl(var(--brand))] text-white"
-                                                                : "hover:bg-[hsl(var(--muted))] text-[hsl(var(--foreground))]"
-                                                        )}
-                                                    >
-                                                        {time}
-                                                    </button>
-                                                ))}
+                                            <div className="max-h-48 overflow-y-auto p-1" ref={el => {
+                                                if (el && !el.dataset.scrolled) {
+                                                    const selected = el.querySelector('[data-selected="true"]');
+                                                    if (selected) {
+                                                        selected.scrollIntoView({ block: "center" });
+                                                        el.dataset.scrolled = "true";
+                                                    }
+                                                }
+                                            }}>
+                                                {(() => {
+                                                    const filtered = TIME_OPTIONS.filter(t => t.includes(timeSearch));
+
+                                                    return filtered.map(time => (
+                                                        <button
+                                                            key={time}
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setShiftStart(time);
+                                                                setIsStartDropdownOpen(false);
+                                                                setTimeSearch("");
+                                                            }}
+                                                            data-selected={shiftStart === time}
+                                                            className={cn(
+                                                                "w-full text-left px-3 py-2 text-xs rounded-lg transition-colors",
+                                                                shiftStart === time
+                                                                    ? "bg-[hsl(var(--brand))] text-white"
+                                                                    : "hover:bg-[hsl(var(--muted))] text-[hsl(var(--foreground))]"
+                                                            )}
+                                                        >
+                                                            {time}
+                                                        </button>
+                                                    ));
+                                                })()}
                                             </div>
                                         </div>
                                     </>
@@ -1812,35 +1881,48 @@ export default function OwnerRosterPage() {
                                         <div className="fixed inset-0 z-60" onClick={() => setIsEndDropdownOpen(false)} />
                                         <div className="absolute top-full mb-2 left-0 w-full bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-xl shadow-2xl z-61 overflow-hidden flex flex-col animate-in slide-in-from-bottom-2 duration-200">
                                             <div className="p-2 border-b bg-[hsl(var(--muted))]/30 sticky top-0">
-                                                <input 
+                                                <input
                                                     autoFocus
-                                                    type="text" 
-                                                    placeholder="Search..." 
+                                                    type="text"
+                                                    placeholder="Search..."
                                                     value={timeSearch}
                                                     onChange={e => setTimeSearch(e.target.value)}
                                                     className="w-full h-8 px-2 text-[10px] rounded-md border bg-[hsl(var(--background))]"
                                                 />
                                             </div>
-                                            <div className="max-h-48 overflow-y-auto p-1">
-                                                {TIME_OPTIONS.filter(t => t.includes(timeSearch)).map(time => (
-                                                    <button
-                                                        key={time}
-                                                        type="button"
-                                                        onClick={() => {
-                                                            setShiftEnd(time);
-                                                            setIsEndDropdownOpen(false);
-                                                            setTimeSearch("");
-                                                        }}
-                                                        className={cn(
-                                                            "w-full text-left px-3 py-2 text-xs rounded-lg transition-colors",
-                                                            shiftEnd === time
-                                                                ? "bg-[hsl(var(--brand))] text-white"
-                                                                : "hover:bg-[hsl(var(--muted))] text-[hsl(var(--foreground))]"
-                                                        )}
-                                                    >
-                                                        {time}
-                                                    </button>
-                                                ))}
+                                            <div className="max-h-48 overflow-y-auto p-1" ref={el => {
+                                                if (el && !el.dataset.scrolled) {
+                                                    const selected = el.querySelector('[data-selected="true"]');
+                                                    if (selected) {
+                                                        selected.scrollIntoView({ block: "center" });
+                                                        el.dataset.scrolled = "true";
+                                                    }
+                                                }
+                                            }}>
+                                                {(() => {
+                                                    const filtered = TIME_OPTIONS.filter(t => t.includes(timeSearch));
+
+                                                    return filtered.map(time => (
+                                                        <button
+                                                            key={time}
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setShiftEnd(time);
+                                                                setIsEndDropdownOpen(false);
+                                                                setTimeSearch("");
+                                                            }}
+                                                            data-selected={shiftEnd === time}
+                                                            className={cn(
+                                                                "w-full text-left px-3 py-2 text-xs rounded-lg transition-colors",
+                                                                shiftEnd === time
+                                                                    ? "bg-[hsl(var(--brand))] text-white"
+                                                                    : "hover:bg-[hsl(var(--muted))] text-[hsl(var(--foreground))]"
+                                                            )}
+                                                        >
+                                                            {time}
+                                                        </button>
+                                                    ));
+                                                })()}
                                             </div>
                                         </div>
                                     </>
@@ -1860,7 +1942,7 @@ export default function OwnerRosterPage() {
                                 <label className="text-[10px] font-black uppercase text-[hsl(var(--muted-foreground))] tracking-widest block mb-1">Total Hours</label>
                                 <div className="flex items-center gap-2">
                                     <FileText size={14} className="text-[hsl(var(--muted-foreground))]" />
-                                    <span className="text-sm font-bold text-[hsl(var(--foreground))]">{calculateShiftDuration(shiftStart, shiftEnd).toFixed(1)}h</span>
+                                    <span className="text-sm font-bold text-[hsl(var(--foreground))]">{formatDurationHours(calculateShiftDuration(shiftStart, shiftEnd))}</span>
                                 </div>
                             </div>
                         </div>
@@ -2228,14 +2310,14 @@ export default function OwnerRosterPage() {
                             <Clock className="w-6 h-6 text-amber-600" />
                         </div>
 
-                        <div className="text-center space-y-2">
-                            <h3 className="text-lg font-bold text-gray-900">Undo Copy?</h3>
-                            <p className="text-sm text-gray-500 leading-relaxed px-2">
+                        <DialogHeader className="text-center space-y-2">
+                            <DialogTitle className="text-lg font-bold text-gray-900">Undo Copy?</DialogTitle>
+                            <DialogDescription className="text-sm text-gray-500 leading-relaxed px-2">
                                 Are you sure you want to undo the last copy? This will remove
                                 <span className="font-bold text-gray-900 mx-1">{lastNewShiftIds.length}</span>
                                 newly created shifts.
-                            </p>
-                        </div>
+                            </DialogDescription>
+                        </DialogHeader>
 
                         <div className="grid grid-cols-2 gap-3 pt-2">
                             <Button

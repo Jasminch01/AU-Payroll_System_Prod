@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 import { DashboardLayout } from "@/components/layout";
 import { DataTable, Column } from "@/components/ui/data-table";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Input, PasswordInput } from "@/components/ui";
 import { StatusBadge } from "@/components/ui/badge";
 import {
     Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter
@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { apiGet, apiPost, apiDelete } from "@/lib/api-client";
 import { toast } from "sonner";
-import { UserPlus, Users, Send, RefreshCw, Copy, Check, MoreHorizontal, Eye, ExternalLink, Trash2, AlertTriangle, Filter, X, Briefcase, User, ShieldCheck, UserPlus2, ChevronRight, Shield, Lock, CreditCard, ChevronDown, Info } from "lucide-react";
+import { UserPlus, Users, Send, RefreshCw, Copy, Check, MoreHorizontal, Eye, ExternalLink, Trash2, AlertTriangle, Filter, X, Briefcase, User, ShieldCheck, UserPlus2, ChevronRight, Shield, Lock, CreditCard, ChevronDown, Info, Plus } from "lucide-react";
 import type { Employee } from "@/types/database";
 import { useAuth } from "@/hooks/use-auth";
 import { createClient } from "@/lib/supabase/client";
@@ -521,7 +521,7 @@ export default function OwnerEmployeesPage() {
                                 </div>
                             </div>
                         </div>
-                        <ChevronRight size={16} className="text-[hsl(var(--muted-foreground))]/40" />
+
                     </div>
                 )}
                 filters={
@@ -601,9 +601,9 @@ export default function OwnerEmployeesPage() {
                 actions={
                     <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                            <Button className="h-9 gap-2 shadow-md hover:shadow-lg transition-all lg:ml-2">
-                                <UserPlus size={16} />
-                                Add People
+                            <Button className="fixed bottom-24 right-6 size-10 lg:h-9 lg:w-auto p-0 lg:px-4 lg:py-2 gap-2 shadow-2xl shadow-[hsl(var(--brand))]/40 lg:shadow-md hover:shadow-lg transition-all lg:ml-2 rounded-full lg:rounded-lg z-50 lg:static">
+                                <Plus size={24} className="lg:w-4 lg:h-4" />
+                                <span className="hidden lg:inline">Add People</span>
                             </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" className="w-56 rounded-xl shadow-xl p-1.5 border-[hsl(var(--border))]">
@@ -1086,7 +1086,7 @@ export default function OwnerEmployeesPage() {
                                         </div>
                                         <h3 className="font-bold text-slate-800 tracking-tight">Access Security</h3>
                                     </div>
-                                    <Input label="Temporary Password (Optional)" type="password" placeholder="Min. 8 characters" value={manualData.password} onChange={(e) => setManualData({ ...manualData, password: e.target.value })} />
+                                    <PasswordInput label="Temporary Password (Optional)" placeholder="Min. 8 characters" value={manualData.password} onChange={(e) => setManualData({ ...manualData, password: e.target.value })} />
                                 </section>
 
                                 {/* Emergency Section */}

@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { DashboardLayout } from "@/components/layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Input, PasswordInput } from "@/components/ui";
 import { apiGet, apiPut, apiPost } from "@/lib/api-client";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
@@ -109,7 +109,7 @@ export default function ProfilePage() {
         >
             <div className="space-y-6 max-w-5xl mx-auto">
                 <Card className="overflow-hidden border-none shadow-md bg-linear-to-br from-[hsl(var(--brand))]/10 via-transparent to-transparent">
-                    <CardContent className="p-10 flex flex-col md:flex-row items-center gap-10">
+                    <CardContent className="p-6 lg:p-10 flex flex-col md:flex-row items-center gap-6 lg:gap-10">
                         <div className="relative">
                             <div className="flex h-32 w-32 items-center justify-center rounded-full bg-[hsl(var(--brand-light))] text-[hsl(var(--brand))] text-4xl font-bold border-8 border-[hsl(var(--background))] shadow-2xl transition-transform hover:scale-105 duration-300">
                                 {data.first_name?.[0]}{data.last_name?.[0]}
@@ -123,16 +123,17 @@ export default function ProfilePage() {
                                     <Shield size={16} /> {data.role_title} ({data.role || role})
                                 </p>
                             </div>
-                            <div className="flex flex-wrap justify-center md:justify-start gap-4 pt-2">
-                                <span className="text-sm text-[hsl(var(--muted-foreground))] flex items-center gap-1.5 bg-[hsl(var(--muted))] px-3 py-1.5 rounded-full"><User size={14} /> {user?.email}</span>
+                            <div className="flex flex-wrap justify-center md:justify-start gap-3 lg:gap-4 pt-2">
+                                <span className="text-xs lg:text-sm text-[hsl(var(--muted-foreground))] flex items-center gap-1.5 bg-[hsl(var(--muted))] px-3 py-1.5 rounded-full"><User size={14} /> {user?.email}</span>
                                 {data.Business?.business_name && (
-                                    <span className="text-sm text-[hsl(var(--muted-foreground))] flex items-center gap-1.5 bg-[hsl(var(--muted))] px-3 py-1.5 rounded-full"><Building2 size={14} /> {data.Business.business_name}</span>
+                                    <span className="text-xs lg:text-sm text-[hsl(var(--muted-foreground))] flex items-center gap-1.5 bg-[hsl(var(--muted))] px-3 py-1.5 rounded-full"><Building2 size={14} /> {data.Business.business_name}</span>
                                 )}
                             </div>
                         </div>
-                        <div className="shrink-0 pt-4 md:pt-0">
+                        <div className="shrink-0 pt-2 md:pt-0 w-full md:w-auto">
                             <Button
                                 size="sm"
+                                className="w-full md:w-auto"
                                 onClick={() => {
                                     const payload: any = {
                                         first_name: data.first_name,
@@ -167,12 +168,12 @@ export default function ProfilePage() {
                 </Card>
 
                 <Tabs defaultValue="personal" className="w-full">
-                    <div className="flex justify-center mb-8">
-                        <TabsList className="h-auto p-1.5 bg-[hsl(var(--muted))]/60 rounded-xl shadow-inner border border-[hsl(var(--border))]/50">
-                            <TabsTrigger value="personal" className="rounded-lg px-6 py-2.5 data-[state=active]:bg-[hsl(var(--background))] data-[state=active]:shadow-sm transition-all duration-200">Personal</TabsTrigger>
-                            <TabsTrigger value="security" className="rounded-lg px-6 py-2.5 data-[state=active]:bg-[hsl(var(--background))] data-[state=active]:shadow-sm transition-all duration-200">Security</TabsTrigger>
-                            {role !== 'owner' && <TabsTrigger value="employment" className="rounded-lg px-6 py-2.5 data-[state=active]:bg-[hsl(var(--background))] data-[state=active]:shadow-sm transition-all duration-200">Employment</TabsTrigger>}
-                            {role === 'owner' && <TabsTrigger value="business" className="rounded-lg px-6 py-2.5 data-[state=active]:bg-[hsl(var(--background))] data-[state=active]:shadow-sm transition-all duration-200">Business</TabsTrigger>}
+                    <div className="flex justify-center mb-8 overflow-x-auto no-scrollbar">
+                        <TabsList className="h-auto p-1.5 bg-[hsl(var(--muted))]/60 rounded-xl shadow-inner border border-[hsl(var(--border))]/50 w-max flex">
+                            <TabsTrigger value="personal" className="rounded-lg px-4 lg:px-6 py-2.5 data-[state=active]:bg-[hsl(var(--background))] data-[state=active]:shadow-sm transition-all duration-200 text-xs lg:text-sm">Personal</TabsTrigger>
+                            <TabsTrigger value="security" className="rounded-lg px-4 lg:px-6 py-2.5 data-[state=active]:bg-[hsl(var(--background))] data-[state=active]:shadow-sm transition-all duration-200 text-xs lg:text-sm">Security</TabsTrigger>
+                            {role !== 'owner' && <TabsTrigger value="employment" className="rounded-lg px-4 lg:px-6 py-2.5 data-[state=active]:bg-[hsl(var(--background))] data-[state=active]:shadow-sm transition-all duration-200 text-xs lg:text-sm">Employment</TabsTrigger>}
+                            {role === 'owner' && <TabsTrigger value="business" className="rounded-lg px-4 lg:px-6 py-2.5 data-[state=active]:bg-[hsl(var(--background))] data-[state=active]:shadow-sm transition-all duration-200 text-xs lg:text-sm">Business</TabsTrigger>}
                         </TabsList>
                     </div>
 
@@ -220,15 +221,13 @@ export default function ProfilePage() {
                                     </Button>
                                 ) : (
                                     <div className="space-y-3 p-4 border border-[hsl(var(--border))] rounded-lg bg-[hsl(var(--muted))]/30">
-                                        <Input
+                                        <PasswordInput
                                             label="New Password"
-                                            type="password"
                                             value={newPwd}
                                             onChange={(e) => setNewPwd(e.target.value)}
                                         />
-                                        <Input
+                                        <PasswordInput
                                             label="Confirm Password"
-                                            type="password"
                                             value={confirmPwd}
                                             onChange={(e) => setConfirmPwd(e.target.value)}
                                         />

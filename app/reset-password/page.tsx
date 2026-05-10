@@ -4,16 +4,15 @@ import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Input, PasswordInput } from "@/components/ui";
 import { toast } from "sonner";
-import { CheckCircle2, Eye, EyeOff } from "lucide-react";
+import { CheckCircle2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
 export default function ResetPasswordPage() {
     const router = useRouter();
     const [password, setPassword] = useState("");
     const [confirmPassword, setConfirmPassword] = useState("");
-    const [showPassword, setShowPassword] = useState(false);
     const [loading, setLoading] = useState(false);
     const [success, setSuccess] = useState(false);
 
@@ -144,27 +143,16 @@ export default function ResetPasswordPage() {
                     </div>
 
                     <form onSubmit={handleUpdatePassword} className="space-y-5">
-                        <div className="relative">
-                            <Input
-                                label="New Password"
-                                type={showPassword ? "text" : "password"}
-                                placeholder="Enter your new password"
-                                value={password}
-                                onChange={(e) => setPassword(e.target.value)}
-                                required
-                            />
-                            <button
-                                type="button"
-                                onClick={() => setShowPassword(!showPassword)}
-                                className="absolute right-3 top-9 text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] transition-colors"
-                            >
-                                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                            </button>
-                        </div>
+                        <PasswordInput
+                            label="New Password"
+                            placeholder="Enter your new password"
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                            required
+                        />
 
-                        <Input
+                        <PasswordInput
                             label="Confirm New Password"
-                            type={showPassword ? "text" : "password"}
                             placeholder="Confirm your new password"
                             value={confirmPassword}
                             onChange={(e) => setConfirmPassword(e.target.value)}

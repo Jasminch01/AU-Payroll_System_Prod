@@ -174,10 +174,27 @@ export function AttendanceRequestModal({
                                                     className="w-full h-8 px-2 text-[10px] rounded-md border bg-[hsl(var(--background))]"
                                                 />
                                             </div>
-                                            <div className="max-h-36 overflow-y-auto p-1">
-                                                {TIME_OPTIONS.filter(t => t.includes(timeSearch)).map(t => (
-                                                    <button key={t} type="button" onClick={() => { setInForm({ ...inForm, time: t }); setActiveDropdown(null); setTimeSearch(""); }} className="w-full text-left px-4 py-2 text-sm hover:bg-[hsl(var(--muted))] rounded-md">{t}</button>
-                                                ))}
+                                            <div className="max-h-36 overflow-y-auto p-1" ref={el => {
+                                                if (el && !el.dataset.scrolled) {
+                                                    const selected = el.querySelector('[data-selected="true"]');
+                                                    if (selected) {
+                                                        selected.scrollIntoView({ block: "center" });
+                                                        el.dataset.scrolled = "true";
+                                                    }
+                                                }
+                                            }}>
+                                                {(() => {
+                                                    const filtered = TIME_OPTIONS.filter(t => t.includes(timeSearch));
+                                                    
+                                                    return filtered.map(t => (
+                                                        <button key={t} type="button" onClick={() => { setInForm({ ...inForm, time: t }); setActiveDropdown(null); setTimeSearch(""); }} data-selected={inForm.time === t} className={cn(
+                                                            "w-full text-left px-4 py-2 text-sm rounded-md transition-colors",
+                                                            inForm.time === t
+                                                                ? "bg-[hsl(var(--brand))] text-white font-medium"
+                                                                : "hover:bg-[hsl(var(--muted))]"
+                                                        )}>{t}</button>
+                                                    ));
+                                                })()}
                                             </div>
                                         </div>
                                     </>
@@ -219,10 +236,27 @@ export function AttendanceRequestModal({
                                                     className="w-full h-8 px-2 text-[10px] rounded-md border bg-[hsl(var(--background))]"
                                                 />
                                             </div>
-                                            <div className="max-h-36 overflow-y-auto p-1">
-                                                {TIME_OPTIONS.filter(t => t.includes(timeSearch)).map(t => (
-                                                    <button key={t} type="button" onClick={() => { setOutForm({ ...outForm, time: t }); setActiveDropdown(null); setTimeSearch(""); }} className="w-full text-left px-4 py-2 text-sm hover:bg-[hsl(var(--muted))] rounded-md">{t}</button>
-                                                ))}
+                                            <div className="max-h-36 overflow-y-auto p-1" ref={el => {
+                                                if (el && !el.dataset.scrolled) {
+                                                    const selected = el.querySelector('[data-selected="true"]');
+                                                    if (selected) {
+                                                        selected.scrollIntoView({ block: "center" });
+                                                        el.dataset.scrolled = "true";
+                                                    }
+                                                }
+                                            }}>
+                                                {(() => {
+                                                    const filtered = TIME_OPTIONS.filter(t => t.includes(timeSearch));
+                                                    
+                                                    return filtered.map(t => (
+                                                        <button key={t} type="button" onClick={() => { setOutForm({ ...outForm, time: t }); setActiveDropdown(null); setTimeSearch(""); }} data-selected={outForm.time === t} className={cn(
+                                                            "w-full text-left px-4 py-2 text-sm rounded-md transition-colors",
+                                                            outForm.time === t
+                                                                ? "bg-[hsl(var(--brand))] text-white font-medium"
+                                                                : "hover:bg-[hsl(var(--muted))]"
+                                                        )}>{t}</button>
+                                                    ));
+                                                })()}
                                             </div>
                                         </div>
                                     </>

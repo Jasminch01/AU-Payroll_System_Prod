@@ -34,3 +34,42 @@ export async function GET(request: NextRequest) {
         return errorResponse('Internal server error', 500);
     }
 }
+
+/**
+ * DELETE /api/notifications
+ * 
+ * Delete read notifications or a specific notification
+ */
+export async function DELETE(request: NextRequest) {
+    try {
+        const authUser = await getAuthUser();
+        if (!authUser) return errorResponse('Unauthorized', 401);
+
+        const { searchParams } = new URL(request.url);
+        const notificationId = searchParams.get('id');
+
+        const supabase = await createClient();
+        let query = supabase
+            .from('notifications')
+            .delete()
+            .eq('business_id', authUser.business_id)
+            .eq('user_id', authUser.user_id);
+
+        if (notificationId) {
+            // Delete specific notification
+            query = query.eq('id', notificationId);
+        } else {
+            // Delete all read notifications
+            query = query.eq('is_read', true);
+        }
+
+        const { error } = await query;
+
+        if (error) return errorResponse(error.message, 400);
+
+        return successResponse({ message: 'Notifications deleted successfully' });
+    } catch (err) {
+        console.error('Delete notifications error:', err);
+        return errorResponse('Internal server error', 500);
+    }
+}
