@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { Link2, CheckCircle, XCircle, MonitorSmartphone, Calendar, Bell } from "lucide-react";
 import Link from "next/link";
 import { NotificationSettings } from "@/components/settings/notification-settings";
+import { PushPermissionCard } from "@/components/settings/push-permission-card";
 
 export default function OwnerSettingsPage() {
     const queryClient = useQueryClient();
@@ -111,6 +112,11 @@ export default function OwnerSettingsPage() {
                     </div>
                 </CardContent>
             </Card>
+
+            {/* Device Push Notifications */}
+            <div className="mb-6">
+                <PushPermissionCard />
+            </div>
 
             {/* Notification Preferences */}
             <div className="mb-6">
