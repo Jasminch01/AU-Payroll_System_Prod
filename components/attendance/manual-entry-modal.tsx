@@ -19,6 +19,10 @@ interface ManualEntryModalProps {
     }>;
     fromDate?: string;
     toDate?: string;
+    defaultEmployeeId?: string;
+    defaultDate?: string;
+    defaultInTime?: string;
+    defaultOutTime?: string;
 }
 
 const EVENT_TYPES: { value: EventType | "FULL_SHIFT"; label: string }[] = [
@@ -43,6 +47,10 @@ export function ManualEntryModal({
     employees,
     fromDate,
     toDate,
+    defaultEmployeeId,
+    defaultDate,
+    defaultInTime,
+    defaultOutTime,
 }: ManualEntryModalProps) {
     const queryClient = useQueryClient();
 
@@ -51,14 +59,30 @@ export function ManualEntryModal({
     const { date: todayDate, time: nowTime } = getDateTimeForInput(getCurrentTimestamp(), businessTimezone);
 
     const [formData, setFormData] = useState({
-        employee_id: "",
+        employee_id: defaultEmployeeId || "",
         event_type: "FULL_SHIFT" as EventType | "FULL_SHIFT",
-        date: todayDate,
-        inTime: "09:00",
-        outTime: "17:00",
+        date: defaultDate || todayDate,
+        inTime: defaultInTime || "09:00",
+        outTime: defaultOutTime || "17:00",
         breaks: [] as Array<{ id: string; start: string; end: string }>,
         override_reason: "",
     });
+
+    // Reset form when modal opens with new defaults
+    React.useEffect(() => {
+        if (isOpen) {
+            setFormData(prev => ({
+                ...prev,
+                employee_id: defaultEmployeeId || "",
+                date: defaultDate || todayDate,
+                inTime: defaultInTime || "09:00",
+                outTime: defaultOutTime || "17:00",
+            }));
+            setError("");
+            setSuccess("");
+            setSearchTerm("");
+        }
+    }, [isOpen, defaultEmployeeId, defaultDate, defaultInTime, defaultOutTime, todayDate]);
 
     const [timeSearch, setTimeSearch] = useState("");
 
