@@ -561,7 +561,12 @@ function CalendarCell({
                         )}
                     </div>
                 ) : isAbsent ? (
-                    <span className="text-[10px] font-bold text-rose-500 opacity-60">ABSENT</span>
+                    <div className="flex flex-col items-center gap-0.5">
+                        <span className="text-[10px] font-bold text-rose-500 opacity-60">ABSENT</span>
+                        <span className="text-[9px] font-bold text-rose-400 opacity-50 whitespace-nowrap">
+                            RH: {formatDuration(rosterMinutes)}
+                        </span>
+                    </div>
                 ) : (
                     <span className={cn("text-[10px]", textClass)}>—</span>
                 )}

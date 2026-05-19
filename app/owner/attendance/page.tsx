@@ -29,7 +29,8 @@ import {
     Coffee,
     ArrowRight,
     List,
-    CalendarDays
+    CalendarDays,
+    Search
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { AttendanceLog } from "@/types/database";
@@ -134,6 +135,7 @@ export default function OwnerAttendancePage() {
     const [viewMode, setViewMode] = useState<"list" | "calendar">("list");
     const [calendarAnchor, setCalendarAnchor] = useState<Date>(() => getStartOfWeek(new Date()));
     const [calendarPeriod, setCalendarPeriod] = useState<"week" | "fortnight" | "month">("week");
+    const [selectedManualEntry, setSelectedManualEntry] = useState<{ employeeId: string; date: string; inTime?: string; outTime?: string } | null>(null);
     const queryClient = useQueryClient();
 
     // Supabase Realtime Subscription for live updates
@@ -313,6 +315,16 @@ export default function OwnerAttendancePage() {
             return fullName.includes(q) || firstName.includes(q) || lastName.includes(q) || searchDate.includes(q);
         });
     }, [groupedRecords, searchQuery]);
+
+    const filteredEmployees = useMemo(() => {
+        if (!searchQuery) return employees;
+        const q = searchQuery.toLowerCase();
+        return employees.filter((e: any) => {
+            const fullName = `${e.first_name} ${e.last_name}`.toLowerCase();
+            const role = e.role_title?.toLowerCase() || "";
+            return fullName.includes(q) || role.includes(q);
+        });
+    }, [employees, searchQuery]);
 
     /* ── Table columns ── */
     const columns: Column<GroupedAttendance>[] = [
@@ -701,13 +713,34 @@ export default function OwnerAttendancePage() {
                     )}
                 </div>
 
-                <Button
-                    onClick={() => setIsManualEntryModalOpen(true)}
-                    className="fixed bottom-24 right-6 size-10 lg:h-9 lg:w-auto p-0 lg:px-4 lg:py-2 gap-2 shadow-2xl shadow-[hsl(var(--brand))]/40 lg:shadow-md hover:shadow-lg transition-all lg:ml-2 rounded-full lg:rounded-lg z-50 lg:static"
-                >
-                    <Plus size={24} className="lg:w-4 lg:h-4" />
-                    <span className="hidden lg:inline">Manual Entry</span>
-                </Button>
+                <div className="flex items-center gap-3 w-full lg:w-auto">
+                    <div className="relative flex-1 lg:w-64">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[hsl(var(--muted-foreground))]" />
+                        <input
+                            type="text"
+                            placeholder="Search employee..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="w-full pl-9 pr-4 py-2 text-sm rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--card))] focus:outline-none focus:ring-2 focus:ring-[hsl(var(--brand))]/20 focus:border-[hsl(var(--brand))] transition-all"
+                        />
+                        {searchQuery && (
+                            <button
+                                onClick={() => setSearchQuery("")}
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"
+                            >
+                                <X size={14} />
+                            </button>
+                        )}
+                    </div>
+                    
+                    <Button
+                        onClick={() => setIsManualEntryModalOpen(true)}
+                        className="fixed bottom-24 right-6 size-10 lg:h-9 lg:w-auto p-0 lg:px-4 lg:py-2 gap-2 shadow-2xl shadow-[hsl(var(--brand))]/40 lg:shadow-md hover:shadow-lg transition-all lg:ml-2 rounded-full lg:rounded-lg z-50 lg:static shrink-0"
+                    >
+                        <Plus size={24} className="lg:w-4 lg:h-4" />
+                        <span className="hidden lg:inline">Manual Entry</span>
+                    </Button>
+                </div>
             </div>
 
             {/* View: List or Calendar */}
@@ -715,9 +748,6 @@ export default function OwnerAttendancePage() {
                 <DataTable
                     columns={columns}
                     data={filteredData}
-                    searchable
-                    onSearchChange={setSearchQuery}
-                    searchPlaceholder="Search by employee name or date (e.g., '20 Apr' or '2026-04-20')..."
                     emptyMessage="No attendance records found for this period"
                     emptyIcon={<Clock size={40} />}
                     loading={isLoading}
@@ -775,7 +805,7 @@ export default function OwnerAttendancePage() {
             ) : (
                 <AttendanceCalendar
                     data={filteredData}
-                    employees={employees.map((e: any) => ({
+                    employees={filteredEmployees.map((e: any) => ({
                         employee_id: e.employee_id,
                         first_name: e.first_name,
                         last_name: e.last_name,
@@ -792,7 +822,14 @@ export default function OwnerAttendancePage() {
                         if (records.length > 0) {
                             setDetailRow(records[0] as GroupedAttendance);
                         } else {
-                            // Open manual entry for empty cells
+                            // Pre-fill manual entry for empty/absent cells
+                            const shift = shifts.find((s: any) => s.employee_id === employee.employee_id && s.start_time?.startsWith(date));
+                            setSelectedManualEntry({ 
+                                employeeId: employee.employee_id, 
+                                date: date,
+                                inTime: shift ? formatTime(shift.start_time, businessTimezone) : undefined,
+                                outTime: shift ? formatTime(shift.end_time, businessTimezone) : undefined
+                            });
                             setIsManualEntryModalOpen(true);
                         }
                     }}
@@ -1021,8 +1058,21 @@ export default function OwnerAttendancePage() {
             {/* ── Manual Entry Modal ── */}
             <ManualEntryModal
                 isOpen={isManualEntryModalOpen}
-                onClose={() => setIsManualEntryModalOpen(false)}
-                employees={employees}
+                onClose={() => {
+                    setIsManualEntryModalOpen(false);
+                    setSelectedManualEntry(null);
+                }}
+                employees={employees.map((e: any) => ({
+                    employee_id: e.employee_id,
+                    first_name: e.first_name,
+                    last_name: e.last_name,
+                }))}
+                fromDate={fromDate}
+                toDate={toDate}
+                defaultEmployeeId={selectedManualEntry?.employeeId}
+                defaultDate={selectedManualEntry?.date}
+                defaultInTime={selectedManualEntry?.inTime}
+                defaultOutTime={selectedManualEntry?.outTime}
             />
 
             {/* ── Edit Entry Modal ── */}
