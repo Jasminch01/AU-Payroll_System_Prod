@@ -20,40 +20,19 @@ export async function GET(request: NextRequest) {
         const timezone = await getBusinessTimezone(authUser.business_id);
         const today = getDateInTimezone(new Date().toISOString(), timezone);
 
-        // 1. Employee Count
-        const { count: employeeCount } = await supabase
-            .from('Employee')
-            .select('*', { count: 'exact', head: true })
-            .eq('business_id', authUser.business_id)
-            .eq('status', 'active');
-
-        // 2. Pending Timesheets
-        const { count: pendingTimesheets } = await supabase
-            .from('TimeSheet')
-            .select('*', { count: 'exact', head: true })
-            .eq('business_id', authUser.business_id)
-            .eq('status', 'pending');
-
-        // 3. Pending Leave Requests
-        const { count: pendingLeave } = await supabase
-            .from('LeaveRequest')
-            .select('*', { count: 'exact', head: true })
-            .eq('business_id', authUser.business_id)
-            .eq('status', 'pending');
-
-        // 4. Shifts Today
-        const { count: shiftsToday } = await supabase
-            .from('Shift')
-            .select('*', { count: 'exact', head: true })
-            .eq('business_id', authUser.business_id)
-            .eq('shift_date', today);
-
-        // 5. Total Labour Cost Today (Estimated from Timesheets)
-        const { data: timesheetsToday } = await supabase
-            .from('TimeSheet')
-            .select('gross_pay')
-            .eq('business_id', authUser.business_id)
-            .eq('date', today);
+        const [
+            { count: employeeCount },
+            { count: pendingTimesheets },
+            { count: pendingLeave },
+            { count: shiftsToday },
+            { data: timesheetsToday }
+        ] = await Promise.all([
+            supabase.from('Employee').select('*', { count: 'exact', head: true }).eq('business_id', authUser.business_id).eq('status', 'active'),
+            supabase.from('TimeSheet').select('*', { count: 'exact', head: true }).eq('business_id', authUser.business_id).eq('status', 'pending'),
+            supabase.from('LeaveRequest').select('*', { count: 'exact', head: true }).eq('business_id', authUser.business_id).eq('status', 'pending'),
+            supabase.from('Shift').select('*', { count: 'exact', head: true }).eq('business_id', authUser.business_id).eq('shift_date', today),
+            supabase.from('TimeSheet').select('gross_pay').eq('business_id', authUser.business_id).eq('date', today)
+        ]);
 
         const labourCostToday = timesheetsToday?.reduce((sum, t) => sum + Number(t.gross_pay), 0) ?? 0;
 
