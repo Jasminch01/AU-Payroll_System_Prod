@@ -19,13 +19,14 @@ export async function generateTimesheets(
 ) {
     const supabase = await createClient();
 
-    // 1. Fetch Data
+    // 1. Fetch Data — select only columns used by processDay()
     const { data: employees } = await supabase
         .from('Employee')
         .select(`
-            *,
+            employee_id,
+            business_id,
             Business:business_id(timezone),
-            EmployeeRateHistory(*)
+            EmployeeRateHistory(weekday_rate, saturday_multiplier, sunday_multiplier, public_holiday_multiplier, evening_rate, evening_start_time, evening_end_time)
         `)
         .eq('business_id', businessId)
         .eq('status', 'active')
@@ -105,7 +106,7 @@ export async function generateTimesheets(
                 const tomorrowLogs = empLogs.filter(l => l.timestamp.split('T')[0] === nextDateStr);
                 for (const tl of tomorrowLogs) {
                     dayLogs.push(tl);
-                    if (tl.event_type === 'CLOCK_OUT') break; 
+                    if (tl.event_type === 'CLOCK_OUT') break;
                 }
             }
 
@@ -269,7 +270,7 @@ function processDay(
     // --- 6. RATE TYPE & MIDNIGHT SPLITTING ---
     // For now, we calculate based on the START date for the segment
     const timezone = employee.Business?.timezone || 'Australia/Sydney';
-    
+
     const getRateType = (dt: Date) => {
         const dateStr = getDateInTimezone(dt.toISOString(), timezone);
         const dayOfWeek = getDayOfWeekInTimezone(dt, timezone); // 0 = Sunday

@@ -4,7 +4,7 @@ import { sendEmail } from './email';
 import { sendPushNotification } from './push-notifications';
 
 // --- NEW APP NOTIFICATION TYPES ---
-export type NotificationType = 
+export type NotificationType =
     | 'ATTENDANCE_CLOCK_EVENT'
     | 'SHIFT_SWAP_REQUESTED'
     | 'SHIFT_SWAP_ACCEPTED'
@@ -37,7 +37,7 @@ export interface CreateNotificationParams {
 
 export async function createNotification(params: CreateNotificationParams) {
     const { business_id, user_ids, actor_id, type, title, message, entity_id, entity_type } = params;
-    
+
     if (!user_ids || user_ids.length === 0) {
         return { success: false, error: 'No recipients provided' };
     }
@@ -85,7 +85,7 @@ export async function createNotification(params: CreateNotificationParams) {
 
         // Trigger mobile push notifications asynchronously
         Promise.allSettled(
-            filteredUserIds.map(user_id => 
+            filteredUserIds.map(user_id =>
                 sendPushNotification(
                     user_id,
                     title,
@@ -114,7 +114,7 @@ export async function notifyRosterPublished(rosterId: string, businessId: string
     // 1. Get roster details
     const { data: roster } = await supabase
         .from('Roster')
-        .select('*')
+        .select('roster_id, start_date, end_date, status')
         .eq('roster_id', rosterId)
         .single();
 
@@ -123,7 +123,7 @@ export async function notifyRosterPublished(rosterId: string, businessId: string
     // Get all shifts in this roster
     const { data: shifts } = await supabase
         .from('Shift')
-        .select('*, Employee:employee_id(email, first_name, user_id)')
+        .select('shift_id, shift_date, start_time, end_time, created_at, updated_at, business_id, Employee:employee_id(email, first_name, user_id)')
         .eq('roster_id', rosterId);
 
     if (!shifts || shifts.length === 0) return;
@@ -141,7 +141,7 @@ export async function notifyRosterPublished(rosterId: string, businessId: string
 
     for (const shift of shifts) {
         if (!shift.Employee) continue;
-        
+
         const userId = shift.Employee.user_id;
         const email = shift.Employee.email;
         if (!userId && !email) continue;
@@ -185,7 +185,7 @@ export async function notifyRosterPublished(rosterId: string, businessId: string
     if (notifiedUserKeys.length === 0) return;
 
 
-    
+
     // 4. Log the notification event summary (for audit)
     await logAudit({
         businessId,

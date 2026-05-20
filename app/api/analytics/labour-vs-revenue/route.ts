@@ -41,14 +41,6 @@ export async function GET(request: NextRequest) {
 
         // 2. Fetch total wages from PayrollLine for the period
         // We join with Payroll to filter by dates
-        const { data: payrollLines, error: pError } = await supabase
-            .from('PayrollLine')
-            .select('gross_wages, Payroll!inner(period_start, period_end)')
-            .eq('business_id', authUser.business_id) // Assuming business_id is on PayrollLine or join correctly
-            .filter('Payroll.period_start', 'gte', defaultFrom)
-            .filter('Payroll.period_end', 'lte', defaultTo);
-
-        // Refined query with proper business_id filtering
         const { data: lines, error: lineError } = await supabase
             .from('PayrollLine')
             .select('gross_wages, Payroll!inner(*)')
