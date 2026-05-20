@@ -142,8 +142,11 @@ export async function notifyRosterPublished(rosterId: string, businessId: string
     for (const shift of shifts) {
         if (!shift.Employee) continue;
 
-        const userId = shift.Employee.user_id;
-        const email = shift.Employee.email;
+        const employee = Array.isArray(shift.Employee) ? shift.Employee[0] : shift.Employee;
+        if (!employee) continue;
+
+        const userId = employee.user_id;
+        const email = employee.email;
         if (!userId && !email) continue;
 
         let type: 'new' | 'updated' | 'unchanged' = 'unchanged';
@@ -171,7 +174,7 @@ export async function notifyRosterPublished(rosterId: string, businessId: string
             const key = userId || email;
             if (!userChanges[key]) {
                 userChanges[key] = {
-                    employee: shift.Employee,
+                    employee: employee as any,
                     newShifts: [],
                     updatedShifts: []
                 };
