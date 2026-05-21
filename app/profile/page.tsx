@@ -139,6 +139,7 @@ export default function ProfilePage() {
                                         first_name: data.first_name,
                                         last_name: data.last_name,
                                         phone: data.phone,
+                                        email: data.email,
                                         dob: data.dob,
                                         emergency_contact_name: data.emergency_contact_name,
                                         emergency_contact_phone: data.emergency_contact_phone,
@@ -185,7 +186,7 @@ export default function ProfilePage() {
                                     <Input label="First Name" value={data.first_name || ""} onChange={(e) => updateField("first_name", e.target.value)} disabled />
                                     <Input label="Last Name" value={data.last_name || ""} onChange={(e) => updateField("last_name", e.target.value)} disabled />
                                 </div>
-                                <Input label="Email Address" value={user?.email || ""} disabled />
+                                <Input label="Email Address" value={data.email || user?.email || ""} onChange={(e) => updateField("email", e.target.value)} disabled={role === 'owner'} />
                                 {role !== 'owner' && (
                                     <>
                                         <div className="grid grid-cols-2 gap-4">
