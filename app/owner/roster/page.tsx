@@ -10,12 +10,14 @@ import { Badge } from "@/components/ui/badge";
 import {
     Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter
 } from "@/components/ui/dialog";
-import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/api-client";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Switch } from "@/components/ui/switch";
+import { apiGet, apiPost, apiPut, apiPatch, apiDelete } from "@/lib/api-client";
 import { getShiftTypeFromTime, calculateShiftDuration, formatDurationHours } from "@/lib/shift-utils";
 import { EmployeeSearchPicker } from "@/components/roster/employee-search-picker";
 import { useEffect } from "react";
 import { toast } from "sonner";
-import { Plus, ChevronLeft, ChevronRight, Clock, Trash2, CheckCircle2, FileText, RefreshCcw, Copy, Bell, CalendarDays, Search, Filter, ChevronsLeft, ChevronsRight, GripVertical, MoreHorizontal, Users, ChevronDown, ArrowUpDown, ArrowDownAZ, ArrowDownZA, Settings2, ChevronUp, Info, X } from "lucide-react";
+import { Plus, ChevronLeft, ChevronRight, Clock, Trash2, CheckCircle2, FileText, RefreshCcw, Copy, Bell, CalendarDays, Search, Filter, ChevronsLeft, ChevronsRight, GripVertical, MoreHorizontal, Users, ChevronDown, ArrowUpDown, ArrowDownAZ, ArrowDownZA, Settings2, ChevronUp, Info, X, ClipboardList, Check } from "lucide-react";
 import { Reorder, AnimatePresence, motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -118,6 +120,12 @@ export default function OwnerRosterPage() {
     const [rosterPeriod, setRosterPeriod] = useState<RosterPeriod>("weekly");
     const [addShiftOpen, setAddShiftOpen] = useState(false);
     const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+    const [isAttachOpen, setIsAttachOpen] = useState(false);
+    const [isAddTaskOpen, setIsAddTaskOpen] = useState(false);
+    const [adHocTaskText, setAdHocTaskText] = useState("");
+    const [adHocTaskInstructions, setAdHocTaskInstructions] = useState("");
+    const [adHocTaskRequired, setAdHocTaskRequired] = useState(false);
+    const [collapsedGroups, setCollapsedGroups] = useState<{ [key: string]: boolean }>({});
     const [selectedDate, setSelectedDate] = useState("");
     const [editingShiftId, setEditingShiftId] = useState<string | null>(null);
     const [duplicateOpen, setDuplicateOpen] = useState(false);
@@ -153,16 +161,19 @@ export default function OwnerRosterPage() {
     const [shiftStart, setShiftStart] = useState("08:00");
     const [shiftEnd, setShiftEnd] = useState("17:00");
     const [shiftType, setShiftType] = useState("morning");
+    const [isShiftTypeOverridden, setIsShiftTypeOverridden] = useState(false);
+    const [isShiftTypeModalOpen, setIsShiftTypeModalOpen] = useState(false);
+    const [shiftTypeSearch, setShiftTypeSearch] = useState("");
     const [initialFormState, setInitialFormState] = useState<any>(null);
 
     // Auto-detect shift type when start time changes (works for both new and editing shifts)
     // eslint-disable-next-line react-hooks/exhaustive-deps
     useEffect(() => {
-        if (shiftStart) {
+        if (shiftStart && !isShiftTypeOverridden) {
             const detectedType = getShiftTypeFromTime(shiftStart);
             setShiftType(detectedType);
         }
-    }, [shiftStart]);
+    }, [shiftStart, isShiftTypeOverridden]);
 
     // Reset shift form when dialog closes
     useEffect(() => {
@@ -171,8 +182,17 @@ export default function OwnerRosterPage() {
             setShiftStart("08:00");
             setShiftEnd("17:00");
             setShiftType("morning");
+            setIsShiftTypeOverridden(false);
+            setIsShiftTypeModalOpen(false);
+            setShiftTypeSearch("");
             setEditingShiftId(null);
             setInitialFormState(null);
+            setIsAttachOpen(false);
+            setIsAddTaskOpen(false);
+            setAdHocTaskText("");
+            setAdHocTaskInstructions("");
+            setAdHocTaskRequired(false);
+            setCollapsedGroups({});
         }
     }, [addShiftOpen]);
 
@@ -266,6 +286,12 @@ export default function OwnerRosterPage() {
         queryFn: () => apiGet<any[]>("/shift", { from: rangeStart, to: rangeEnd }),
     });
 
+    const dynamicRosterShiftTypes = useMemo(() => {
+        const baseTypes = ['morning', 'day', 'afternoon', 'evening', 'night', 'closing', 'delivery', 'ordering', 'manager', 'daily'];
+        const activeTypes = shifts.map((s: any) => s.shift_type?.toLowerCase()).filter(Boolean);
+        return Array.from(new Set([...baseTypes, ...activeTypes]));
+    }, [shifts]);
+
     const isEditingShiftLocked = useMemo(() => {
         if (!editingShiftId) return false;
         const shift = shifts.find((s: any) => s.shift_id === editingShiftId);
@@ -291,6 +317,78 @@ export default function OwnerRosterPage() {
         queryKey: ["availability", rangeStart, rangeEnd],
         queryFn: () => apiGet<any[]>("/availability", { from: rangeStart, to: rangeEnd }),
     });
+
+    // Checklist Queries
+    const { data: shiftChecklist = [], isLoading: isLoadingChecklist } = useQuery({
+        queryKey: ["shift-checklist", editingShiftId],
+        queryFn: () => apiGet<any[]>(`/shift/${editingShiftId}/checklist`),
+        enabled: !!editingShiftId && addShiftOpen,
+    });
+
+    const { data: templates = [] } = useQuery({
+        queryKey: ["checklist-templates"],
+        queryFn: () => apiGet<any[]>("/checklist-templates", { is_active: 'true' }),
+        enabled: addShiftOpen,
+    });
+
+    const groupedChecklist = useMemo(() => {
+        const groups: { [key: string]: { name: string, items: any[] } } = {};
+
+        shiftChecklist.forEach((item: any) => {
+            const tempId = item.source_template_id || 'custom';
+            if (!groups[tempId]) {
+                let name = '🔧 Custom Tasks';
+                if (tempId !== 'custom') {
+                    const matchedTemplate = templates.find((t: any) => t.template_id === tempId);
+                    name = matchedTemplate ? `📋 ${matchedTemplate.name}` : '📋 Attached Template Tasks';
+                }
+                groups[tempId] = { name, items: [] };
+            }
+            groups[tempId].items.push(item);
+        });
+
+        // Convert to array and sort: templates first, then custom tasks at the end
+        return Object.keys(groups).map(key => ({
+            id: key,
+            name: groups[key].name,
+            items: groups[key].items.sort((a: any, b: any) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+        })).sort((a, b) => {
+            if (a.id === 'custom') return 1;
+            if (b.id === 'custom') return -1;
+            return a.name.localeCompare(b.name);
+        });
+    }, [shiftChecklist, templates]);
+
+    const toggleGroup = useCallback((groupId: string) => {
+        setCollapsedGroups(prev => ({ ...prev, [groupId]: !prev[groupId] }));
+    }, []);
+
+    const { data: checklistSummary = [] } = useQuery({
+        queryKey: ["checklist-review", rangeStart, rangeEnd],
+        queryFn: () => apiGet<any[]>("/checklist-review", { from: rangeStart, to: rangeEnd }),
+        enabled: !!rangeStart && !!rangeEnd,
+    });
+
+    // Helper to calculate progress for a specific shift
+    const getShiftProgress = useCallback((shiftId: string) => {
+        const items = checklistSummary.filter((item: any) => item.shift_id === shiftId);
+        if (items.length === 0) return null;
+
+        const total = items.length;
+        const completed = items.filter((item: any) => item.status === 'done').length;
+        const requiredCompleted = items.filter((item: any) => item.is_required && item.status === 'done').length;
+        const requiredTotal = items.filter((item: any) => item.is_required).length;
+        const allRequiredDone = requiredTotal === requiredCompleted;
+
+        return {
+            total,
+            completed,
+            requiredTotal,
+            requiredCompleted,
+            allRequiredDone,
+            percent: Math.round((completed / total) * 100)
+        };
+    }, [checklistSummary]);
 
     // Real-time listener
     useEffect(() => {
@@ -527,6 +625,54 @@ export default function OwnerRosterPage() {
         },
     });
 
+    // Checklist Mutations
+    const addTaskMutation = useMutation({
+        mutationFn: (data: any) => apiPost(`/shift/${editingShiftId}/checklist`, data),
+        onSuccess: () => {
+            toast.success("Task added to shift");
+            queryClient.invalidateQueries({ queryKey: ["shift-checklist", editingShiftId] });
+            setIsAddTaskOpen(false);
+            setAdHocTaskText("");
+            setAdHocTaskInstructions("");
+            setAdHocTaskRequired(false);
+        },
+        onError: (err: any) => toast.error(err.message),
+    });
+
+    const updateTaskMutation = useMutation({
+        mutationFn: ({ itemId, data }: { itemId: string, data: any }) =>
+            apiPatch(`/shift/${editingShiftId}/checklist/${itemId}`, data),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["shift-checklist", editingShiftId] });
+        },
+        onError: (err: any) => toast.error(err.message),
+    });
+
+    const deleteTaskMutation = useMutation({
+        mutationFn: (itemId: string) => apiDelete(`/shift/${editingShiftId}/checklist/${itemId}`),
+        onSuccess: () => {
+            toast.success("Task removed");
+            queryClient.invalidateQueries({ queryKey: ["shift-checklist", editingShiftId] });
+        },
+        onError: (err: any) => toast.error(err.message),
+    });
+
+    const attachTemplateMutation = useMutation({
+        mutationFn: (templateIds: string[]) => {
+            console.log('[RosterPage] attachTemplateMutation mutationFn executing with templateIds:', templateIds, 'and editingShiftId:', editingShiftId);
+            return apiPut(`/shift/${editingShiftId}/checklist`, { template_ids: templateIds });
+        },
+        onSuccess: () => {
+            console.log('[RosterPage] attachTemplateMutation onSuccess called');
+            toast.success("Template tasks attached");
+            queryClient.invalidateQueries({ queryKey: ["shift-checklist", editingShiftId] });
+        },
+        onError: (err: any) => {
+            console.error('[RosterPage] attachTemplateMutation onError called:', err);
+            toast.error(err.message);
+        },
+    });
+
     const handleAddShift = () => {
         if (!shiftEmployee || !selectedDate) {
             toast.error("Please select an employee and date");
@@ -603,18 +749,20 @@ export default function OwnerRosterPage() {
             const startTime = parseTime(shift.start_time);
             const endTime = parseTime(shift.end_time);
 
-            // Auto-detect the shift type based on start time (not the old type from DB)
+            const savedType = shift.shift_type || getShiftTypeFromTime(startTime);
             const autoDetectedType = getShiftTypeFromTime(startTime);
+            const overridden = savedType !== autoDetectedType;
 
             setShiftStart(startTime);
             setShiftEnd(endTime);
-            setShiftType(autoDetectedType);
+            setShiftType(savedType);
+            setIsShiftTypeOverridden(overridden);
             setInitialFormState({
                 employee_id: empId,
                 shift_date: date,
                 start_time: startTime,
                 end_time: endTime,
-                shift_type: autoDetectedType
+                shift_type: savedType
             });
         } else {
             setEditingShiftId(null);
@@ -622,8 +770,8 @@ export default function OwnerRosterPage() {
 
             setShiftStart("08:00");
             setShiftEnd("17:00");
-
             setShiftType("morning");
+            setIsShiftTypeOverridden(false);
         }
         setAddShiftOpen(true);
     };
@@ -803,9 +951,9 @@ export default function OwnerRosterPage() {
                             }}
                         />
                         {isSearchExpanded && (
-                             <Button variant="ghost" size="icon" className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8 hover:bg-transparent" onClick={() => { setIsSearchExpanded(false); setSearchQuery(""); }}>
-                                 <X size={14} className="text-[hsl(var(--muted-foreground))]" />
-                             </Button>
+                            <Button variant="ghost" size="icon" className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8 hover:bg-transparent" onClick={() => { setIsSearchExpanded(false); setSearchQuery(""); }}>
+                                <X size={14} className="text-[hsl(var(--muted-foreground))]" />
+                            </Button>
                         )}
                     </div>
 
@@ -1158,37 +1306,37 @@ export default function OwnerRosterPage() {
                         {!isCalendarExpanded && (
                             <div className="flex flex-col sticky top-0 z-10 bg-white">
                                 <div className="flex overflow-x-auto p-3 no-scrollbar gap-2">
-                                {rosterDates.map((d, i) => {
-                                    const isSelected = selectedDayIndex === i;
-                                    const isToday = formatDate(d) === formatDate(new Date());
-                                    const dayName = d.toLocaleDateString("en-AU", { weekday: "short" });
-                                    const dayNum = d.getDate();
+                                    {rosterDates.map((d, i) => {
+                                        const isSelected = selectedDayIndex === i;
+                                        const isToday = formatDate(d) === formatDate(new Date());
+                                        const dayName = d.toLocaleDateString("en-AU", { weekday: "short" });
+                                        const dayNum = d.getDate();
 
-                                    const todayMidnight = new Date();
-                                    todayMidnight.setHours(0, 0, 0, 0);
-                                    const dMidnight = new Date(d);
-                                    dMidnight.setHours(0, 0, 0, 0);
-                                    const isPastDay = dMidnight < todayMidnight;
+                                        const todayMidnight = new Date();
+                                        todayMidnight.setHours(0, 0, 0, 0);
+                                        const dMidnight = new Date(d);
+                                        dMidnight.setHours(0, 0, 0, 0);
+                                        const isPastDay = dMidnight < todayMidnight;
 
-                                    return (
-                                        <button
-                                            key={i}
-                                            id={`day-btn-${i}`}
-                                            onClick={() => setSelectedDayIndex(i)}
-                                            className={cn(
-                                                "flex flex-col items-center justify-center min-w-[56px] h-14 rounded-xl transition-all shrink-0",
-                                                isSelected
-                                                    ? "bg-[hsl(var(--brand))] text-white shadow-md shadow-[hsl(var(--brand))]/20 scale-105"
-                                                    : "bg-[hsl(var(--muted))]/10 text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted))]/20",
-                                                isToday && !isSelected && "ring-2 ring-[hsl(var(--brand))]/30",
-                                                isPastDay && !isSelected && "opacity-75 bg-[hsl(var(--muted))]/15"
-                                            )}
-                                        >
-                                            <span className="text-[9px] uppercase font-black tracking-tighter opacity-70">{dayName}</span>
-                                            <span className="text-base font-black leading-tight">{dayNum}</span>
-                                        </button>
-                                    );
-                                })}
+                                        return (
+                                            <button
+                                                key={i}
+                                                id={`day-btn-${i}`}
+                                                onClick={() => setSelectedDayIndex(i)}
+                                                className={cn(
+                                                    "flex flex-col items-center justify-center min-w-[56px] h-14 rounded-xl transition-all shrink-0",
+                                                    isSelected
+                                                        ? "bg-[hsl(var(--brand))] text-white shadow-md shadow-[hsl(var(--brand))]/20 scale-105"
+                                                        : "bg-[hsl(var(--muted))]/10 text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted))]/20",
+                                                    isToday && !isSelected && "ring-2 ring-[hsl(var(--brand))]/30",
+                                                    isPastDay && !isSelected && "opacity-75 bg-[hsl(var(--muted))]/15"
+                                                )}
+                                            >
+                                                <span className="text-[9px] uppercase font-black tracking-tighter opacity-70">{dayName}</span>
+                                                <span className="text-base font-black leading-tight">{dayNum}</span>
+                                            </button>
+                                        );
+                                    })}
                                 </div>
                             </div>
                         )}
@@ -1248,20 +1396,20 @@ export default function OwnerRosterPage() {
                                                 </div>
                                             ) : (
                                                 <div className="flex items-center w-full gap-2 relative">
-                                                     <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[hsl(var(--muted-foreground))]" />
-                                                     <Input
-                                                         placeholder="Search employee..."
-                                                         className="pl-9 h-10 w-full bg-white border-[hsl(var(--border))] rounded-xl focus:ring-2 focus:ring-[hsl(var(--brand))]/10 pr-10 shadow-sm"
-                                                         value={searchQuery}
-                                                         autoFocus
-                                                         onChange={(e) => {
-                                                             setSearchQuery(e.target.value);
-                                                             setCurrentPage(1);
-                                                         }}
-                                                     />
-                                                     <Button variant="ghost" size="icon" className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8 hover:bg-transparent" onClick={() => { setIsSearchExpanded(false); setSearchQuery(""); }}>
-                                                         <X size={14} className="text-[hsl(var(--muted-foreground))]" />
-                                                     </Button>
+                                                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[hsl(var(--muted-foreground))]" />
+                                                    <Input
+                                                        placeholder="Search employee..."
+                                                        className="pl-9 h-10 w-full bg-white border-[hsl(var(--border))] rounded-xl focus:ring-2 focus:ring-[hsl(var(--brand))]/10 pr-10 shadow-sm"
+                                                        value={searchQuery}
+                                                        autoFocus
+                                                        onChange={(e) => {
+                                                            setSearchQuery(e.target.value);
+                                                            setCurrentPage(1);
+                                                        }}
+                                                    />
+                                                    <Button variant="ghost" size="icon" className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8 hover:bg-transparent" onClick={() => { setIsSearchExpanded(false); setSearchQuery(""); }}>
+                                                        <X size={14} className="text-[hsl(var(--muted-foreground))]" />
+                                                    </Button>
                                                 </div>
                                             )}
                                         </div>
@@ -1663,11 +1811,40 @@ export default function OwnerRosterPage() {
                                                                                     ({formatDurationHours(calculateShiftDuration(startTimeStr, endTimeStr))})
                                                                                 </span>
                                                                             </div>
-                                                                            <div className="mt-auto pt-1">
-                                                                                <span className="text-[9px] font-black uppercase tracking-tighter truncate block opacity-80">
+
+                                                                            <div className="mt-auto flex items-end justify-between gap-1">
+                                                                                <span className="text-[9px] font-black uppercase tracking-tighter truncate block opacity-80 mb-0.5">
                                                                                     {s.shift_type}
                                                                                 </span>
+                                                                                {getShiftProgress(s.shift_id) && (
+                                                                                    <div className="flex items-center gap-1.5 shrink-0 bg-white/50 px-1 py-0.5 rounded-md border border-black/5 shadow-sm mb-0.5">
+                                                                                        <div className="relative w-3.5 h-3.5">
+                                                                                            <svg className="w-full h-full" viewBox="0 0 100 100">
+                                                                                                <circle className="text-slate-200" strokeWidth="20" stroke="currentColor" fill="transparent" r="40" cx="50" cy="50" />
+                                                                                                <circle
+                                                                                                    className={cn(
+                                                                                                        getShiftProgress(s.shift_id)?.allRequiredDone ? "text-emerald-500" : "text-[hsl(var(--brand))]"
+                                                                                                    )}
+                                                                                                    strokeWidth="20"
+                                                                                                    strokeDasharray={251.2}
+                                                                                                    strokeDashoffset={251.2 - (251.2 * (getShiftProgress(s.shift_id)?.percent || 0)) / 100}
+                                                                                                    strokeLinecap="round"
+                                                                                                    stroke="currentColor"
+                                                                                                    fill="transparent"
+                                                                                                    r="40" cx="50" cy="50"
+                                                                                                />
+                                                                                            </svg>
+                                                                                        </div>
+                                                                                        <span className={cn(
+                                                                                            "text-[8px] font-black tabular-nums",
+                                                                                            getShiftProgress(s.shift_id)?.allRequiredDone ? "text-emerald-700" : "text-slate-600"
+                                                                                        )}>
+                                                                                            {getShiftProgress(s.shift_id)?.completed}/{getShiftProgress(s.shift_id)?.total}
+                                                                                        </span>
+                                                                                    </div>
+                                                                                )}
                                                                             </div>
+
                                                                             {/* Bottom Accent Bar as requested in reference image */}
                                                                             <div className={cn(
                                                                                 "absolute bottom-0 left-0 right-0 h-1.5",
@@ -1763,582 +1940,959 @@ export default function OwnerRosterPage() {
                         </div>
                     </div>
                 )}
-            </div>
-
-            <Dialog open={addShiftOpen} onOpenChange={setAddShiftOpen}>
-                <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle>{editingShiftId ? 'Edit Shift' : 'Add Shift'}</DialogTitle>
-                        <DialogDescription>
-                            {editingShiftId ? (
-                                isEditingShiftLocked
-                                    ? "This shift has already started and cannot be modified."
-                                    : "Modify shift details or remove it"
-                            ) : `Assign a shift for ${selectedDate ? new Date(selectedDate + "T00:00:00").toLocaleDateString("en-AU", { weekday: "long", month: "short", day: "numeric" }) : ""}`}
-                        </DialogDescription>
-                    </DialogHeader>
-
-                    <div className="space-y-4 py-2">
-                        <Input
-                            label="Shift Date"
-                            type="date"
-                            value={selectedDate}
-                            onChange={(e) => setSelectedDate(e.target.value)}
-                            disabled={isEditingShiftLocked}
-                        />
-                        <EmployeeSearchPicker
-                            employees={activeEmployees}
-                            value={shiftEmployee}
-                            onChange={(id) => setShiftEmployee(id)}
-                            disabled={isEditingShiftLocked}
-                        />
-
-                        <div className="grid grid-cols-2 gap-3">
-                            <div className="space-y-1.5 relative">
-                                <label className="text-sm font-medium">Start Time</label>
-                                <button
-                                    type="button"
-                                    onClick={() => !isEditingShiftLocked && setIsStartDropdownOpen(!isStartDropdownOpen)}
-                                    disabled={isEditingShiftLocked}
-                                    className={cn(
-                                        "flex h-10 w-full rounded-lg border border-[hsl(var(--input))] bg-transparent px-3 py-2 text-sm items-center justify-between focus:outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]/20 focus:border-[hsl(var(--brand))]",
-                                        isEditingShiftLocked && "opacity-50 cursor-not-allowed"
-                                    )}
-                                >
-                                    <span>{shiftStart}</span>
-                                    <Clock size={14} className="text-[hsl(var(--muted-foreground))]" />
-                                </button>
-
-                                {isStartDropdownOpen && (
-                                    <>
-                                        <div className="fixed inset-0 z-60" onClick={() => setIsStartDropdownOpen(false)} />
-                                        <div className="absolute top-full mb-2 left-0 w-full bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-xl shadow-2xl z-61 overflow-hidden flex flex-col animate-in slide-in-from-bottom-2 duration-200">
-                                            <div className="p-2 border-b bg-[hsl(var(--muted))]/30 sticky top-0">
-                                                <input
-                                                    autoFocus
-                                                    type="text"
-                                                    placeholder="Search..."
-                                                    value={timeSearch}
-                                                    onChange={e => setTimeSearch(e.target.value)}
-                                                    className="w-full h-8 px-2 text-[10px] rounded-md border bg-[hsl(var(--background))]"
-                                                />
-                                            </div>
-                                            <div className="max-h-48 overflow-y-auto p-1" ref={el => {
-                                                if (el && !el.dataset.scrolled) {
-                                                    const selected = el.querySelector('[data-selected="true"]');
-                                                    if (selected) {
-                                                        selected.scrollIntoView({ block: "center" });
-                                                        el.dataset.scrolled = "true";
-                                                    }
-                                                }
-                                            }}>
-                                                {(() => {
-                                                    const filtered = TIME_OPTIONS.filter(t => t.includes(timeSearch));
-
-                                                    return filtered.map(time => (
-                                                        <button
-                                                            key={time}
-                                                            type="button"
-                                                            onClick={() => {
-                                                                setShiftStart(time);
-                                                                setIsStartDropdownOpen(false);
-                                                                setTimeSearch("");
-                                                            }}
-                                                            data-selected={shiftStart === time}
-                                                            className={cn(
-                                                                "w-full text-left px-3 py-2 text-xs rounded-lg transition-colors",
-                                                                shiftStart === time
-                                                                    ? "bg-[hsl(var(--brand))] text-white"
-                                                                    : "hover:bg-[hsl(var(--muted))] text-[hsl(var(--foreground))]"
-                                                            )}
-                                                        >
-                                                            {time}
-                                                        </button>
-                                                    ));
-                                                })()}
-                                            </div>
-                                        </div>
-                                    </>
-                                )}
-                            </div>
-                            <div className="space-y-1.5 relative">
-                                <label className="text-sm font-medium">End Time</label>
-                                <button
-                                    type="button"
-                                    onClick={() => !isEditingShiftLocked && setIsEndDropdownOpen(!isEndDropdownOpen)}
-                                    disabled={isEditingShiftLocked}
-                                    className={cn(
-                                        "flex h-10 w-full rounded-lg border border-[hsl(var(--input))] bg-transparent px-3 py-2 text-sm items-center justify-between focus:outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]/20 focus:border-[hsl(var(--brand))]",
-                                        isEditingShiftLocked && "opacity-50 cursor-not-allowed"
-                                    )}
-                                >
-                                    <span>{shiftEnd}</span>
-                                    <Clock size={14} className="text-[hsl(var(--muted-foreground))]" />
-                                </button>
-
-                                {isEndDropdownOpen && (
-                                    <>
-                                        <div className="fixed inset-0 z-60" onClick={() => setIsEndDropdownOpen(false)} />
-                                        <div className="absolute top-full mb-2 left-0 w-full bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-xl shadow-2xl z-61 overflow-hidden flex flex-col animate-in slide-in-from-bottom-2 duration-200">
-                                            <div className="p-2 border-b bg-[hsl(var(--muted))]/30 sticky top-0">
-                                                <input
-                                                    autoFocus
-                                                    type="text"
-                                                    placeholder="Search..."
-                                                    value={timeSearch}
-                                                    onChange={e => setTimeSearch(e.target.value)}
-                                                    className="w-full h-8 px-2 text-[10px] rounded-md border bg-[hsl(var(--background))]"
-                                                />
-                                            </div>
-                                            <div className="max-h-48 overflow-y-auto p-1" ref={el => {
-                                                if (el && !el.dataset.scrolled) {
-                                                    const selected = el.querySelector('[data-selected="true"]');
-                                                    if (selected) {
-                                                        selected.scrollIntoView({ block: "center" });
-                                                        el.dataset.scrolled = "true";
-                                                    }
-                                                }
-                                            }}>
-                                                {(() => {
-                                                    const filtered = TIME_OPTIONS.filter(t => t.includes(timeSearch));
-
-                                                    return filtered.map(time => (
-                                                        <button
-                                                            key={time}
-                                                            type="button"
-                                                            onClick={() => {
-                                                                setShiftEnd(time);
-                                                                setIsEndDropdownOpen(false);
-                                                                setTimeSearch("");
-                                                            }}
-                                                            data-selected={shiftEnd === time}
-                                                            className={cn(
-                                                                "w-full text-left px-3 py-2 text-xs rounded-lg transition-colors",
-                                                                shiftEnd === time
-                                                                    ? "bg-[hsl(var(--brand))] text-white"
-                                                                    : "hover:bg-[hsl(var(--muted))] text-[hsl(var(--foreground))]"
-                                                            )}
-                                                        >
-                                                            {time}
-                                                        </button>
-                                                    ));
-                                                })()}
-                                            </div>
-                                        </div>
-                                    </>
-                                )}
-                            </div>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-3 items-center">
-                            <div className="space-y-1.5 bg-[hsl(var(--brand-light))]/10 p-3 rounded-xl border border-[hsl(var(--brand))]/10">
-                                <label className="text-[10px] font-black uppercase text-[hsl(var(--muted-foreground))] tracking-widest block mb-1">Shift Type</label>
-                                <div className="flex items-center gap-2">
-                                    <Clock size={14} className="text-[hsl(var(--brand))]" />
-                                    <span className="text-sm font-bold capitalize text-[hsl(var(--foreground))]">{shiftType}</span>
-                                </div>
-                            </div>
-                            <div className="space-y-1.5 bg-[hsl(var(--muted))]/30 p-3 rounded-xl border border-[hsl(var(--border))]">
-                                <label className="text-[10px] font-black uppercase text-[hsl(var(--muted-foreground))] tracking-widest block mb-1">Total Hours</label>
-                                <div className="flex items-center gap-2">
-                                    <FileText size={14} className="text-[hsl(var(--muted-foreground))]" />
-                                    <span className="text-sm font-bold text-[hsl(var(--foreground))]">{formatDurationHours(calculateShiftDuration(shiftStart, shiftEnd))}</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <DialogFooter className="flex items-center justify-between sm:justify-between w-full">
-                        <div className="flex items-center gap-2">
-                            {editingShiftId && (
-                                <Button
-                                    variant="outline"
-                                    disabled={isEditingShiftLocked}
-                                    className="text-[hsl(var(--danger))] border-[hsl(var(--danger))]/20 hover:bg-[hsl(var(--danger))]/10 disabled:opacity-30"
-                                    onClick={() => setDeleteConfirmOpen(true)}
-                                    loading={deleteShiftMutation.isPending}
-                                >
-                                    <Trash2 size={16} className="mr-2" /> Delete
-                                </Button>
-                            )}
-                        </div>
-                        <div className="flex items-center gap-2">
-                            {editingShiftId && shifts.find((s: any) => s.shift_id === editingShiftId)?.shift_status === 'draft' && (
-                                <Button
-                                    variant="outline"
-                                    className="border-[hsl(var(--brand))] text-[hsl(var(--brand))] hover:bg-[hsl(var(--brand))]/10"
-                                    onClick={() => notifyShiftMutation.mutate(editingShiftId)}
-                                    loading={notifyShiftMutation.isPending}
-                                    disabled={notifyShiftMutation.isPending}
-                                >
-                                    Publish Shift
-                                </Button>
-                            )}
-                            <Button variant="outline" onClick={() => setAddShiftOpen(false)}>Cancel</Button>
-                            <Button
-                                onClick={handleAddShift}
-                                loading={createShiftMutation.isPending || updateShiftMutation.isPending}
-                                disabled={editingShiftId ? (!isDirty || isEditingShiftLocked) : false}
-                            >
-                                {editingShiftId ? 'Update Shift' : (
-                                    <>
-                                        <Plus size={16} className="mr-2" /> Create Shift
-                                    </>
-                                )}
-                            </Button>
-                        </div>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
-
-            <Dialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
-                <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle>Confirm Deletion</DialogTitle>
-                        <DialogDescription>
-                            Are you sure you want to delete this shift? This action cannot be undone.
-                        </DialogDescription>
-                    </DialogHeader>
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setDeleteConfirmOpen(false)}>Cancel</Button>
-                        <Button
-                            variant="default"
-                            className="bg-[hsl(var(--danger))] text-white hover:bg-[hsl(var(--danger))]/90"
-                            onClick={() => editingShiftId && deleteShiftMutation.mutate(editingShiftId)}
-                            loading={deleteShiftMutation.isPending}
-                        >
-                            Delete Shift
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
-
-            <Dialog open={expansionOpen} onOpenChange={setExpansionOpen}>
-                <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle>Expand Roster Duration?</DialogTitle>
-                        <DialogDescription>
-                            The date you selected falls outside the current roster range ({currentRoster ? `${formatDate(currentRoster.start_date)} to ${formatDate(currentRoster.end_date)}` : ""}).
-                            Adding this shift will automatically switch and expand your current roster to a larger period (Monthly/Fortnightly).
-                            <br /><br />
-                            Do you want to switch the current roster?
-                        </DialogDescription>
-                    </DialogHeader>
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setExpansionOpen(false)}>Decline (Cancel Add)</Button>
-                        <Button
-                            variant="default"
-                            className="bg-[hsl(var(--brand))] text-white hover:bg-[hsl(var(--brand-hover))]"
-                            onClick={confirmExpansion}
-                        >
-                            Accept & Expand
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
-
-            <Dialog open={deleteRosterConfirmOpen} onOpenChange={setDeleteRosterConfirmOpen}>
-                <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle>Delete Entire Roster?</DialogTitle>
-                        <DialogDescription>
-                            Are you sure you want to delete this roster and **all its shifts**? This action cannot be undone.
-                        </DialogDescription>
-                    </DialogHeader>
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setDeleteRosterConfirmOpen(false)}>Cancel</Button>
-                        <Button
-                            variant="default"
-                            className="bg-red-600 text-white hover:bg-red-700"
-                            onClick={() => currentRoster && deleteRosterMutation.mutate(currentRoster.roster_id)}
-                            loading={deleteRosterMutation.isPending}
-                        >
-                            Delete Roster
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
-
-            <Dialog open={duplicateOpen} onOpenChange={setDuplicateOpen}>
-                <DialogContent className="max-w-md p-0 overflow-hidden rounded-2xl border-none shadow-2xl">
-                    <div className="bg-white p-6">
-                        <DialogHeader className="mb-6">
-                            <div className="flex items-center justify-between">
-                                <DialogTitle className="text-2xl font-bold text-[hsl(var(--foreground))]">Copy shifts</DialogTitle>
-                            </div>
-                        </DialogHeader>
-
-                        <div className="space-y-6">
-                            <div className="flex items-center justify-between pl-1">
-                                <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Quick Copy</h3>
-                                <button
-                                    onClick={() => setIsAdvancedCopy(!isAdvancedCopy)}
-                                    className="text-[10px] font-black text-[hsl(var(--brand))] uppercase tracking-widest flex items-center gap-1 hover:underline"
-                                >
-                                    {isAdvancedCopy ? <ChevronUp size={12} /> : <Settings2 size={12} />}
-                                    {isAdvancedCopy ? "Simplified" : "Advanced"}
-                                </button>
-                            </div>
-
-                            {!isAdvancedCopy ? (
-                                <div className="grid grid-cols-2 gap-3">
-                                    {[
-                                        { id: 'next_week', label: `Next ${rosterPeriod === 'monthly' ? 'Month' : 'Week'}`, icon: ChevronRight },
-                                        { id: 'prev_week', label: `Prev ${rosterPeriod === 'monthly' ? 'Month' : 'Week'}`, icon: ChevronLeft }
-                                    ].map((opt) => (
-                                        <button
-                                            key={opt.id}
-                                            onClick={() => setCopyOption(opt.id as any)}
-                                            className={cn(
-                                                "flex flex-col items-center justify-center gap-3 p-4 rounded-xl border-2 transition-all group",
-                                                copyOption === opt.id
-                                                    ? "bg-[hsl(var(--brand))]/5 border-[hsl(var(--brand))] text-[hsl(var(--brand))]"
-                                                    : "bg-white border-slate-100 text-slate-500 hover:border-slate-200"
-                                            )}
-                                        >
-                                            <div className={cn(
-                                                "w-10 h-10 rounded-full flex items-center justify-center transition-all",
-                                                copyOption === opt.id ? "bg-[hsl(var(--brand))] text-white shadow-lg shadow-[hsl(var(--brand))]/20" : "bg-slate-50 text-slate-400"
+                <Dialog open={addShiftOpen} onOpenChange={setAddShiftOpen}>
+                    <DialogContent className="max-w-md sm:max-w-xl p-0 overflow-hidden rounded-2xl border-none shadow-2xl bg-white">
+                        <Tabs defaultValue="details" className="w-full">
+                            <div className="bg-slate-50 border-b border-slate-100 px-6 pt-6 pb-2">
+                                <DialogHeader className="mb-4">
+                                    <DialogTitle className="text-2xl font-bold flex items-center justify-between">
+                                        <span>{editingShiftId ? "Edit Shift" : "Add New Shift"}</span>
+                                        {editingShiftId && (
+                                            <Badge variant="secondary" className={cn(
+                                                "ml-2 text-[10px] font-black uppercase tracking-widest px-2 py-0.5",
+                                                shifts.find((s: any) => s.shift_id === editingShiftId)?.shift_status === 'published'
+                                                    ? "bg-emerald-100 text-emerald-700"
+                                                    : "bg-amber-100 text-amber-700"
                                             )}>
-                                                <opt.icon size={18} />
-                                            </div>
-                                            <span className="text-xs font-black uppercase tracking-wider">{opt.label}</span>
-                                        </button>
-                                    ))}
-                                </div>
-                            ) : (
-                                <div className="space-y-4 p-4 bg-slate-50 rounded-2xl border border-slate-100 animate-in slide-in-from-top-2 duration-300">
-                                    <div className="space-y-2">
-                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Copy Shifts From</label>
-                                        <div className="relative group">
-                                            <select
-                                                value={sourceOffset}
-                                                onChange={(e) => setSourceOffset(parseInt(e.target.value))}
-                                                className="w-full h-11 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 outline-none transition-all focus:ring-4 focus:ring-[hsl(var(--brand))]/10 focus:border-[hsl(var(--brand))] appearance-none cursor-pointer pr-10"
+                                                {shifts.find((s: any) => s.shift_id === editingShiftId)?.shift_status || 'Draft'}
+                                            </Badge>
+                                        )}
+                                    </DialogTitle>
+                                    <DialogDescription>
+                                        {editingShiftId ? "Update shift details or manage its checklist." : "Assign a shift to an employee."}
+                                    </DialogDescription>
+                                </DialogHeader>
+
+                                <TabsList className="grid w-full grid-cols-2 h-10 p-1 bg-slate-200/50 rounded-xl">
+                                    <TabsTrigger value="details" className="rounded-lg font-bold text-xs data-[state=active]:bg-white data-[state=active]:shadow-sm">
+                                        <Clock size={14} className="mr-2" />
+                                        Details
+                                    </TabsTrigger>
+                                    <TabsTrigger value="checklist" disabled={!editingShiftId} className="rounded-lg font-bold text-xs data-[state=active]:bg-white data-[state=active]:shadow-sm">
+                                        <ClipboardList size={14} className="mr-2" />
+                                        Checklist
+                                        {shiftChecklist.length > 0 && (
+                                            <span className="ml-1.5 px-1.5 py-0.5 rounded-full bg-[hsl(var(--brand))] text-white text-[9px]">
+                                                {shiftChecklist.length}
+                                            </span>
+                                        )}
+                                    </TabsTrigger>
+                                </TabsList>
+                            </div>
+
+                            <TabsContent value="details" className="p-6 m-0 space-y-6">
+                                <div className="space-y-4">
+                                    <Input
+                                        label="Shift Date"
+                                        type="date"
+                                        value={selectedDate}
+                                        onChange={(e) => setSelectedDate(e.target.value)}
+                                        disabled={isEditingShiftLocked}
+                                    />
+                                    <div className="space-y-1.5">
+                                        <label className="text-sm font-medium">Employee</label>
+                                        <EmployeeSearchPicker
+                                            employees={activeEmployees}
+                                            value={shiftEmployee}
+                                            onChange={(id) => setShiftEmployee(id)}
+                                            disabled={isEditingShiftLocked}
+                                        />
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="space-y-1.5 relative">
+                                            <label className="text-sm font-medium">Start Time</label>
+                                            <button
+                                                type="button"
+                                                onClick={() => !isEditingShiftLocked && setIsStartDropdownOpen(!isStartDropdownOpen)}
+                                                disabled={isEditingShiftLocked}
+                                                className={cn(
+                                                    "flex h-10 w-full rounded-lg border border-[hsl(var(--input))] bg-transparent px-3 py-2 text-sm items-center justify-between focus:outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]/20 focus:border-[hsl(var(--brand))]",
+                                                    isEditingShiftLocked && "opacity-50 cursor-not-allowed"
+                                                )}
                                             >
-                                                {periodOptions.map((opt) => (
-                                                    <option key={opt.offset} value={opt.offset}>
-                                                        {opt.label} {opt.offset === offset ? "(Current View)" : ""}
-                                                    </option>
-                                                ))}
-                                            </select>
-                                            <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
-                                                <ChevronDown size={16} />
-                                            </div>
-                                        </div>
-                                    </div>
+                                                <span>{shiftStart}</span>
+                                                <Clock size={14} className="text-[hsl(var(--muted-foreground))]" />
+                                            </button>
 
-                                    <div className="flex justify-center -my-2 relative z-10">
-                                        <div className="bg-white p-2 rounded-full border border-slate-100 shadow-sm text-[hsl(var(--brand))]">
-                                            <ArrowUpDown size={14} strokeWidth={3} />
+                                            {isStartDropdownOpen && (
+                                                <>
+                                                    <div className="fixed inset-0 z-60" onClick={() => setIsStartDropdownOpen(false)} />
+                                                    <div className="absolute top-full mb-2 left-0 w-full bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-xl shadow-2xl z-61 overflow-hidden flex flex-col animate-in slide-in-from-bottom-2 duration-200">
+                                                        <div className="p-2 border-b bg-[hsl(var(--muted))]/30 sticky top-0">
+                                                            <input
+                                                                autoFocus
+                                                                type="text"
+                                                                placeholder="Search..."
+                                                                value={timeSearch}
+                                                                onChange={e => setTimeSearch(e.target.value)}
+                                                                className="w-full h-8 px-2 text-[10px] rounded-md border bg-[hsl(var(--background))]"
+                                                            />
+                                                        </div>
+                                                        <div className="max-h-48 overflow-y-auto p-1">
+                                                            {TIME_OPTIONS.filter(t => t.includes(timeSearch)).map(time => (
+                                                                <button
+                                                                    key={time}
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        setShiftStart(time);
+                                                                        setIsStartDropdownOpen(false);
+                                                                        setTimeSearch("");
+                                                                    }}
+                                                                    className={cn(
+                                                                        "w-full text-left px-3 py-2 text-xs rounded-lg transition-colors",
+                                                                        shiftStart === time
+                                                                            ? "bg-[hsl(var(--brand))] text-white"
+                                                                            : "hover:bg-[hsl(var(--muted))] text-[hsl(var(--foreground))]"
+                                                                    )}
+                                                                >
+                                                                    {time}
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                </>
+                                            )}
                                         </div>
-                                    </div>
 
-                                    <div className="space-y-2">
-                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Copy Shifts To</label>
-                                        <div className="relative group">
-                                            <select
-                                                value={targetOffset}
-                                                onChange={(e) => setTargetOffset(parseInt(e.target.value))}
-                                                className="w-full h-11 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 outline-none transition-all focus:ring-4 focus:ring-[hsl(var(--brand))]/10 focus:border-[hsl(var(--brand))] appearance-none cursor-pointer pr-10"
+                                        <div className="space-y-1.5 relative">
+                                            <label className="text-sm font-medium">End Time</label>
+                                            <button
+                                                type="button"
+                                                onClick={() => !isEditingShiftLocked && setIsEndDropdownOpen(!isEndDropdownOpen)}
+                                                disabled={isEditingShiftLocked}
+                                                className={cn(
+                                                    "flex h-10 w-full rounded-lg border border-[hsl(var(--input))] bg-transparent px-3 py-2 text-sm items-center justify-between focus:outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]/20 focus:border-[hsl(var(--brand))]",
+                                                    isEditingShiftLocked && "opacity-50 cursor-not-allowed"
+                                                )}
                                             >
-                                                {periodOptions.map((opt) => (
-                                                    <option key={opt.offset} value={opt.offset}>
-                                                        {opt.label} {opt.offset === offset ? "(Current View)" : ""}
-                                                    </option>
-                                                ))}
-                                            </select>
-                                            <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
-                                                <ChevronDown size={16} />
+                                                <span>{shiftEnd}</span>
+                                                <Clock size={14} className="text-[hsl(var(--muted-foreground))]" />
+                                            </button>
+
+                                            {isEndDropdownOpen && (
+                                                <>
+                                                    <div className="fixed inset-0 z-60" onClick={() => setIsEndDropdownOpen(false)} />
+                                                    <div className="absolute top-full mb-2 left-0 w-full bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-xl shadow-2xl z-61 overflow-hidden flex flex-col animate-in slide-in-from-bottom-2 duration-200">
+                                                        <div className="p-2 border-b bg-[hsl(var(--muted))]/30 sticky top-0">
+                                                            <input
+                                                                autoFocus
+                                                                type="text"
+                                                                placeholder="Search..."
+                                                                value={timeSearch}
+                                                                onChange={e => setTimeSearch(e.target.value)}
+                                                                className="w-full h-8 px-2 text-[10px] rounded-md border bg-[hsl(var(--background))]"
+                                                            />
+                                                        </div>
+                                                        <div className="max-h-48 overflow-y-auto p-1">
+                                                            {TIME_OPTIONS.filter(t => t.includes(timeSearch)).map(time => (
+                                                                <button
+                                                                    key={time}
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        setShiftEnd(time);
+                                                                        setIsEndDropdownOpen(false);
+                                                                        setTimeSearch("");
+                                                                    }}
+                                                                    className={cn(
+                                                                        "w-full text-left px-3 py-2 text-xs rounded-lg transition-colors",
+                                                                        shiftEnd === time
+                                                                            ? "bg-[hsl(var(--brand))] text-white"
+                                                                            : "hover:bg-[hsl(var(--muted))] text-[hsl(var(--foreground))]"
+                                                                    )}
+                                                                >
+                                                                    {time}
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                </>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-3 items-center">
+                                        <div className="space-y-1.5 bg-[hsl(var(--brand-light))]/10 p-3 rounded-xl border border-[hsl(var(--brand))]/10">
+                                            <label className="text-[10px] font-black uppercase text-[hsl(var(--muted-foreground))] tracking-widest block mb-1">Shift Type</label>
+                                            <button
+                                                type="button"
+                                                onClick={() => setIsShiftTypeModalOpen(true)}
+                                                className="w-full flex items-center justify-between text-left focus:outline-none hover:opacity-85 transition-opacity"
+                                            >
+                                                <div className="flex items-center gap-2">
+                                                    <Clock size={14} className="text-[hsl(var(--brand))]" />
+                                                    <span className="text-sm font-bold capitalize text-[hsl(var(--foreground))]">
+                                                        {shiftType}
+                                                        {isShiftTypeOverridden && <span className="ml-1 text-[9px] font-black text-[hsl(var(--brand))] uppercase tracking-wider bg-[hsl(var(--brand-light))]/40 px-1.5 py-0.5 rounded">Custom</span>}
+                                                    </span>
+                                                </div>
+                                                <ChevronDown size={14} className="text-slate-400" />
+                                            </button>
+                                        </div>
+                                        <div className="space-y-1.5 bg-[hsl(var(--muted))]/30 p-3 rounded-xl border border-[hsl(var(--border))]">
+                                            <label className="text-[10px] font-black uppercase text-[hsl(var(--muted-foreground))] tracking-widest block mb-1">Total Hours</label>
+                                            <div className="flex items-center gap-2">
+                                                <FileText size={14} className="text-[hsl(var(--muted-foreground))]" />
+                                                <span className="text-sm font-bold text-[hsl(var(--foreground))]">{formatDurationHours(calculateShiftDuration(shiftStart, shiftEnd))}</span>
                                             </div>
                                         </div>
                                     </div>
                                 </div>
-                            )}
-                        </div>
 
-                        <div className="flex justify-end mt-8">
-                            <Button
-                                className="px-8 py-6 rounded-xl bg-[hsl(var(--brand))] text-white hover:bg-[hsl(var(--brand-hover))] font-bold text-lg shadow-lg shadow-[hsl(var(--brand))]/20"
-                                onClick={() => {
-                                    let payload: any = null;
+                                <DialogFooter className="flex items-center justify-between sm:justify-between w-full pt-4">
+                                    <div className="flex items-center gap-2">
+                                        {editingShiftId && (
+                                            <Button
+                                                variant="outline"
+                                                disabled={isEditingShiftLocked}
+                                                className="text-[hsl(var(--danger))] border-[hsl(var(--danger))]/20 hover:bg-[hsl(var(--danger))]/10 disabled:opacity-30"
+                                                onClick={() => setDeleteConfirmOpen(true)}
+                                                loading={deleteShiftMutation.isPending}
+                                            >
+                                                <Trash2 size={16} className="mr-2" /> Delete
+                                            </Button>
+                                        )}
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        {editingShiftId && shifts.find((s: any) => s.shift_id === editingShiftId)?.shift_status === 'draft' && (
+                                            <Button
+                                                variant="outline"
+                                                className="border-[hsl(var(--brand))] text-[hsl(var(--brand))] hover:bg-[hsl(var(--brand))]/10"
+                                                onClick={() => notifyShiftMutation.mutate(editingShiftId)}
+                                                loading={notifyShiftMutation.isPending}
+                                                disabled={notifyShiftMutation.isPending}
+                                            >
+                                                Publish Shift
+                                            </Button>
+                                        )}
+                                        <Button variant="outline" onClick={() => setAddShiftOpen(false)}>Cancel</Button>
+                                        <Button
+                                            onClick={handleAddShift}
+                                            loading={createShiftMutation.isPending || updateShiftMutation.isPending}
+                                            disabled={editingShiftId ? (!isDirty || isEditingShiftLocked) : false}
+                                        >
+                                            {editingShiftId ? 'Update Shift' : (
+                                                <>
+                                                    <Plus size={16} className="mr-2" /> Create Shift
+                                                </>
+                                            )}
+                                        </Button>
+                                    </div>
+                                </DialogFooter>
+                            </TabsContent>
 
-                                    if (isAdvancedCopy) {
-                                        // Calculate source and target dates directly from offsets instead of searching periodOptions
-                                        // This ensures we handle any offset value, not just those in the predefined periodOptions array
-                                        const sourceDates = getRosterDates(sourceOffset, rosterPeriod);
-                                        const targetDates = getRosterDates(targetOffset, rosterPeriod);
-
-                                        if (sourceDates.length > 0 && targetDates.length > 0) {
-                                            payload = {
-                                                source_from: formatDate(sourceDates[0]),
-                                                source_to: formatDate(sourceDates[sourceDates.length - 1]),
-                                                target_start: formatDate(targetDates[0])
-                                            };
-                                        }
-                                    } else if (copyOption === 'next_week') {
-                                        let daysToAdd = 7;
-                                        if (rosterPeriod === 'fortnightly') daysToAdd = 14;
-
-                                        if (rosterPeriod === 'monthly') {
-                                            const dSource = new Date(rangeStart + 'T00:00:00Z');
-                                            const dTarget = new Date(dSource);
-                                            dTarget.setMonth(dTarget.getUTCMonth() + 1);
-
-                                            payload = {
-                                                source_from: rangeStart,
-                                                source_to: rangeEnd,
-                                                target_start: formatDate(dTarget)
-                                            };
-                                        } else {
-                                            payload = {
-                                                source_from: rangeStart,
-                                                source_to: rangeEnd,
-                                                target_start: formatDate(addDays(new Date(rangeStart + 'T00:00:00Z'), daysToAdd))
-                                            };
-                                        }
-                                    } else if (copyOption === 'prev_week') {
-                                        let daysToSub = 7;
-                                        if (rosterPeriod === 'fortnightly') daysToSub = 14;
-
-                                        if (rosterPeriod === 'monthly') {
-                                            const dSource = new Date(rangeStart + 'T00:00:00Z');
-                                            const dTarget = new Date(dSource);
-                                            dTarget.setMonth(dTarget.getUTCMonth() - 1);
-
-                                            // Source is prev month, target is current
-                                            const dPrevEnd = new Date(dSource);
-                                            dPrevEnd.setUTCDate(dPrevEnd.getUTCDate() - 1);
-
-                                            payload = {
-                                                source_from: formatDate(dTarget),
-                                                source_to: formatDate(dPrevEnd),
-                                                target_start: rangeStart
-                                            };
-                                        } else {
-                                            payload = {
-                                                source_from: formatDate(addDays(new Date(rangeStart + 'T00:00:00Z'), -daysToSub)),
-                                                source_to: formatDate(addDays(new Date(rangeEnd + 'T00:00:00Z'), -daysToSub)),
-                                                target_start: rangeStart
-                                            };
-                                        }
-                                    }
-
-                                    if (payload) {
-                                        duplicateRosterMutation.mutate(payload);
-                                    }
-                                }}
-                                loading={duplicateRosterMutation.isPending}
-                            >
-                                Copy
-                            </Button>
-                        </div>
-                    </div>
-                </DialogContent>
-            </Dialog>
-            {/* Copy Result / Conflict Review Modal */}
-            <Dialog open={resultModalOpen} onOpenChange={setResultModalOpen}>
-                <DialogContent className="max-w-md rounded-2xl border-none shadow-2xl p-0 overflow-hidden bg-white">
-                    <DialogHeader className="p-6 pb-2 bg-[hsl(var(--brand))]/5">
-                        <DialogTitle className="flex items-center gap-2 text-xl font-bold text-[hsl(var(--brand))]">
-                            <CheckCircle2 className="w-6 h-6" />
-                            Copy Shifts Result
-                        </DialogTitle>
-                        <DialogDescription className="text-sm font-medium">
-                            Review the outcome of your duplication
-                        </DialogDescription>
-                    </DialogHeader>
-
-                    <div className="p-6 space-y-4">
-                        <div className="grid grid-cols-2 gap-3">
-                            <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-100 text-center">
-                                <p className="text-2xl font-bold text-emerald-600">{copyResult?.copiedCount}</p>
-                                <p className="text-[10px] uppercase tracking-wider font-bold text-emerald-500">Copied Successfully</p>
-                            </div>
-                            <div className={cn(
-                                "p-4 rounded-xl text-center border",
-                                (copyResult?.overlapCount ?? 0) > 0
-                                    ? "bg-amber-50 border-amber-100 text-amber-600"
-                                    : "bg-gray-50 border-gray-100 text-gray-400"
-                            )}>
-                                <p className="text-2xl font-bold">{copyResult?.overlapCount}</p>
-                                <p className="text-[10px] uppercase tracking-wider font-bold">Issues / Overlaps</p>
-                            </div>
-                        </div>
-
-                        {(copyResult?.overlapCount ?? 0) > 0 && (
-                            <div className="space-y-2">
-                                <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest pl-1">Conflict Details</label>
-                                <div className="max-h-48 overflow-y-auto rounded-xl border border-gray-100 bg-gray-50/50 p-2 space-y-2">
-                                    {copyResult?.overlapDetails.map((detail, i) => (
-                                        <div key={i} className="flex gap-3 text-xs leading-relaxed text-gray-600 p-2 rounded-lg bg-white shadow-sm border border-gray-100/50">
-                                            <div className="mt-0.5 rounded-full bg-amber-100 p-1 shrink-0">
-                                                <RefreshCcw className="w-3 h-3 text-amber-600" />
-                                            </div>
-                                            {detail}
+                            <TabsContent value="checklist" className="p-6 m-0 flex flex-col h-[450px]">
+                                <div className="flex items-center justify-between mb-4">
+                                    <h3 className="font-bold text-sm">Tasks Snapshot</h3>
+                                    <div className="flex items-center gap-2">
+                                        <div className="relative">
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                className="h-8 rounded-lg text-[10px] font-black uppercase"
+                                                onClick={() => {
+                                                    console.log('[RosterPage] Attach Template button clicked. Toggling custom dropdown to:', !isAttachOpen);
+                                                    setIsAttachOpen(!isAttachOpen);
+                                                }}
+                                            >
+                                                Attach Template
+                                            </Button>
+                                            {isAttachOpen && (
+                                                <>
+                                                    <div className="fixed inset-0 z-40" onClick={() => setIsAttachOpen(false)} />
+                                                    <div className="absolute right-0 mt-1 w-56 bg-white border border-slate-100 rounded-xl shadow-lg py-1 z-50 animate-in fade-in slide-in-from-top-1 duration-100">
+                                                        {templates.length === 0 ? (
+                                                            <div className="p-3 text-center text-xs text-slate-400">No active templates</div>
+                                                        ) : (
+                                                            templates.map(t => (
+                                                                <button
+                                                                    type="button"
+                                                                    key={t.template_id}
+                                                                    onClick={() => {
+                                                                        console.log('[RosterPage] Dropdown item clicked for template:', t.name, 'id:', t.template_id);
+                                                                        attachTemplateMutation.mutate([t.template_id]);
+                                                                        setIsAttachOpen(false);
+                                                                    }}
+                                                                    className="w-full text-left px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors"
+                                                                >
+                                                                    {t.name}
+                                                                </button>
+                                                            ))
+                                                        )}
+                                                    </div>
+                                                </>
+                                            )}
                                         </div>
-                                    ))}
+                                        <Button
+                                            size="sm"
+                                            className="h-8 rounded-lg text-[10px] font-black uppercase"
+                                            onClick={() => setIsAddTaskOpen(true)}
+                                        >
+                                            Add Task
+                                        </Button>
+                                    </div>
                                 </div>
-                            </div>
-                        )}
-                    </div>
 
-                    <DialogFooter className="p-6 pt-0 bg-gray-50/50 flex flex-row gap-3">
-                        <Button
-                            variant="outline"
-                            className="flex-1 rounded-xl h-12 font-bold border-gray-200 hover:bg-amber-50 hover:text-amber-600 hover:border-amber-100 transition-all group"
-                            onClick={() => setUndoConfirmOpen(true)}
-                        >
-                            <RefreshCcw className="w-4 h-4 mr-2 group-hover:rotate-180 transition-transform duration-500" />
-                            Undo Last Copy
-                        </Button>
-                        <Button
-                            className="flex-1 rounded-xl h-12 font-bold bg-[hsl(var(--brand))] hover:bg-[hsl(var(--brand))]/90 shadow-lg shadow-[hsl(var(--brand))]/20"
-                            onClick={() => setResultModalOpen(false)}
-                        >
-                            Done
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
+                                <div className="flex-1 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
+                                    {isLoadingChecklist ? (
+                                        <div className="space-y-2 py-4">
+                                            {[1, 2, 3].map(i => <div key={i} className="h-12 bg-slate-50 rounded-xl animate-pulse" />)}
+                                        </div>
+                                    ) : shiftChecklist.length === 0 ? (
+                                        <div className="flex flex-col items-center justify-center py-12 text-center bg-slate-50 rounded-2xl border-2 border-dashed border-slate-100">
+                                            <ClipboardList size={32} className="text-slate-300 mb-2" />
+                                            <p className="text-xs font-bold text-slate-400">No tasks for this shift yet.</p>
+                                            <p className="text-[10px] text-slate-400 max-w-[180px] mt-1">Add tasks manually or attach a template above.</p>
+                                        </div>
+                                    ) : (
+                                        groupedChecklist.map((group) => {
+                                            const isCollapsed = collapsedGroups[group.id] === true;
+                                            return (
+                                                <div key={group.id} className="border border-slate-100 rounded-2xl overflow-hidden shadow-sm bg-white mb-3">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => toggleGroup(group.id)}
+                                                        className="w-full flex items-center justify-between px-4 py-3 bg-slate-50/50 hover:bg-slate-50 transition-colors border-b border-slate-100/50"
+                                                    >
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="text-xs font-black uppercase text-slate-700 tracking-wider">
+                                                                {group.name}
+                                                            </span>
+                                                            <Badge variant="secondary" className="bg-slate-200/50 text-slate-600 text-[9px] font-black tracking-tight px-1.5 py-0.5 rounded-full">
+                                                                {group.items.length} {group.items.length === 1 ? 'task' : 'tasks'}
+                                                            </Badge>
+                                                        </div>
+                                                        <ChevronDown
+                                                            size={16}
+                                                            className={cn("text-slate-400 transition-transform duration-200", isCollapsed ? "" : "rotate-180")}
+                                                        />
+                                                    </button>
 
-            {/* Undo Confirmation Modal */}
-            <Dialog open={undoConfirmOpen} onOpenChange={setUndoConfirmOpen}>
-                <DialogContent className="max-w-sm rounded-2xl border-none shadow-2xl p-6 bg-white animate-in zoom-in-95 duration-200">
-                    <div className="space-y-4">
-                        <div className="w-12 h-12 rounded-2xl bg-amber-100 flex items-center justify-center mx-auto">
-                            <Clock className="w-6 h-6 text-amber-600" />
-                        </div>
+                                                    {!isCollapsed && (
+                                                        <div className="p-3 space-y-2 bg-white divide-y divide-slate-50">
+                                                            {group.items.map((item) => (
+                                                                <div key={item.checklist_item_id} className="group flex items-center gap-3 py-2.5 bg-white border border-transparent rounded-xl hover:border-[hsl(var(--brand))]/10 px-2 transition-all">
+                                                                    <div className={cn(
+                                                                        "w-5 h-5 rounded-full flex items-center justify-center shrink-0 border-2 transition-all",
+                                                                        item.status === 'done' ? "bg-emerald-500 border-emerald-500 text-white" : "border-slate-200 text-slate-100"
+                                                                    )}>
+                                                                        {item.status === 'done' ? <Check size={12} strokeWidth={4} /> : <div className="w-1.5 h-1.5 rounded-full bg-slate-200" />}
+                                                                    </div>
 
-                        <DialogHeader className="text-center space-y-2">
-                            <DialogTitle className="text-lg font-bold text-gray-900">Undo Copy?</DialogTitle>
-                            <DialogDescription className="text-sm text-gray-500 leading-relaxed px-2">
-                                Are you sure you want to undo the last copy? This will remove
-                                <span className="font-bold text-gray-900 mx-1">{lastNewShiftIds.length}</span>
-                                newly created shifts.
+                                                                    <div className="flex-1 min-w-0">
+                                                                        <input
+                                                                            className="w-full bg-transparent border-none font-bold text-xs p-0 focus:ring-0 text-slate-700 placeholder-slate-400"
+                                                                            defaultValue={item.task_text}
+                                                                            onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                                                                            onBlur={(e) => {
+                                                                                if (e.target.value !== item.task_text) {
+                                                                                    updateTaskMutation.mutate({
+                                                                                        itemId: item.checklist_item_id,
+                                                                                        data: { task_text: e.target.value }
+                                                                                    });
+                                                                                }
+                                                                            }}
+                                                                        />
+                                                                        {item.instructions && (
+                                                                            <p className="text-[9px] text-slate-400 mt-0.5 leading-none font-medium">{item.instructions}</p>
+                                                                        )}
+                                                                    </div>
+
+                                                                    <div className="flex items-center gap-3 shrink-0">
+                                                                        <div className="flex flex-col items-center">
+                                                                            <span className="text-[8px] font-black uppercase text-slate-400 mb-0.5 tracking-wider">Req</span>
+                                                                            <Switch
+                                                                                checked={item.is_required}
+                                                                                onCheckedChange={(val) => {
+                                                                                    updateTaskMutation.mutate({
+                                                                                        itemId: item.checklist_item_id,
+                                                                                        data: { is_required: val }
+                                                                                    });
+                                                                                }}
+                                                                                className="scale-[0.55] data-[state=checked]:bg-[hsl(var(--brand))]"
+                                                                            />
+                                                                        </div>
+                                                                        <Button
+                                                                            variant="ghost"
+                                                                            size="icon"
+                                                                            className="h-7 w-7 rounded-full text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                                            onClick={() => deleteTaskMutation.mutate(item.checklist_item_id)}
+                                                                        >
+                                                                            <Trash2 size={14} />
+                                                                        </Button>
+                                                                    </div>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            );
+                                        })
+                                    )}
+                                </div>
+                                <div className="mt-4 pt-4 border-t border-slate-100">
+                                    <p className="text-[10px] text-slate-400 leading-tight">
+                                        <Info size={10} className="inline mr-1" />
+                                        This is a shift-specific snapshot. Changes here will not affect the original template, and updating the template later will not affect this shift.
+                                    </p>
+                                </div>
+                            </TabsContent>
+                        </Tabs>
+                    </DialogContent>
+                </Dialog>
+
+                <Dialog open={isAddTaskOpen} onOpenChange={setIsAddTaskOpen}>
+                    <DialogContent className="sm:max-w-[425px] bg-white rounded-2xl shadow-2xl border border-slate-100 p-6 z-100">
+                        <DialogHeader>
+                            <DialogTitle className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                                <ClipboardList className="text-[hsl(var(--brand))]" size={20} />
+                                Add Custom Task
+                            </DialogTitle>
+                            <DialogDescription className="text-xs text-slate-400">
+                                Create a custom ad-hoc task specifically for this roster shift snapshot.
                             </DialogDescription>
                         </DialogHeader>
 
-                        <div className="grid grid-cols-2 gap-3 pt-2">
+                        <div className="space-y-4 my-4">
+                            <div className="space-y-1.5">
+                                <label className="text-[10px] font-black uppercase tracking-wider text-slate-400">Task Name</label>
+                                <Input
+                                    value={adHocTaskText}
+                                    onChange={(e) => setAdHocTaskText(e.target.value)}
+                                    placeholder="e.g. Clean the espresso machine"
+                                    className="h-10 rounded-xl border-slate-100 focus:border-[hsl(var(--brand))] focus:ring-1 focus:ring-[hsl(var(--brand))] text-sm font-semibold"
+                                />
+                            </div>
+
+                            <div className="space-y-1.5">
+                                <label className="text-[10px] font-black uppercase tracking-wider text-slate-400">Instructions (Optional)</label>
+                                <textarea
+                                    value={adHocTaskInstructions}
+                                    onChange={(e) => setAdHocTaskInstructions(e.target.value)}
+                                    placeholder="Describe step-by-step instructions..."
+                                    className="w-full min-h-[80px] rounded-xl border border-slate-200 focus:border-[hsl(var(--brand))] focus:ring-1 focus:ring-[hsl(var(--brand))] p-3 text-sm font-semibold outline-none resize-none"
+                                />
+                            </div>
+
+                            <div className="flex items-center justify-between p-3 bg-slate-50 border border-slate-100 rounded-xl">
+                                <div>
+                                    <p className="text-xs font-bold text-slate-700">Is Required?</p>
+                                    <p className="text-[10px] text-slate-400">Employee must complete this task before clocking out.</p>
+                                </div>
+                                <Switch
+                                    checked={adHocTaskRequired}
+                                    onCheckedChange={setAdHocTaskRequired}
+                                    className="data-[state=checked]:bg-[hsl(var(--brand))]"
+                                />
+                            </div>
+                        </div>
+
+                        <DialogFooter className="gap-2 sm:gap-0 mt-6">
                             <Button
-                                variant="outline"
-                                className="rounded-xl h-11 font-bold border-gray-200"
-                                onClick={() => setUndoConfirmOpen(false)}
+                                type="button"
+                                variant="ghost"
+                                onClick={() => setIsAddTaskOpen(false)}
+                                className="h-10 rounded-xl text-xs font-bold uppercase text-slate-400 hover:bg-slate-50 transition-colors"
                             >
                                 Cancel
                             </Button>
                             <Button
-                                variant="danger"
-                                className="rounded-xl h-11 font-bold shadow-lg shadow-red-100"
-                                onClick={() => undoLastCopyMutation.mutate()}
-                                disabled={undoLastCopyMutation.isPending}
+                                type="button"
+                                onClick={() => {
+                                    if (!adHocTaskText.trim()) {
+                                        toast.error("Please enter a task name");
+                                        return;
+                                    }
+                                    addTaskMutation.mutate({
+                                        task_text: adHocTaskText.trim(),
+                                        instructions: adHocTaskInstructions.trim() || null,
+                                        is_required: adHocTaskRequired
+                                    });
+                                }}
+                                disabled={addTaskMutation.isPending}
+                                className="h-10 rounded-xl text-xs font-black uppercase tracking-wider bg-[hsl(var(--brand))] hover:bg-[hsl(var(--brand-hover))] text-white shadow-lg transition-colors px-6"
                             >
-                                {undoLastCopyMutation.isPending ? "Undoing..." : "Yes, Undo IT"}
+                                {addTaskMutation.isPending ? "Adding..." : "Add Task"}
                             </Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
+
+                <Dialog open={isShiftTypeModalOpen} onOpenChange={setIsShiftTypeModalOpen}>
+                    <DialogContent className="sm:max-w-[425px] bg-white rounded-2xl shadow-2xl border border-slate-100 p-6 z-100">
+                        <DialogHeader>
+                            <DialogTitle className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                                <Clock className="text-[hsl(var(--brand))]" size={20} />
+                                Select Shift Type
+                            </DialogTitle>
+                            <DialogDescription className="text-xs text-slate-400">
+                                Choose or type a custom shift type name for this roster shift.
+                            </DialogDescription>
+                        </DialogHeader>
+
+                        <div className="space-y-4 my-4">
+                            <div className="space-y-1.5">
+                                <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Search or Type Custom Type</label>
+                                <input
+                                    autoFocus
+                                    type="text"
+                                    placeholder="e.g. Midday, Stock Count, Saturday Night..."
+                                    value={shiftTypeSearch}
+                                    onChange={e => setShiftTypeSearch(e.target.value)}
+                                    className="w-full h-10 px-3 rounded-xl border border-slate-200 bg-white focus:outline-none focus:border-[hsl(var(--brand))] focus:ring-2 focus:ring-[hsl(var(--brand))]/20 text-sm font-semibold"
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter' && shiftTypeSearch.trim()) {
+                                            const customVal = shiftTypeSearch.trim().toLowerCase();
+                                            setShiftType(customVal);
+                                            setIsShiftTypeOverridden(true);
+                                            setIsShiftTypeModalOpen(false);
+                                            setShiftTypeSearch("");
+                                        }
+                                    }}
+                                />
+                                <p className="text-[9px] text-slate-400 leading-normal">Press Enter or click Add to create &apos;{shiftTypeSearch}&apos; as a custom shift type.</p>
+                            </div>
+
+                            <div className="max-h-60 overflow-y-auto space-y-2 p-1 custom-scrollbar border border-slate-100 rounded-xl bg-slate-50/50">
+                                {/* Auto-detect Suggestion Option */}
+                                {(() => {
+                                    const autoType = getShiftTypeFromTime(shiftStart);
+                                    const isActive = !isShiftTypeOverridden && shiftType === autoType;
+                                    return (
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setShiftType(autoType);
+                                                setIsShiftTypeOverridden(false);
+                                                setIsShiftTypeModalOpen(false);
+                                                setShiftTypeSearch("");
+                                            }}
+                                            className={cn(
+                                                "w-full text-left px-3.5 py-2.5 text-xs font-bold rounded-xl transition-all flex items-center justify-between border",
+                                                isActive
+                                                    ? "bg-[hsl(var(--brand))] text-white border-transparent shadow-md"
+                                                    : "bg-white hover:bg-slate-50 border-slate-100 text-[hsl(var(--brand))]"
+                                            )}
+                                        >
+                                            <span className="flex items-center gap-1.5">
+                                                <span>✨ Auto-Detect Shift Type</span>
+                                            </span>
+                                            <Badge variant="outline" className={cn("text-[9px] font-black uppercase px-2 py-0.5", isActive ? "text-white border-white/30 bg-white/10" : "text-[hsl(var(--brand))] border-[hsl(var(--brand))]/20")}>
+                                                {autoType}
+                                            </Badge>
+                                        </button>
+                                    );
+                                })()}
+
+                                <div className="text-[10px] font-black uppercase text-slate-400 tracking-wider pt-2 pb-1 px-1 border-t border-slate-100/50">
+                                    Configured Shift Types
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-2">
+                                    {dynamicRosterShiftTypes
+                                        .filter(t => t.toLowerCase().includes(shiftTypeSearch.toLowerCase()))
+                                        .map(type => {
+                                            const isActive = isShiftTypeOverridden && shiftType === type;
+                                            return (
+                                                <button
+                                                    key={type}
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setShiftType(type);
+                                                        setIsShiftTypeOverridden(true);
+                                                        setIsShiftTypeModalOpen(false);
+                                                        setShiftTypeSearch("");
+                                                    }}
+                                                    className={cn(
+                                                        "text-left px-3 py-2.5 text-xs font-bold rounded-xl transition-all border capitalize flex items-center justify-between",
+                                                        isActive
+                                                            ? "bg-[hsl(var(--brand))] text-white border-transparent shadow-md"
+                                                            : "bg-white hover:bg-slate-50 border-slate-100 text-slate-700"
+                                                    )}
+                                                >
+                                                    <span>{type}</span>
+                                                </button>
+                                            );
+                                        })
+                                    }
+                                </div>
+
+                                {shiftTypeSearch.trim() && !dynamicRosterShiftTypes.some(t => t.toLowerCase() === shiftTypeSearch.trim().toLowerCase()) && (
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            const customVal = shiftTypeSearch.trim().toLowerCase();
+                                            setShiftType(customVal);
+                                            setIsShiftTypeOverridden(true);
+                                            setIsShiftTypeModalOpen(false);
+                                            setShiftTypeSearch("");
+                                        }}
+                                        className="w-full text-center py-2.5 text-xs rounded-xl bg-[hsl(var(--brand))]/10 border border-dashed border-[hsl(var(--brand))]/30 text-[hsl(var(--brand))] hover:bg-[hsl(var(--brand))]/20 transition-all font-bold mt-2"
+                                    >
+                                        + Create &quot;{shiftTypeSearch.trim()}&quot; Custom Shift Type
+                                    </button>
+                                )}
+                            </div>
                         </div>
-                    </div>
-                </DialogContent>
-            </Dialog>
+
+                        <DialogFooter className="mt-4">
+                            <Button type="button" variant="outline" className="rounded-xl" onClick={() => setIsShiftTypeModalOpen(false)}>
+                                Cancel
+                            </Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
+
+                <Dialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+                    <DialogContent>
+                        <DialogHeader>
+                            <DialogTitle>Confirm Deletion</DialogTitle>
+                            <DialogDescription>
+                                Are you sure you want to delete this shift? This action cannot be undone.
+                            </DialogDescription>
+                        </DialogHeader>
+                        <DialogFooter>
+                            <Button variant="outline" onClick={() => setDeleteConfirmOpen(false)}>Cancel</Button>
+                            <Button
+                                variant="default"
+                                className="bg-[hsl(var(--danger))] text-white hover:bg-[hsl(var(--danger))]/90"
+                                onClick={() => editingShiftId && deleteShiftMutation.mutate(editingShiftId)}
+                                loading={deleteShiftMutation.isPending}
+                            >
+                                Delete Shift
+                            </Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
+
+                <Dialog open={expansionOpen} onOpenChange={setExpansionOpen}>
+                    <DialogContent>
+                        <DialogHeader>
+                            <DialogTitle>Expand Roster Duration?</DialogTitle>
+                            <DialogDescription>
+                                The date you selected falls outside the current roster range ({currentRoster ? `${formatDate(currentRoster.start_date)} to ${formatDate(currentRoster.end_date)}` : ""}).
+                                Adding this shift will automatically switch and expand your current roster to a larger period (Monthly/Fortnightly).
+                                <br /><br />
+                                Do you want to switch the current roster?
+                            </DialogDescription>
+                        </DialogHeader>
+                        <DialogFooter>
+                            <Button variant="outline" onClick={() => setExpansionOpen(false)}>Decline (Cancel Add)</Button>
+                            <Button
+                                variant="default"
+                                className="bg-[hsl(var(--brand))] text-white hover:bg-[hsl(var(--brand-hover))]"
+                                onClick={confirmExpansion}
+                            >
+                                Accept & Expand
+                            </Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
+
+                <Dialog open={deleteRosterConfirmOpen} onOpenChange={setDeleteRosterConfirmOpen}>
+                    <DialogContent>
+                        <DialogHeader>
+                            <DialogTitle>Delete Entire Roster?</DialogTitle>
+                            <DialogDescription>
+                                Are you sure you want to delete this roster and **all its shifts**? This action cannot be undone.
+                            </DialogDescription>
+                        </DialogHeader>
+                        <DialogFooter>
+                            <Button variant="outline" onClick={() => setDeleteRosterConfirmOpen(false)}>Cancel</Button>
+                            <Button
+                                variant="default"
+                                className="bg-red-600 text-white hover:bg-red-700"
+                                onClick={() => currentRoster && deleteRosterMutation.mutate(currentRoster.roster_id)}
+                                loading={deleteRosterMutation.isPending}
+                            >
+                                Delete Roster
+                            </Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
+
+                <Dialog open={duplicateOpen} onOpenChange={setDuplicateOpen}>
+                    <DialogContent className="max-w-md p-0 overflow-hidden rounded-2xl border-none shadow-2xl">
+                        <div className="bg-white p-6">
+                            <DialogHeader className="mb-6">
+                                <div className="flex items-center justify-between">
+                                    <DialogTitle className="text-2xl font-bold text-[hsl(var(--foreground))]">Copy shifts</DialogTitle>
+                                </div>
+                            </DialogHeader>
+
+                            <div className="space-y-6">
+                                <div className="flex items-center justify-between pl-1">
+                                    <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Quick Copy</h3>
+                                    <button
+                                        onClick={() => setIsAdvancedCopy(!isAdvancedCopy)}
+                                        className="text-[10px] font-black text-[hsl(var(--brand))] uppercase tracking-widest flex items-center gap-1 hover:underline"
+                                    >
+                                        {isAdvancedCopy ? <ChevronUp size={12} /> : <Settings2 size={12} />}
+                                        {isAdvancedCopy ? "Simplified" : "Advanced"}
+                                    </button>
+                                </div>
+
+                                {!isAdvancedCopy ? (
+                                    <div className="grid grid-cols-2 gap-3">
+                                        {[
+                                            { id: 'next_week', label: `Next ${rosterPeriod === 'monthly' ? 'Month' : 'Week'}`, icon: ChevronRight },
+                                            { id: 'prev_week', label: `Prev ${rosterPeriod === 'monthly' ? 'Month' : 'Week'}`, icon: ChevronLeft }
+                                        ].map((opt) => (
+                                            <button
+                                                key={opt.id}
+                                                onClick={() => setCopyOption(opt.id as any)}
+                                                className={cn(
+                                                    "flex flex-col items-center justify-center gap-3 p-4 rounded-xl border-2 transition-all group",
+                                                    copyOption === opt.id
+                                                        ? "bg-[hsl(var(--brand))]/5 border-[hsl(var(--brand))] text-[hsl(var(--brand))]"
+                                                        : "bg-white border-slate-100 text-slate-500 hover:border-slate-200"
+                                                )}
+                                            >
+                                                <div className={cn(
+                                                    "w-10 h-10 rounded-full flex items-center justify-center transition-all",
+                                                    copyOption === opt.id ? "bg-[hsl(var(--brand))] text-white shadow-lg shadow-[hsl(var(--brand))]/20" : "bg-slate-50 text-slate-400"
+                                                )}>
+                                                    <opt.icon size={18} />
+                                                </div>
+                                                <span className="text-xs font-black uppercase tracking-wider">{opt.label}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div className="space-y-4 p-4 bg-slate-50 rounded-2xl border border-slate-100 animate-in slide-in-from-top-2 duration-300">
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Copy Shifts From</label>
+                                            <div className="relative group">
+                                                <select
+                                                    value={sourceOffset}
+                                                    onChange={(e) => setSourceOffset(parseInt(e.target.value))}
+                                                    className="w-full h-11 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 outline-none transition-all focus:ring-4 focus:ring-[hsl(var(--brand))]/10 focus:border-[hsl(var(--brand))] appearance-none cursor-pointer pr-10"
+                                                >
+                                                    {periodOptions.map((opt) => (
+                                                        <option key={opt.offset} value={opt.offset}>
+                                                            {opt.label} {opt.offset === offset ? "(Current View)" : ""}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                                <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                                                    <ChevronDown size={16} />
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex justify-center -my-2 relative z-10">
+                                            <div className="bg-white p-2 rounded-full border border-slate-100 shadow-sm text-[hsl(var(--brand))]">
+                                                <ArrowUpDown size={14} strokeWidth={3} />
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Copy Shifts To</label>
+                                            <div className="relative group">
+                                                <select
+                                                    value={targetOffset}
+                                                    onChange={(e) => setTargetOffset(parseInt(e.target.value))}
+                                                    className="w-full h-11 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 outline-none transition-all focus:ring-4 focus:ring-[hsl(var(--brand))]/10 focus:border-[hsl(var(--brand))] appearance-none cursor-pointer pr-10"
+                                                >
+                                                    {periodOptions.map((opt) => (
+                                                        <option key={opt.offset} value={opt.offset}>
+                                                            {opt.label} {opt.offset === offset ? "(Current View)" : ""}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                                <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                                                    <ChevronDown size={16} />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="flex justify-end mt-8">
+                                <Button
+                                    className="px-8 py-6 rounded-xl bg-[hsl(var(--brand))] text-white hover:bg-[hsl(var(--brand-hover))] font-bold text-lg shadow-lg shadow-[hsl(var(--brand))]/20"
+                                    onClick={() => {
+                                        let payload: any = null;
+
+                                        if (isAdvancedCopy) {
+                                            // Calculate source and target dates directly from offsets instead of searching periodOptions
+                                            // This ensures we handle any offset value, not just those in the predefined periodOptions array
+                                            const sourceDates = getRosterDates(sourceOffset, rosterPeriod);
+                                            const targetDates = getRosterDates(targetOffset, rosterPeriod);
+
+                                            if (sourceDates.length > 0 && targetDates.length > 0) {
+                                                payload = {
+                                                    source_from: formatDate(sourceDates[0]),
+                                                    source_to: formatDate(sourceDates[sourceDates.length - 1]),
+                                                    target_start: formatDate(targetDates[0])
+                                                };
+                                            }
+                                        } else if (copyOption === 'next_week') {
+                                            let daysToAdd = 7;
+                                            if (rosterPeriod === 'fortnightly') daysToAdd = 14;
+
+                                            if (rosterPeriod === 'monthly') {
+                                                const dSource = new Date(rangeStart + 'T00:00:00Z');
+                                                const dTarget = new Date(dSource);
+                                                dTarget.setMonth(dTarget.getUTCMonth() + 1);
+
+                                                payload = {
+                                                    source_from: rangeStart,
+                                                    source_to: rangeEnd,
+                                                    target_start: formatDate(dTarget)
+                                                };
+                                            } else {
+                                                payload = {
+                                                    source_from: rangeStart,
+                                                    source_to: rangeEnd,
+                                                    target_start: formatDate(addDays(new Date(rangeStart + 'T00:00:00Z'), daysToAdd))
+                                                };
+                                            }
+                                        } else if (copyOption === 'prev_week') {
+                                            let daysToSub = 7;
+                                            if (rosterPeriod === 'fortnightly') daysToSub = 14;
+
+                                            if (rosterPeriod === 'monthly') {
+                                                const dSource = new Date(rangeStart + 'T00:00:00Z');
+                                                const dTarget = new Date(dSource);
+                                                dTarget.setMonth(dTarget.getUTCMonth() - 1);
+
+                                                // Source is prev month, target is current
+                                                const dPrevEnd = new Date(dSource);
+                                                dPrevEnd.setUTCDate(dPrevEnd.getUTCDate() - 1);
+
+                                                payload = {
+                                                    source_from: formatDate(dTarget),
+                                                    source_to: formatDate(dPrevEnd),
+                                                    target_start: rangeStart
+                                                };
+                                            } else {
+                                                payload = {
+                                                    source_from: formatDate(addDays(new Date(rangeStart + 'T00:00:00Z'), -daysToSub)),
+                                                    source_to: formatDate(addDays(new Date(rangeEnd + 'T00:00:00Z'), -daysToSub)),
+                                                    target_start: rangeStart
+                                                };
+                                            }
+                                        }
+
+                                        if (payload) {
+                                            duplicateRosterMutation.mutate(payload);
+                                        }
+                                    }}
+                                    loading={duplicateRosterMutation.isPending}
+                                >
+                                    Copy
+                                </Button>
+                            </div>
+                        </div>
+                    </DialogContent>
+                </Dialog>
+                {/* Copy Result / Conflict Review Modal */}
+                <Dialog open={resultModalOpen} onOpenChange={setResultModalOpen}>
+                    <DialogContent className="max-w-md rounded-2xl border-none shadow-2xl p-0 overflow-hidden bg-white">
+                        <DialogHeader className="p-6 pb-2 bg-[hsl(var(--brand))]/5">
+                            <DialogTitle className="flex items-center gap-2 text-xl font-bold text-[hsl(var(--brand))]">
+                                <CheckCircle2 className="w-6 h-6" />
+                                Copy Shifts Result
+                            </DialogTitle>
+                            <DialogDescription className="text-sm font-medium">
+                                Review the outcome of your duplication
+                            </DialogDescription>
+                        </DialogHeader>
+
+                        <div className="p-6 space-y-4">
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-100 text-center">
+                                    <p className="text-2xl font-bold text-emerald-600">{copyResult?.copiedCount}</p>
+                                    <p className="text-[10px] uppercase tracking-wider font-bold text-emerald-500">Copied Successfully</p>
+                                </div>
+                                <div className={cn(
+                                    "p-4 rounded-xl text-center border",
+                                    (copyResult?.overlapCount ?? 0) > 0
+                                        ? "bg-amber-50 border-amber-100 text-amber-600"
+                                        : "bg-gray-50 border-gray-100 text-gray-400"
+                                )}>
+                                    <p className="text-2xl font-bold">{copyResult?.overlapCount}</p>
+                                    <p className="text-[10px] uppercase tracking-wider font-bold">Issues / Overlaps</p>
+                                </div>
+                            </div>
+
+                            {(copyResult?.overlapCount ?? 0) > 0 && (
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest pl-1">Conflict Details</label>
+                                    <div className="max-h-48 overflow-y-auto rounded-xl border border-gray-100 bg-gray-50/50 p-2 space-y-2">
+                                        {copyResult?.overlapDetails.map((detail, i) => (
+                                            <div key={i} className="flex gap-3 text-xs leading-relaxed text-gray-600 p-2 rounded-lg bg-white shadow-sm border border-gray-100/50">
+                                                <div className="mt-0.5 rounded-full bg-amber-100 p-1 shrink-0">
+                                                    <RefreshCcw className="w-3 h-3 text-amber-600" />
+                                                </div>
+                                                {detail}
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        <DialogFooter className="p-6 pt-0 bg-gray-50/50 flex flex-row gap-3">
+                            <Button
+                                variant="outline"
+                                className="flex-1 rounded-xl h-12 font-bold border-gray-200 hover:bg-amber-50 hover:text-amber-600 hover:border-amber-100 transition-all group"
+                                onClick={() => setUndoConfirmOpen(true)}
+                            >
+                                <RefreshCcw className="w-4 h-4 mr-2 group-hover:rotate-180 transition-transform duration-500" />
+                                Undo Last Copy
+                            </Button>
+                            <Button
+                                className="flex-1 rounded-xl h-12 font-bold bg-[hsl(var(--brand))] hover:bg-[hsl(var(--brand))]/90 shadow-lg shadow-[hsl(var(--brand))]/20"
+                                onClick={() => setResultModalOpen(false)}
+                            >
+                                Done
+                            </Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
+
+                {/* Undo Confirmation Modal */}
+                <Dialog open={undoConfirmOpen} onOpenChange={setUndoConfirmOpen}>
+                    <DialogContent className="max-w-sm rounded-2xl border-none shadow-2xl p-6 bg-white animate-in zoom-in-95 duration-200">
+                        <div className="space-y-4">
+                            <div className="w-12 h-12 rounded-2xl bg-amber-100 flex items-center justify-center mx-auto">
+                                <Clock className="w-6 h-6 text-amber-600" />
+                            </div>
+
+                            <DialogHeader className="text-center space-y-2">
+                                <DialogTitle className="text-lg font-bold text-gray-900">Undo Copy?</DialogTitle>
+                                <DialogDescription className="text-sm text-gray-500 leading-relaxed px-2">
+                                    Are you sure you want to undo the last copy? This will remove
+                                    <span className="font-bold text-gray-900 mx-1">{lastNewShiftIds.length}</span>
+                                    newly created shifts.
+                                </DialogDescription>
+                            </DialogHeader>
+
+                            <div className="grid grid-cols-2 gap-3 pt-2">
+                                <Button
+                                    variant="outline"
+                                    className="rounded-xl h-11 font-bold border-gray-200"
+                                    onClick={() => setUndoConfirmOpen(false)}
+                                >
+                                    Cancel
+                                </Button>
+                                <Button
+                                    variant="danger"
+                                    className="rounded-xl h-11 font-bold shadow-lg shadow-red-100"
+                                    onClick={() => undoLastCopyMutation.mutate()}
+                                    disabled={undoLastCopyMutation.isPending}
+                                >
+                                    {undoLastCopyMutation.isPending ? "Undoing..." : "Yes, Undo IT"}
+                                </Button>
+                            </div>
+                        </div>
+                    </DialogContent>
+                </Dialog>
+            </div>
         </DashboardLayout>
+
     );
 }

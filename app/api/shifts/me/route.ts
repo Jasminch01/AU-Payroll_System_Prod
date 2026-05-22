@@ -43,6 +43,9 @@ export async function GET(request: NextRequest) {
                     start_date,
                     end_date,
                     published_at
+                ),
+                ShiftChecklistItem (
+                    status
                 )
             `)
             .eq('employee_id', authUser.employee_id)

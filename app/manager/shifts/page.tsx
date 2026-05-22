@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/tabs";
 import { apiGet, apiPost, apiPut } from "@/lib/api-client";
 import { toast } from "sonner";
-import { CalendarDays, Clock, ArrowLeftRight, Check, X, Users, LayoutGrid, List, ChevronLeft, ChevronRight } from "lucide-react";
+import { CalendarDays, Clock, ArrowLeftRight, Check, X, Users, LayoutGrid, List, ChevronLeft, ChevronRight, ClipboardList } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
@@ -372,8 +372,14 @@ export default function ManagerShiftsPage() {
                                                     <div className="flex items-center gap-1 opacity-90 mb-0.5 capitalize">
                                                         <Clock size={10} /> {s.shift_type}
                                                     </div>
-                                                    <div className="font-bold">
-                                                        {s.start_time?.split('T')[1]?.substring(0, 5)}
+                                                    <div className="font-bold flex items-center justify-between gap-1">
+                                                        <span>{s.start_time?.split('T')[1]?.substring(0, 5)}</span>
+                                                        {s.ShiftChecklistItem && s.ShiftChecklistItem.length > 0 && (
+                                                            <span className="flex items-center gap-0.5 bg-white/20 px-1 py-0.5 rounded text-[8px] font-bold shrink-0">
+                                                                <ClipboardList size={8} />
+                                                                {s.ShiftChecklistItem.filter((item: any) => item.status === 'done').length}/{s.ShiftChecklistItem.length}
+                                                            </span>
+                                                        )}
                                                     </div>
                                                 </div>
                                             ))}
@@ -425,9 +431,17 @@ export default function ManagerShiftsPage() {
                                                                 <p className="font-semibold text-sm">
                                                                     {new Date(shift.start_time).toLocaleDateString("en-AU", { weekday: 'short', day: 'numeric', month: 'short' })}
                                                                 </p>
-                                                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-[hsl(var(--brand-light))] text-[hsl(var(--brand))] font-bold text-[9px] uppercase mt-1">
-                                                                    {shift.shift_type}
-                                                                </span>
+                                                                <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                                                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-[hsl(var(--brand-light))] text-[hsl(var(--brand))] font-bold text-[9px] uppercase">
+                                                                        {shift.shift_type}
+                                                                    </span>
+                                                                    {shift.ShiftChecklistItem && shift.ShiftChecklistItem.length > 0 && (
+                                                                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-600 border border-emerald-100 font-bold text-[9px] uppercase">
+                                                                            <ClipboardList size={10} className="shrink-0" />
+                                                                            {shift.ShiftChecklistItem.filter((item: any) => item.status === 'done').length}/{shift.ShiftChecklistItem.length} Tasks
+                                                                        </span>
+                                                                    )}
+                                                                </div>
                                                             </td>
                                                             <td className="px-4 py-4 hidden md:table-cell">
                                                                 {shift.Roster ? (

@@ -355,6 +355,61 @@ export interface EmployeeAvailability {
   updated_at: string;
 }
 
+// ==================== CHECKLIST TABLES ====================
+
+export interface ChecklistTemplate {
+  template_id: string;
+  business_id: string;
+  name: string;
+  category: string;
+  description: string | null;
+  is_active: boolean;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ChecklistTemplateItem {
+  item_id: string;
+  template_id: string;
+  business_id: string;
+  task_text: string;
+  instructions: string | null;
+  is_required: boolean;
+  is_active: boolean;
+  sort_order: number;
+  created_at: string;
+}
+
+export interface ShiftTypeTemplateDefault {
+  mapping_id: string;
+  business_id: string;
+  shift_type: string;
+  template_id: string;
+  created_by: string;
+  created_at: string;
+}
+
+export type ShiftChecklistItemStatus = 'pending' | 'done' | 'not_done' | 'not_applicable';
+
+export interface ShiftChecklistItem {
+  checklist_item_id: string;
+  shift_id: string;
+  business_id: string;
+  task_text: string;
+  instructions: string | null;
+  is_required: boolean;
+  sort_order: number;
+  status: ShiftChecklistItemStatus;
+  reason: string | null;
+  completed_by: string | null;
+  completed_at: string | null;
+  source_template_id: string | null;
+  source_item_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 // ==================== INSERT TYPES (for creating new records) ====================
 
 export type BusinessInsert = Omit<Business, 'business_id' | 'created_at' | 'updated_at'> & {
@@ -440,6 +495,29 @@ export type XeroSyncInsert = Omit<XeroSync, 'sync_id' | 'created_at'> & {
 export type EmployeeAvailabilityInsert = Omit<EmployeeAvailability, 'availability_id' | 'created_at' | 'updated_at'> & {
   availability_id?: string;
   updated_at?: string;
+};
+
+// ==================== CHECKLIST INSERT TYPES ====================
+
+export type ChecklistTemplateInsert = Omit<ChecklistTemplate, 'template_id' | 'created_at' | 'updated_at'> & {
+  template_id?: string;
+};
+
+export type ChecklistTemplateItemInsert = Omit<ChecklistTemplateItem, 'item_id' | 'created_at'> & {
+  item_id?: string;
+};
+
+export type ShiftTypeTemplateDefaultInsert = Omit<ShiftTypeTemplateDefault, 'mapping_id' | 'created_at'> & {
+  mapping_id?: string;
+};
+
+export type ShiftChecklistItemInsert = Omit<ShiftChecklistItem, 'checklist_item_id' | 'created_at' | 'updated_at'> & {
+  checklist_item_id?: string;
+  reason?: string | null;
+  completed_by?: string | null;
+  completed_at?: string | null;
+  source_template_id?: string | null;
+  source_item_id?: string | null;
 };
 
 // ==================== API RESPONSE TYPES ====================

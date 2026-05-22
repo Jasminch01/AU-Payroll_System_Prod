@@ -76,7 +76,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
         // Check if shift has already started
         const now = new Date();
         const startTime = new Date(existing.start_time);
-        if (now >= startTime) {
+        if (existing.shift_status !== 'draft' && now >= startTime) {
             return errorResponse('Cannot update a shift that has already started.', 400);
         }
 
@@ -278,7 +278,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
         // Check if shift has already started
         const now = new Date();
         const startTime = new Date(shift.start_time);
-        if (now >= startTime) {
+        if (shift.shift_status !== 'draft' && now >= startTime) {
             return errorResponse('Cannot delete a shift that has already started.', 400);
         }
 

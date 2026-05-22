@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { requireRole } from '@/lib/auth';
 import { successResponse, errorResponse, validateRequiredFields } from '@/lib/api-helpers';
+import { duplicateChecklist } from '@/lib/checklist-engine';
 
 /**
  * POST /api/rosters/copy-shifts
@@ -88,6 +89,7 @@ export async function POST(request: NextRequest) {
         if (existingError) return errorResponse('Failed to check existing shifts', 500);
 
         const successes: any[] = [];
+        const sourceIds: string[] = [];
         const overlaps: string[] = [];
 
         for (const s of sourceShifts) {
@@ -135,6 +137,7 @@ export async function POST(request: NextRequest) {
                 overlaps.push(`Overlap detected! ${empName} already working on ${dayStr} ${timeStr}`);
             } else {
                 successes.push(ns);
+                sourceIds.push(s.shift_id);
             }
         }
 
@@ -148,6 +151,11 @@ export async function POST(request: NextRequest) {
             if (insertError) return errorResponse('Failed to copy shifts', 500);
             if (insertedShifts) {
                 newShiftIds.push(...insertedShifts.map(s => s.shift_id));
+                
+                // ASYNC: Duplicate checklists for each copied shift
+                Promise.all(insertedShifts.map((ns, idx) => 
+                    duplicateChecklist(sourceIds[idx], ns.shift_id, authUser.business_id, supabase)
+                )).catch(err => console.error('[Checklist] Bulk duplication failed:', err));
             }
         }
 

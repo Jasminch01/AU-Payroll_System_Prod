@@ -139,11 +139,14 @@ export function PushNotificationManager() {
         const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
         const isPWA = window.matchMedia('(display-mode: standalone)').matches || (navigator as any).standalone;
 
+        // Prompt if on mobile, running as a PWA, or if the user is an owner or manager (who typically use desktop)
+        const shouldPrompt = isMobile || isPWA || user?.role === 'owner' || user?.role === 'manager';
+
         // FIX: Instead of firing the native OS prompt directly (which was
         // happening before the user consciously chose to enable notifications),
         // show a dismissible toast so the user is in control. The OS dialog
         // only appears when they click "Enable" in the toast.
-        if ((isMobile || isPWA) && Notification.permission === 'default' && !localStorage.getItem('push_prompt_dismissed')) {
+        if (shouldPrompt && Notification.permission === 'default' && !localStorage.getItem('push_prompt_dismissed')) {
           toast('Enable Real-time Alerts', {
             description: 'Stay updated with instant alerts for shifts, roster changes, and important announcements.',
             duration: Infinity,
