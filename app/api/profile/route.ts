@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { successResponse, errorResponse } from '@/lib/api-helpers';
 import { logAudit } from '@/lib/audit';
 
@@ -106,6 +107,7 @@ export async function PUT(request: NextRequest) {
                     first_name: body.first_name,
                     last_name: body.last_name,
                     phone: body.phone,
+                    email: body.email,
                     dob: body.dob,
                     bank_account_name: body.bank_account_name,
                     bank_bsb: body.bank_bsb,
@@ -173,6 +175,18 @@ export async function PUT(request: NextRequest) {
             return successResponse(null, 'Profile updated successfully');
         }
 
+
+        if (allowedUpdates.email && allowedUpdates.email !== user.email) {
+            const adminClient = createAdminClient();
+            const { error: authUpdateError } = await adminClient.auth.admin.updateUserById(user.id, {
+                email: allowedUpdates.email as string,
+                email_confirm: true 
+            });
+            if (authUpdateError) {
+                console.error('Auth email synchronization failed:', authUpdateError.message);
+                return errorResponse(`Failed to update email: ${authUpdateError.message}`, 400);
+            }
+        }
 
         const { error: updateError } = await supabase
             .from('Employee')

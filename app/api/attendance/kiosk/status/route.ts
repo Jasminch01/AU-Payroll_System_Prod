@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { successResponse, errorResponse} from '@/lib/api-helpers';
+import { successResponse, errorResponse } from '@/lib/api-helpers';
 import { verifyKioskToken } from '@/lib/kiosk-auth';
 import { getAvailableActions } from '@/lib/attendance-logic';
 import { EventType } from '@/types/database';
@@ -85,12 +85,12 @@ export async function GET(request: NextRequest) {
 
         // Type guard: ensure lastLog has the correct shape and is on the correct type
         let typedLastLog: { event_type: EventType; timestamp: string } | null = null;
-        
+
         if (lastLog && typeof lastLog === 'object' && !Array.isArray(lastLog)) {
             const obj = lastLog as Record<string, unknown>;
             const eventType = obj.event_type;
             const timestamp = obj.timestamp;
-            
+
             if (eventType && timestamp) {
                 typedLastLog = {
                     event_type: eventType as EventType,

@@ -18,21 +18,24 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
         const supabase = await createClient();
 
-        // 1. Fetch payroll record
-        const { data: payroll, error: payrollError } = await supabase
-            .from('Payroll')
-            .select('*')
-            .eq('payroll_id', id)
-            .eq('business_id', authUser.business_id)
-            .single();
+        // Run both queries in parallel
+        const [payrollResult, linesResult] = await Promise.all([
+            supabase
+                .from('Payroll')
+                .select('*')
+                .eq('payroll_id', id)
+                .eq('business_id', authUser.business_id)
+                .single(),
+            supabase
+                .from('PayrollLine')
+                .select('*, Employee:employee_id(employee_id, first_name, last_name)')
+                .eq('payroll_id', id)
+        ]);
+
+        const { data: payroll, error: payrollError } = payrollResult;
+        const { data: lines, error: linesError } = linesResult;
 
         if (payrollError || !payroll) return errorResponse('Payroll record not found', 404);
-
-        // 2. Fetch payroll lines with employee details
-        const { data: lines, error: linesError } = await supabase
-            .from('PayrollLine')
-            .select('*, Employee:employee_id(employee_id, first_name, last_name)')
-            .eq('payroll_id', id);
 
         if (linesError) {
             console.error('Error fetching payroll lines:', linesError);

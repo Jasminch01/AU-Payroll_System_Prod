@@ -95,8 +95,28 @@ export async function POST(request: NextRequest) {
         const entries = Array.isArray(body) ? body : [body];
         const createdLogs = [];
 
+        // --- PRE-FETCH all employees in ONE query (eliminates N+1) ---
+        const uniqueEmployeeIds = [...new Set(entries.map((e: { employee_id: string }) => e.employee_id))];
+        const { data: employeeList, error: empFetchError } = await supabase
+            .from('Employee')
+            .select('employee_id, business_id')
+            .in('employee_id', uniqueEmployeeIds)
+            .eq('business_id', authUser.business_id);
+
+        if (empFetchError) return errorResponse('Failed to validate employees', 500);
+
+        const employeeMap = new Map(
+            (employeeList || []).map(e => [e.employee_id, e])
+        );
+
         for (const entryData of entries) {
             const { employee_id, event_type, timestamp } = entryData;
+
+            // Validate employee exists and belongs to the same business (from pre-fetched map)
+            const employee = employeeMap.get(employee_id);
+            if (!employee) {
+                return errorResponse(`Employee ${employee_id} not found or unauthorized`, 404);
+            }
 
             // 1. Check current state for validation (relative to this entry)
             const newTimestamp = timestamp || new Date().toISOString();
@@ -120,24 +140,12 @@ export async function POST(request: NextRequest) {
             }
 
             // Build insert object
-            const insertData: any = {
+            const insertData: Record<string, unknown> = {
                 ...entryData,
                 timestamp: newTimestamp,
                 business_id: authUser.business_id,
                 override_by: authUser.user_id,
             };
-
-            // Validate employee exists and belongs to the same business
-            const { data: employee, error: empError } = await supabase
-                .from('Employee')
-                .select('employee_id, business_id')
-                .eq('employee_id', employee_id)
-                .eq('business_id', authUser.business_id)
-                .single();
-
-            if (empError || !employee) {
-                return errorResponse('Employee not found or unauthorized', 404);
-            }
 
             const { data: log, error } = await supabase
                 .from('AttendanceLog')

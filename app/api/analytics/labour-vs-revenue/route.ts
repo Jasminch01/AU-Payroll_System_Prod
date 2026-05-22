@@ -30,63 +30,7 @@ export async function GET(request: NextRequest) {
         const defaultFrom = from || `${currYear}-${String(currMonth).padStart(2, '0')}-01`;
         const defaultTo = to || new Date(currYear, currMonth, 0).toISOString().split('T')[0];
 
-        const supabase = await createClient();
-
-        // 1. Fetch Business thresholds
-        const { data: business } = await supabase
-            .from('Business')
-            .select('labour_threshold_min, labour_theshold_max')
-            .eq('business_id', authUser.business_id)
-            .single();
-
-        // 2. Fetch total wages from PayrollLine for the period
-        // We join with Payroll to filter by dates
-        const { data: payrollLines, error: pError } = await supabase
-            .from('PayrollLine')
-            .select('gross_wages, Payroll!inner(period_start, period_end)')
-            .eq('business_id', authUser.business_id) // Assuming business_id is on PayrollLine or join correctly
-            .filter('Payroll.period_start', 'gte', defaultFrom)
-            .filter('Payroll.period_end', 'lte', defaultTo);
-
-        // Refined query with proper business_id filtering
-        const { data: lines, error: lineError } = await supabase
-            .from('PayrollLine')
-            .select('gross_wages, Payroll!inner(*)')
-            .eq('Payroll.business_id', authUser.business_id)
-            .gte('Payroll.period_start', defaultFrom)
-            .lte('Payroll.period_end', defaultTo);
-
-        if (lineError) return errorResponse(lineError.message);
-
-        const totalLabourCost = lines.reduce((sum, l) => sum + Number(l.gross_wages), 0);
-
-        // 3. Fetch total sales from SalesData
-        const { data: sales, error: sError } = await supabase
-            .from('SalesData')
-            .select('total_sales')
-            .eq('business_id', authUser.business_id)
-            .gte('sales_date', defaultFrom)
-            .lte('sales_date', defaultTo);
-
-        if (sError) return errorResponse(sError.message);
-
-        const totalRevenue = sales.reduce((sum, s) => sum + Number(s.total_sales), 0);
-
-        // 4. Calculate Percentage
-        const labourPercentage = totalRevenue > 0
-            ? (totalLabourCost / totalRevenue) * 100
-            : 0;
-
-        // 5. Determine Alert Status
-        let status = 'normal';
-        if (business) {
-            if (labourPercentage > (business.labour_theshold_max ?? 50)) status = 'critical_high';
-            else if (labourPercentage < (business.labour_threshold_min ?? 10)) status = 'critical_low';
-        }
-
-        const dailyBreakdown: Array<{ date: string; labour: number; revenue: number }> = [];
-        
-        // 5. Generate Daily Breakdown for the last 7 days (including today)
+        // Generate Daily Breakdown bounds for the last 7 days (including today)
         const businessDate = new Date(currYear, currMonth - 1, currDay);
         const sevenDaysAgo = new Date(businessDate);
         sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
@@ -94,19 +38,53 @@ export async function GET(request: NextRequest) {
         const chartStart = sevenDaysAgo.toISOString().split('T')[0];
         const chartEnd = nowInBusiness;
 
-        const { data: dailySales } = await supabase
-            .from('SalesData')
-            .select('sales_date, total_sales')
-            .eq('business_id', authUser.business_id)
-            .gte('sales_date', chartStart)
-            .lte('sales_date', chartEnd);
+        const supabase = await createClient();
 
-        const { data: dailySheets } = await supabase
-            .from('TimeSheet')
-            .select('date, gross_pay')
-            .eq('business_id', authUser.business_id)
-            .gte('date', chartStart)
-            .lte('date', chartEnd);
+        // Run all queries in parallel
+        const [
+            businessResult,
+            linesResult,
+            salesResult,
+            dailySalesResult,
+            dailySheetsResult
+        ] = await Promise.all([
+            // 1. Fetch Business thresholds
+            supabase.from('Business').select('labour_threshold_min, labour_theshold_max').eq('business_id', authUser.business_id).single(),
+            // 2. Fetch total wages from PayrollLine for the period
+            supabase.from('PayrollLine').select('gross_wages, Payroll!inner(*)').eq('Payroll.business_id', authUser.business_id).gte('Payroll.period_start', defaultFrom).lte('Payroll.period_end', defaultTo),
+            // 3. Fetch total sales from SalesData
+            supabase.from('SalesData').select('total_sales').eq('business_id', authUser.business_id).gte('sales_date', defaultFrom).lte('sales_date', defaultTo),
+            // 5a. Daily breakdown sales
+            supabase.from('SalesData').select('sales_date, total_sales').eq('business_id', authUser.business_id).gte('sales_date', chartStart).lte('sales_date', chartEnd),
+            // 5b. Daily breakdown timesheets
+            supabase.from('TimeSheet').select('date, gross_pay').eq('business_id', authUser.business_id).gte('date', chartStart).lte('date', chartEnd)
+        ]);
+
+        const { data: business } = businessResult;
+        const { data: lines, error: lineError } = linesResult;
+        const { data: sales, error: sError } = salesResult;
+        const { data: dailySales } = dailySalesResult;
+        const { data: dailySheets } = dailySheetsResult;
+
+        if (lineError) return errorResponse(lineError.message);
+        if (sError) return errorResponse(sError.message);
+
+        const totalLabourCost = lines.reduce((sum, l) => sum + Number(l.gross_wages), 0);
+        const totalRevenue = sales.reduce((sum, s) => sum + Number(s.total_sales), 0);
+
+        // 4. Calculate Percentage
+        const labourPercentage = totalRevenue > 0
+            ? (totalLabourCost / totalRevenue) * 100
+            : 0;
+
+        // Determine Alert Status
+        let status = 'normal';
+        if (business) {
+            if (labourPercentage > (business.labour_theshold_max ?? 50)) status = 'critical_high';
+            else if (labourPercentage < (business.labour_threshold_min ?? 10)) status = 'critical_low';
+        }
+
+        const dailyBreakdown: Array<{ date: string; labour: number; revenue: number }> = [];
 
         // Group by date
         const salesByDate = (dailySales || []).reduce((acc: any, s) => {

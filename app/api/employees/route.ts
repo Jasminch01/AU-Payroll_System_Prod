@@ -179,29 +179,42 @@ export async function GET(request: NextRequest) {
             query = query.range(from, to);
         }
 
-        const { data: employees, error, count } = await query;
+        // Execute main queries in parallel
+        const [queryResult, allStatusesResult] = await Promise.all([
+            query,
+            supabase.from('Employee').select('status, role, user_id').eq('business_id', authUser.business_id)
+        ]);
+
+        const { data: employees, error, count } = queryResult;
+        const { data: allStatuses } = allStatusesResult;
 
         if (error) {
             console.error('[Employees API] Query Error:', error);
             return errorResponse(error.message, 400);
         }
 
-
-
         let filtered = employees || [];
 
-        // Fetch user roles for all found employees to compute 'role' properly (if DB role string happens to be stale or needs merging)
-        if (filtered.length > 0) {
-            const { data: userRoles } = await supabase
+        // Collect all user IDs needed for role resolution
+        const allValidUserIds = Array.from(new Set([
+            ...filtered.map((e: any) => e.user_id),
+            ...(allStatuses || []).map(e => e.user_id)
+        ])).filter(Boolean);
+
+        let globalRoleMap = new Map();
+        if (allValidUserIds.length > 0) {
+            const { data: allUserRoles } = await supabase
                 .from('User')
                 .select('user_id, role')
-                .in('user_id', filtered.map((e: any) => e.user_id).filter(Boolean));
+                .in('user_id', allValidUserIds as string[]);
+            globalRoleMap = new Map((allUserRoles || []).map(u => [u.user_id, u.role]));
+        }
 
-            const roleMap = new Map((userRoles || []).map(u => [u.user_id, u.role]));
-
+        // Apply roles and re-filter
+        if (filtered.length > 0) {
             filtered = filtered.map((emp: any) => ({
                 ...emp,
-                role: roleMap.get(emp.user_id) || emp.role || 'employee'
+                role: globalRoleMap.get(emp.user_id) || emp.role || 'employee'
             }));
 
             // Re-apply roleFilter since we compute standard roles here
@@ -209,30 +222,12 @@ export async function GET(request: NextRequest) {
                 filtered = filtered.filter((emp: any) => emp.role === roleFilter);
             }
         }
-        
-        // Extremely lightweight query to compute badges accurately across entire table
-        // We only fetch status and user_id to compute role categories correctly
-        const { data: allStatuses } = await supabase
-            .from('Employee')
-            .select('status, role, user_id')
-            .eq('business_id', authUser.business_id);
 
         let activeCount = 0;
         let invitedCount = 0;
         let inactiveCount = 0;
         let managerCount = 0;
         let employeeCount = 0;
-
-        // Optionally reconcile roles globally
-        let allValidUserIds = (allStatuses || []).map(e => e.user_id).filter(Boolean);
-        let globalRoleMap = new Map();
-        if (allValidUserIds.length > 0) {
-            const { data: allUserRoles } = await supabase
-                .from('User')
-                .select('user_id, role')
-                .in('user_id', allValidUserIds);
-            globalRoleMap = new Map((allUserRoles || []).map(u => [u.user_id, u.role]));
-        }
 
         (allStatuses || []).forEach(e => {
             if (e.status === 'active') activeCount++;

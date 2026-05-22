@@ -1,4 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
+import { unstable_cache } from 'next/cache';
 import { UserRole } from '@/types/database';
 
 export interface AuthUser {
@@ -25,21 +27,21 @@ export async function getAuthUser(): Promise<AuthUser | null> {
 
     if (authError || !user) return null;
 
-    // Check User table (Owner/Manager)
-    const { data: userRecord } = await supabase
-        .from('User')
-        .select('*')
-        .eq('user_id', user.id)
-        .single();
+    // Run User table + Employee table lookups in PARALLEL (saves one full round-trip)
+    const [{ data: userRecord }, { data: employeeRecord }] = await Promise.all([
+        supabase
+            .from('User')
+            .select('role, business_id, first_name, last_name')
+            .eq('user_id', user.id)
+            .maybeSingle(),
+        supabase
+            .from('Employee')
+            .select('employee_id, business_id, first_name, last_name')
+            .eq('user_id', user.id)
+            .maybeSingle(),
+    ]);
 
     if (userRecord) {
-        // Find if this user also has an Employee record (for managers who clock in)
-        const { data: empLinked } = await supabase
-            .from('Employee')
-            .select('employee_id')
-            .eq('user_id', user.id)
-            .single();
-
         return {
             user_id: user.id,
             email: user.email!,
@@ -47,16 +49,10 @@ export async function getAuthUser(): Promise<AuthUser | null> {
             business_id: userRecord.business_id,
             first_name: userRecord.first_name,
             last_name: userRecord.last_name,
-            employee_id: empLinked?.employee_id,
+            // Employee record linked to this user (managers who also clock in)
+            employee_id: employeeRecord?.employee_id,
         };
     }
-
-    // Check Employee table
-    const { data: employeeRecord } = await supabase
-        .from('Employee')
-        .select('*')
-        .eq('user_id', user.id)
-        .single();
 
     if (employeeRecord) {
         return {
@@ -88,16 +84,20 @@ export async function requireRole(
 
 /**
  * Get the timezone for a given business.
+ * Cached for 1 hour — business timezone almost never changes.
  * Falls back to 'Australia/Sydney' if none is set.
  */
-export async function getBusinessTimezone(businessId: string): Promise<string> {
-    const supabase = await createClient();
-    const { data } = await supabase
-        .from('Business')
-        .select('timezone')
-        .eq('business_id', businessId)
-        .single();
-    
-    return data?.timezone || 'Australia/Sydney';
-}
+export const getBusinessTimezone = unstable_cache(
+    async (businessId: string): Promise<string> => {
+        const supabase = createAdminClient();
+        const { data } = await supabase
+            .from('Business')
+            .select('timezone')
+            .eq('business_id', businessId)
+            .single();
+        return data?.timezone || 'Australia/Sydney';
+    },
+    ['business-timezone'],
+    { revalidate: 3600 } // 1 hour cache
+);
 
