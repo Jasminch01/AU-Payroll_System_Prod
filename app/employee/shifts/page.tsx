@@ -11,6 +11,8 @@ import {
     Tabs, TabsContent, TabsList, TabsTrigger
 } from "@/components/ui/tabs";
 import { apiGet, apiPost, apiPut, apiPatch } from "@/lib/api-client";
+import { useBusinessTimezone } from "@/lib/timezone-context";
+import { createBusinessTimestamp } from "@/lib/timezone-utils";
 import { toast } from "sonner";
 import { CalendarDays, Clock, ArrowLeftRight, Check, X, Users, LayoutGrid, List, ChevronLeft, ChevronRight, ClipboardList, Info, CheckCircle2, XCircle, MinusCircle, Lock } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
@@ -45,10 +47,14 @@ export default function EmployeeShiftsPage() {
     const swapsRef = useRef<HTMLDivElement>(null);
     const poolRef = useRef<HTMLDivElement>(null);
     const { user } = useAuth();
+    const { businessTimezone } = useBusinessTimezone();
 
     const { data: shifts = [], isLoading } = useQuery({
         queryKey: ["my-shifts"],
         queryFn: () => apiGet<any[]>("/shifts/me"),
+        // Refresh every 60s so the ongoing/upcoming classification stays accurate
+        // without requiring a manual page reload when a shift start time passes.
+        refetchInterval: 60_000,
     });
 
     const { data: attendanceData } = useQuery({
@@ -127,18 +133,47 @@ export default function EmployeeShiftsPage() {
         onError: (err: Error) => toast.error(err.message),
     });
 
-    const now = new Date();
-    const ongoing = shifts.filter((s: any) => {
-        const start = new Date(s.start_time);
-        const end = new Date(s.end_time);
-        return start <= now && end >= now;
-    });
+    // Parse a shift's naive datetime string (stored as business-local time, no timezone suffix)
+    // into a proper UTC Date using the business timezone. Without this, the browser interprets
+    // e.g. "17:30" as 17:30 in the USER's local timezone (Bangladesh UTC+6 = 11:30 UTC) instead
+    // of the BUSINESS timezone (Australia/Sydney UTC+10 = 07:30 UTC), breaking the comparison.
+    const parseShiftTime = useMemo(() => {
+        return (isoStr: string): Date => {
+            if (!isoStr) return new Date(0);
+            // If already has timezone offset (Z or +/-), parse directly — no re-interpretation needed.
+            if (isoStr.endsWith('Z') || /[+-]\d{2}:\d{2}$/.test(isoStr)) {
+                return new Date(isoStr);
+            }
+            // Naive string: extract date (YYYY-MM-DD) and time (HH:mm) then re-interpret
+            // the time as business-local and convert to UTC.
+            const [datePart, timePart] = isoStr.split('T');
+            const hhmm = (timePart || '00:00').substring(0, 5);
+            const utcIso = createBusinessTimestamp(datePart, hhmm, businessTimezone);
+            return new Date(utcIso);
+        };
+    }, [businessTimezone]);
 
-    const upcoming = shifts.filter((s: any) => new Date(s.start_time) > now)
-        .sort((a: any, b: any) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
+    // Re-evaluate now every time shifts data or timezone changes so a shift that started
+    // is immediately moved from "upcoming" to "ongoing".
+    const { ongoing, upcoming, past } = useMemo(() => {
+        const now = new Date();
 
-    const past = shifts.filter((s: any) => new Date(s.end_time) < now)
-        .sort((a: any, b: any) => new Date(b.end_time).getTime() - new Date(a.end_time).getTime());
+        const ongoing = shifts.filter((s: any) => {
+            const start = parseShiftTime(s.start_time);
+            const end = parseShiftTime(s.end_time);
+            return start <= now && end >= now;
+        });
+
+        const upcoming = shifts
+            .filter((s: any) => parseShiftTime(s.start_time) > now)
+            .sort((a: any, b: any) => parseShiftTime(a.start_time).getTime() - parseShiftTime(b.start_time).getTime());
+
+        const past = shifts
+            .filter((s: any) => parseShiftTime(s.end_time) < now)
+            .sort((a: any, b: any) => parseShiftTime(b.end_time).getTime() - parseShiftTime(a.end_time).getTime());
+
+        return { ongoing, upcoming, past };
+    }, [shifts, parseShiftTime]);
 
     const pendingIncomingSwaps = swapRequests.filter((sr: any) =>
         sr.target_employee_id === user?.employee_id && sr.status === 'pending_acceptance'
@@ -220,8 +255,8 @@ export default function EmployeeShiftsPage() {
 
     const getShiftStatus = (shift: any) => {
         const now = new Date();
-        const start = new Date(shift.start_time);
-        const end = new Date(shift.end_time);
+        const start = parseShiftTime(shift.start_time);
+        const end = parseShiftTime(shift.end_time);
 
         // Check for active swap/transfer requests for THIS shift
         const activeRequest = (swapRequests || []).find((sr: any) =>
