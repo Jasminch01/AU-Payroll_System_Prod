@@ -131,7 +131,9 @@ export async function validateClockOutChecklist(shiftId: string, supabase: Supab
 }
 
 /**
- * Triggers a push notification to the employee
+ * Triggers an in-app + push notification to the employee about their shift checklist.
+ * - CLOCK_IN_REMINDER: sent when they clock in and have pending checklist tasks
+ * - CLOCK_OUT_BLOCKED: sent when they try to clock out with incomplete required tasks
  */
 export async function notifyChecklistStatus(
     userId: string,
@@ -140,15 +142,15 @@ export async function notifyChecklistStatus(
     shiftType: string,
     pendingCount: number
 ) {
-    const title = type === 'CLOCK_IN_REMINDER' ? 'Shift Checklist' : 'Clock-Out Blocked';
+    const title = type === 'CLOCK_IN_REMINDER' ? '📋 Shift Checklist' : '⚠️ Clock-Out Blocked';
     const message = type === 'CLOCK_IN_REMINDER'
-        ? `You've clocked in for ${shiftType} Shift. You have ${pendingCount} tasks — please complete your checklist in the app.`
-        : `Clock-out blocked — you have ${pendingCount} tasks to review. Open the app to complete your checklist, then try again.`;
+        ? `You've clocked in for your ${shiftType} shift. You have ${pendingCount} task${pendingCount !== 1 ? 's' : ''} to complete — open the app to get started.`
+        : `Clock-out blocked — you have ${pendingCount} required task${pendingCount !== 1 ? 's' : ''} to complete. Finish your checklist, then try again.`;
 
     await createNotification({
         business_id: businessId,
         user_ids: [userId],
-        type: 'BROADCAST', // Using BROADCAST for now, or add new types to lib/notifications.ts
+        type: 'CHECKLIST_REMINDER',
         title,
         message,
         entity_id: null,
