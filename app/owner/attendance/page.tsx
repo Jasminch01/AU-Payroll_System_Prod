@@ -749,7 +749,7 @@ export default function OwnerAttendancePage() {
                             </button>
                         )}
                     </div>
-                    
+
                     <Button
                         onClick={() => setIsManualEntryModalOpen(true)}
                         className="fixed bottom-24 right-6 size-10 lg:h-9 lg:w-auto p-0 lg:px-4 lg:py-2 gap-2 shadow-2xl shadow-[hsl(var(--brand))]/40 lg:shadow-md hover:shadow-lg transition-all lg:ml-2 rounded-full lg:rounded-lg z-50 lg:static shrink-0"
@@ -841,8 +841,8 @@ export default function OwnerAttendancePage() {
                         } else {
                             // Pre-fill manual entry for empty/absent cells
                             const shift = shifts.find((s: any) => s.employee_id === employee.employee_id && s.start_time?.startsWith(date));
-                            setSelectedManualEntry({ 
-                                employeeId: employee.employee_id, 
+                            setSelectedManualEntry({
+                                employeeId: employee.employee_id,
                                 date: date,
                                 inTime: shift ? formatTime(shift.start_time, businessTimezone) : undefined,
                                 outTime: shift ? formatTime(shift.end_time, businessTimezone) : undefined
@@ -861,10 +861,10 @@ export default function OwnerAttendancePage() {
             {detailRow && (
                 <>
                     <div
-                        className="fixed inset-0 z-40 bg-black/30 backdrop-blur-sm animate-in fade-in"
+                        className="fixed inset-0 z-50 bg-black/30 backdrop-blur-sm animate-in fade-in"
                         onClick={() => setDetailRow(null)}
                     />
-                    <div className="fixed inset-y-0 right-0 z-50 w-full max-w-lg flex flex-col bg-[hsl(var(--card))] border-l border-[hsl(var(--border))] shadow-2xl animate-in slide-in-from-right">
+                    <div className="fixed inset-y-0 right-0 z-55 w-full max-w-lg flex flex-col bg-[hsl(var(--card))] border-l border-[hsl(var(--border))] shadow-2xl animate-in slide-in-from-right">
                         {/* Header */}
                         <div className="flex items-center justify-between gap-4 px-6 py-5 border-b border-[hsl(var(--border))] bg-[hsl(var(--muted))]/20">
                             <div className="flex items-center gap-3 min-w-0">
@@ -1058,7 +1058,7 @@ export default function OwnerAttendancePage() {
                                     <ClipboardList size={12} />
                                     Shift Checklist
                                 </p>
-                                
+
                                 {!activeShift ? (
                                     <div className="p-4 rounded-xl bg-[hsl(var(--muted))]/20 border border-[hsl(var(--border))]/50 text-center text-xs text-[hsl(var(--muted-foreground))] font-medium">
                                         No scheduled shift found on this date.
@@ -1086,8 +1086,8 @@ export default function OwnerAttendancePage() {
                                                         <span>{completed}/{total} Tasks ({percent}%)</span>
                                                     </div>
                                                     <div className="h-2 w-full bg-[hsl(var(--border))] rounded-full overflow-hidden">
-                                                        <div 
-                                                            className="h-full bg-[hsl(var(--brand))] rounded-full transition-all duration-500 ease-out" 
+                                                        <div
+                                                            className="h-full bg-[hsl(var(--brand))] rounded-full transition-all duration-500 ease-out"
                                                             style={{ width: `${percent}%` }}
                                                         />
                                                     </div>
@@ -1104,7 +1104,7 @@ export default function OwnerAttendancePage() {
                                                 const isPending = item.status === 'pending';
 
                                                 return (
-                                                    <div 
+                                                    <div
                                                         key={item.checklist_item_id}
                                                         className="flex flex-col gap-2 p-3.5 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/20"
                                                     >
@@ -1129,7 +1129,7 @@ export default function OwnerAttendancePage() {
                                                                     </p>
                                                                 )}
                                                             </div>
-                                                            
+
                                                             {/* Status Badge */}
                                                             <div>
                                                                 {isDone && (
