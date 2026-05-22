@@ -6,8 +6,8 @@ import { getNextAttendanceEvent, validateAttendanceTransition } from '@/lib/atte
 import { EventType } from '@/types/database';
 import { notifyAttendanceEvent } from '@/lib/attendance-notifications';
 import { groupAttendanceIntoSessions } from '@/lib/attendance-grouper';
-
 import { getTodayRangeInTimezone } from '@/lib/timezone-utils';
+import { getShiftChecklistProgress, validateClockOutChecklist, notifyChecklistStatus } from '@/lib/checklist-engine';
 
 export async function GET(request: NextRequest) {
     try {
@@ -101,8 +101,6 @@ export async function POST(request: NextRequest) {
             now
         );
 
-
-
         // Validate the transition
         const transitionError = validateAttendanceTransition(
             lastLog as { event_type: EventType; timestamp: string } | null,
@@ -113,6 +111,40 @@ export async function POST(request: NextRequest) {
         if (transitionError) {
             console.error('[CLOCK ME] Transition error:', transitionError);
             return errorResponse(`Cannot clock: ${transitionError}`, 400);
+        }
+
+        // Checklist check for CLOCK_OUT
+        if (nextEventType === 'CLOCK_OUT') {
+            const today = new Date().toISOString().split('T')[0];
+            const { data: shift } = await supabase
+                .from('Shift')
+                .select('*')
+                .eq('employee_id', authUser.employee_id)
+                .eq('shift_date', today)
+                .eq('shift_status', 'published')
+                .maybeSingle();
+
+            if (shift) {
+                const { blocked, pendingCount } = await validateClockOutChecklist(shift.shift_id, supabase);
+                if (blocked) {
+                    // Send blocked notification
+                    if (authUser.user_id) {
+                        notifyChecklistStatus(
+                            authUser.user_id,
+                            authUser.business_id,
+                            'CLOCK_OUT_BLOCKED',
+                            shift.shift_type,
+                            pendingCount
+                        ).catch(err => console.error('Failed to send checklist blocked notification:', err));
+                    }
+
+                    return errorResponse(
+                        `Incomplete Checklist: Please complete your shift checklist in the My Shifts page before clocking out. You have ${pendingCount} pending required task(s).`,
+                        422,
+                        { blocked: true, pending_count: pendingCount }
+                    );
+                }
+            }
         }
 
         // Create the attendance log
@@ -140,6 +172,38 @@ export async function POST(request: NextRequest) {
             authUser.business_id,
             'Employee App'
         ).catch(err => console.error('Failed to send attendance notification:', err));
+
+        // --- CLOCK_IN: Checklist Reminder Notification (async, post-response) ---
+        // If the employee just clocked in and has a rostered shift with tasks, notify them.
+        if (nextEventType === 'CLOCK_IN' && authUser.user_id) {
+            (async () => {
+                try {
+                    const today = new Date().toISOString().split('T')[0];
+                    const { data: shift } = await supabase
+                        .from('Shift')
+                        .select('*')
+                        .eq('employee_id', authUser.employee_id)
+                        .eq('shift_date', today)
+                        .eq('shift_status', 'published')
+                        .maybeSingle();
+
+                    if (shift) {
+                        const { total } = await getShiftChecklistProgress(shift.shift_id, supabase);
+                        if (total > 0) {
+                            await notifyChecklistStatus(
+                                authUser.user_id!,
+                                authUser.business_id,
+                                'CLOCK_IN_REMINDER',
+                                shift.shift_type,
+                                total
+                            );
+                        }
+                    }
+                } catch (err) {
+                    console.error('[CLOCK ME] Failed to send checklist reminder notification:', err);
+                }
+            })();
+        }
 
         return successResponse(
             { log, event_type: nextEventType },

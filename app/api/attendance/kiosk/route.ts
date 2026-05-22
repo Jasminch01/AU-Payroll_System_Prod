@@ -7,6 +7,7 @@ import { notifyAttendanceEvent } from '@/lib/attendance-notifications';
 import { cookies } from 'next/headers';
 import { verifyKioskToken } from '@/lib/kiosk-auth';
 import { generateBusinessPrefix } from '@/lib/utils/employee-id';
+import { getShiftChecklistProgress, validateClockOutChecklist, notifyChecklistStatus } from '@/lib/checklist-engine';
 
 /**
  * POST /api/attendance/kiosk
@@ -23,6 +24,10 @@ import { generateBusinessPrefix } from '@/lib/utils/employee-id';
  * }
  */
 export async function POST(request: NextRequest) {
+    let event_type: any;
+    let employee: any;
+    const supabase = createAdminClient();
+
     try {
         const cookieStore = await cookies();
         const kioskToken = cookieStore.get('device_kiosk_token');
@@ -41,13 +46,12 @@ export async function POST(request: NextRequest) {
         if (validationError) return errorResponse(validationError, 400);
 
         const { employee_id, device_info } = body;
-        let { event_type } = body;
+        event_type = body.event_type;
 
         const localTimestamp = new Date().toISOString();
 
         // 1. Resolve Employee ID
         let finalEmployeeId = employee_id.toUpperCase();
-        const supabase = createAdminClient();
 
         if (/^\d{4}$/.test(finalEmployeeId)) {
             // Resolve business for prefix
@@ -62,12 +66,14 @@ export async function POST(request: NextRequest) {
         }
 
         // 2. Find employee
-        const { data: employee, error: empError } = await supabase
+        const { data: empData, error: empError } = await supabase
             .from('Employee')
-            .select('employee_id, business_id, first_name, last_name, status')
+            .select('employee_id, business_id, first_name, last_name, status, user_id')
             .eq('employee_id', finalEmployeeId)
             .eq('status', 'active')
             .single();
+        
+        employee = empData;
 
         if (empError || !employee) {
             return errorResponse('Invalid Employee ID or inactive employee.', 401);
@@ -103,6 +109,42 @@ export async function POST(request: NextRequest) {
             if (transitionError) return errorResponse(transitionError, 400);
         }
 
+        // --- CHECKLIST LOGIC FOR CLOCK_OUT ---
+        let rosteredShift = null;
+        if (event_type === 'CLOCK_OUT') {
+            const today = new Date().toISOString().split('T')[0];
+            const { data: shift } = await supabase
+                .from('Shift')
+                .select('*')
+                .eq('employee_id', employee.employee_id)
+                .eq('shift_date', today)
+                .eq('shift_status', 'published')
+                .maybeSingle();
+            
+            if (shift) {
+                rosteredShift = shift;
+                const { blocked, pendingCount } = await validateClockOutChecklist(shift.shift_id, supabase);
+                if (blocked) {
+                    // Send blocked notification
+                    if (employee.user_id) {
+                        notifyChecklistStatus(
+                            employee.user_id,
+                            employee.business_id,
+                            'CLOCK_OUT_BLOCKED',
+                            shift.shift_type,
+                            pendingCount
+                        ).catch(err => console.error('Failed to send checklist blocked notification:', err));
+                    }
+
+                    return errorResponse(
+                        `Incomplete Checklist: Please complete your shift checklist before clocking out. You have ${pendingCount} pending task(s).`,
+                        422,
+                        { blocked: true, pending_count: pendingCount }
+                    );
+                }
+            }
+        }
+
         // 4. Log the event
         const { data: log, error: logError } = await supabase
             .from('AttendanceLog')
@@ -135,5 +177,34 @@ export async function POST(request: NextRequest) {
     } catch (err) {
         console.error('Kiosk attendance error:', err);
         return errorResponse('Internal server error', 500);
+    } finally {
+        // --- CHECKLIST LOGIC FOR CLOCK_IN (Post-Response/Background) ---
+        // Note: In Next.js App Router, code after return doesn't run reliably unless using after() 
+        // which is in canary. So we wrap in try-finally or just run before return but async.
+        if (event_type === 'CLOCK_IN' && employee?.user_id) {
+            (async () => {
+                const today = new Date().toISOString().split('T')[0];
+                const { data: shift } = await supabase
+                    .from('Shift')
+                    .select('*')
+                    .eq('employee_id', employee.employee_id)
+                    .eq('shift_date', today)
+                    .eq('shift_status', 'published')
+                    .maybeSingle();
+
+                if (shift) {
+                    const { total } = await getShiftChecklistProgress(shift.shift_id, supabase);
+                    if (total > 0) {
+                        await notifyChecklistStatus(
+                            employee.user_id!,
+                            employee.business_id,
+                            'CLOCK_IN_REMINDER',
+                            shift.shift_type,
+                            total
+                        );
+                    }
+                }
+            })().catch(err => console.error('Failed to send checklist reminder:', err));
+        }
     }
 }

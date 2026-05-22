@@ -1,23 +1,31 @@
 /**
  * Automatically detects the shift type based on the start time.
  * Logic:
- * - Morning: 00:00 - 11:59
+ * - Night: 00:00 - 04:59, 21:00 - 23:59
+ * - Morning: 05:00 - 07:59 (early start)
+ * - Day: 08:00 - 11:59 (standard day/office hours)
  * - Afternoon: 12:00 - 16:59
- * - Evening: 17:00 - 23:59
+ * - Evening: 17:00 - 20:59
  */
-export function getShiftTypeFromTime(timeStr: string): 'morning' | 'afternoon' | 'evening' {
+export function getShiftTypeFromTime(timeStr: string): string {
     if (!timeStr) return 'morning';
 
     // Parse HH:mm
     const [hours, minutes] = timeStr.split(':').map(Number);
     const totalMinutes = hours * 60 + (isNaN(minutes) ? 0 : minutes);
 
-    if (totalMinutes < 12 * 60) {
-        return 'morning';
+    if (totalMinutes < 5 * 60) {
+        return 'night'; // 00:00 - 04:59
+    } else if (totalMinutes < 8 * 60) {
+        return 'morning'; // 05:00 - 07:59
+    } else if (totalMinutes < 12 * 60) {
+        return 'day'; // 08:00 - 11:59
     } else if (totalMinutes < 17 * 60) {
-        return 'afternoon';
+        return 'afternoon'; // 12:00 - 16:59
+    } else if (totalMinutes < 21 * 60) {
+        return 'evening'; // 17:00 - 20:59
     } else {
-        return 'evening';
+        return 'night'; // 21:00 - 23:59
     }
 }
 

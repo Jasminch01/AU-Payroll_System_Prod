@@ -55,7 +55,7 @@ export function TopNav() {
     };
 
     return (
-        <header className="sticky top-0 z-40 flex h-16 items-center justify-between border-b border-[hsl(var(--border))] bg-[hsl(var(--card))]/80 px-6 backdrop-blur-md">
+        <header className="sticky top-0 z-50 flex h-16 items-center justify-between border-b border-[hsl(var(--border))] bg-[hsl(var(--card))]/80 px-6 backdrop-blur-md">
             {/* Left — Business Brand (mobile only) */}
             <div className="flex items-center gap-3 lg:hidden">
                 <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[hsl(var(--brand))] text-white font-bold text-sm shadow-sm shadow-[hsl(var(--brand))]/20">

@@ -51,7 +51,9 @@ export default function LoginPage() {
 
             // Session cookie is now set — trigger push subscription sync so any
             // previously-granted permission gets saved to push_subscriptions DB.
-            window.dispatchEvent(new CustomEvent('trigger-push-subscribe'));
+            if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+                window.dispatchEvent(new CustomEvent('trigger-push-subscribe'));
+            }
 
             // Redirect based on role
             const role = data.data?.role || data.data?.user?.role;

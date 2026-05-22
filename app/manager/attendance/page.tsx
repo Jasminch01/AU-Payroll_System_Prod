@@ -7,11 +7,11 @@ import { DashboardLayout } from "@/components/layout";
 import { DataTable, Column } from "@/components/ui/data-table";
 import { StatusBadge } from "@/components/ui/badge";
 import { apiGet } from "@/lib/api-client";
-import { 
-    groupAttendanceIntoSessions, 
-    GroupedAttendanceSession, 
-    WorkSession, 
-    calculateTotalHours 
+import {
+    groupAttendanceIntoSessions,
+    GroupedAttendanceSession,
+    WorkSession,
+    calculateTotalHours
 } from "@/lib/attendance-grouper";
 import { ManualEntryModal } from "@/components/attendance/manual-entry-modal";
 import { AttendanceCalendar, getStartOfWeek } from "@/components/attendance/attendance-calendar";
@@ -31,7 +31,11 @@ import {
     ArrowRight,
     List,
     CalendarDays,
-    Search
+    Search,
+    ClipboardList,
+    CheckCircle2,
+    XCircle,
+    MinusCircle
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { AttendanceLog } from "@/types/database";
@@ -185,6 +189,19 @@ export default function ManagerAttendancePage() {
         queryKey: ["attendance-shifts", fromDate, toDate],
         queryFn: () => apiGet<any[]>("/shift", queryParams),
         enabled: !!fromDate && !!toDate
+    });
+
+    const activeShift = useMemo(() => {
+        if (!detailRow) return null;
+        return shifts.find(
+            (s: any) => s.employee_id === detailRow.employee_id && s.shift_date === detailRow.date
+        );
+    }, [detailRow, shifts]);
+
+    const { data: checklistItems = [], isLoading: isLoadingChecklist } = useQuery({
+        queryKey: ["shift-checklist-attendance", activeShift?.shift_id],
+        queryFn: () => apiGet<any[]>(`/shift/${activeShift?.shift_id}/checklist`),
+        enabled: !!activeShift?.shift_id
     });
 
     const isLoading = isLoadingAttendance || isLoadingShifts;
@@ -701,7 +718,7 @@ export default function ManagerAttendancePage() {
                             </button>
                         )}
                     </div>
-                    
+
                     <Button
                         onClick={() => setIsManualEntryModalOpen(true)}
                         className="fixed bottom-24 right-6 size-10 lg:h-9 lg:w-auto p-0 lg:px-4 lg:py-2 gap-2 shadow-2xl shadow-[hsl(var(--brand))]/40 lg:shadow-md hover:shadow-lg transition-all lg:ml-2 rounded-full lg:rounded-lg z-50 lg:static shrink-0"
@@ -792,8 +809,8 @@ export default function ManagerAttendancePage() {
                         } else {
                             // Pre-fill manual entry for empty/absent cells
                             const shift = shifts.find((s: any) => s.employee_id === employee.employee_id && s.start_time?.startsWith(date));
-                            setSelectedManualEntry({ 
-                                employeeId: employee.employee_id, 
+                            setSelectedManualEntry({
+                                employeeId: employee.employee_id,
                                 date: date,
                                 inTime: shift ? formatTime(shift.start_time, businessTimezone) : undefined,
                                 outTime: shift ? formatTime(shift.end_time, businessTimezone) : undefined
@@ -811,11 +828,11 @@ export default function ManagerAttendancePage() {
             {/* ── Slide-Over Detail Panel ── */}
             {detailRow && (
                 <>
-                <div
-                    className="fixed inset-0 z-40 bg-black/30 backdrop-blur-sm animate-in fade-in"
-                    onClick={() => setDetailRow(null)}
-                />
-                <div className="fixed inset-y-0 right-0 z-50 w-full max-w-lg flex flex-col bg-[hsl(var(--card))] border-l border-[hsl(var(--border))] shadow-2xl animate-in slide-in-from-right">
+                    <div
+                        className="fixed inset-0 z-50 bg-black/30 backdrop-blur-sm animate-in fade-in"
+                        onClick={() => setDetailRow(null)}
+                    />
+                    <div className="fixed inset-y-0 right-0 z-55 w-full max-w-lg flex flex-col bg-[hsl(var(--card))] border-l border-[hsl(var(--border))] shadow-2xl animate-in slide-in-from-right">
                         {/* Header */}
                         <div className="flex items-center justify-between gap-4 px-6 py-5 border-b border-[hsl(var(--border))] bg-[hsl(var(--muted))]/20">
                             <div className="flex items-center gap-3 min-w-0">
@@ -935,10 +952,10 @@ export default function ManagerAttendancePage() {
                                                     onClick={(e) => {
                                                         e.stopPropagation();
                                                         // Pass only logs for this specific session
-                                                        setEditingLog({ 
-                                                            ...s.raw_logs[0], 
-                                                            all_logs: s.raw_logs, 
-                                                            Employee: detailRow.Employee 
+                                                        setEditingLog({
+                                                            ...s.raw_logs[0],
+                                                            all_logs: s.raw_logs,
+                                                            Employee: detailRow.Employee
                                                         });
                                                         setIsEditModalOpen(true);
                                                     }}
@@ -984,6 +1001,131 @@ export default function ManagerAttendancePage() {
                                         </div>
                                     );
                                 })}
+                            </div>
+
+                            {/* Checklist Section */}
+                            <div className="mt-6 pt-6 border-t border-[hsl(var(--border))]">
+                                <p className="text-[10px] uppercase font-bold text-[hsl(var(--muted-foreground))] tracking-wider mb-3 flex items-center gap-1.5">
+                                    <ClipboardList size={12} />
+                                    Shift Checklist
+                                </p>
+
+                                {!activeShift ? (
+                                    <div className="p-4 rounded-xl bg-[hsl(var(--muted))]/20 border border-[hsl(var(--border))]/50 text-center text-xs text-[hsl(var(--muted-foreground))] font-medium">
+                                        No scheduled shift found on this date.
+                                    </div>
+                                ) : isLoadingChecklist ? (
+                                    <div className="space-y-2">
+                                        <div className="h-10 bg-[hsl(var(--muted))]/30 animate-pulse rounded-xl" />
+                                        <div className="h-10 bg-[hsl(var(--muted))]/30 animate-pulse rounded-xl" />
+                                    </div>
+                                ) : !checklistItems || checklistItems.length === 0 ? (
+                                    <div className="p-4 rounded-xl bg-[hsl(var(--muted))]/20 border border-[hsl(var(--border))]/50 text-center text-xs text-[hsl(var(--muted-foreground))] font-medium">
+                                        No checklist tasks assigned to this shift.
+                                    </div>
+                                ) : (
+                                    <div className="space-y-3">
+                                        {/* Progress Bar */}
+                                        {(() => {
+                                            const total = checklistItems.length;
+                                            const completed = checklistItems.filter((item: any) => item.status === 'done').length;
+                                            const percent = total > 0 ? Math.round((completed / total) * 100) : 0;
+                                            return (
+                                                <div className="p-4 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/10 space-y-2">
+                                                    <div className="flex justify-between items-center text-xs font-bold text-[hsl(var(--foreground))]">
+                                                        <span>Task Completion</span>
+                                                        <span>{completed}/{total} Tasks ({percent}%)</span>
+                                                    </div>
+                                                    <div className="h-2 w-full bg-[hsl(var(--border))] rounded-full overflow-hidden">
+                                                        <div
+                                                            className="h-full bg-[hsl(var(--brand))] rounded-full transition-all duration-500 ease-out"
+                                                            style={{ width: `${percent}%` }}
+                                                        />
+                                                    </div>
+                                                </div>
+                                            );
+                                        })()}
+
+                                        {/* Tasks List */}
+                                        <div className="space-y-2">
+                                            {checklistItems.map((item: any) => {
+                                                const isDone = item.status === 'done';
+                                                const isNotDone = item.status === 'not_done';
+                                                const isNa = item.status === 'not_applicable';
+                                                const isPending = item.status === 'pending';
+
+                                                return (
+                                                    <div
+                                                        key={item.checklist_item_id}
+                                                        className="flex flex-col gap-2 p-3.5 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/20"
+                                                    >
+                                                        <div className="flex items-start justify-between gap-3">
+                                                            <div className="flex flex-col gap-1 min-w-0">
+                                                                <div className="flex items-center gap-1.5 flex-wrap">
+                                                                    <span className={cn(
+                                                                        "text-sm font-semibold text-[hsl(var(--foreground))]",
+                                                                        isDone && "line-through text-[hsl(var(--muted-foreground))]"
+                                                                    )}>
+                                                                        {item.task_text}
+                                                                    </span>
+                                                                    {item.is_required && (
+                                                                        <span className="text-[9px] uppercase font-black tracking-wider text-[hsl(var(--danger))] bg-[hsl(var(--danger-light))]/30 px-1.5 py-0.5 rounded">
+                                                                            Required
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                                {item.instructions && (
+                                                                    <p className="text-xs text-[hsl(var(--muted-foreground))]">
+                                                                        {item.instructions}
+                                                                    </p>
+                                                                )}
+                                                            </div>
+
+                                                            {/* Status Badge */}
+                                                            <div>
+                                                                {isDone && (
+                                                                    <span className="flex items-center gap-1 text-[11px] font-bold text-[hsl(var(--success))] bg-[hsl(var(--success-light))]/20 px-2 py-0.5 rounded-lg border border-[hsl(var(--success))]/10">
+                                                                        <CheckCircle2 size={12} />
+                                                                        Done
+                                                                    </span>
+                                                                )}
+                                                                {isNotDone && (
+                                                                    <span className="flex items-center gap-1 text-[11px] font-bold text-[hsl(var(--danger))] bg-[hsl(var(--danger-light))]/20 px-2 py-0.5 rounded-lg border border-[hsl(var(--danger))]/10">
+                                                                        <XCircle size={12} />
+                                                                        Not Done
+                                                                    </span>
+                                                                )}
+                                                                {isNa && (
+                                                                    <span className="flex items-center gap-1 text-[11px] font-bold text-[hsl(var(--muted-foreground))] bg-[hsl(var(--muted))]/50 px-2 py-0.5 rounded-lg border border-[hsl(var(--border))]">
+                                                                        <MinusCircle size={12} />
+                                                                        N/A
+                                                                    </span>
+                                                                )}
+                                                                {isPending && (
+                                                                    <span className="flex items-center gap-1 text-[11px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-lg border border-amber-200">
+                                                                        <Clock size={12} className="text-amber-500" />
+                                                                        Pending
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Audit Reason Callout */}
+                                                        {item.reason && (
+                                                            <div className="flex items-start gap-1.5 p-2 rounded-lg bg-[hsl(var(--muted))]/50 border border-[hsl(var(--border))] text-xs text-[hsl(var(--muted-foreground))] mt-1">
+                                                                <AlertCircle size={13} className="text-[hsl(var(--muted-foreground))] shrink-0 mt-0.5" />
+                                                                <div className="min-w-0">
+                                                                    <span className="font-semibold text-[hsl(var(--foreground))]">Reason: </span>
+                                                                    <span className="italic">"{item.reason}"</span>
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </div>
 

@@ -12,8 +12,8 @@ import { StatusBadge } from "@/components/ui/badge";
 import { apiGet, apiPut, apiPost, apiDelete, apiPatch } from "@/lib/api-client";
 import { toast } from "sonner";
 import {
-    ArrowLeft, MoveLeft, Save, Trash2, User, Phone, Mail, DollarSign, Shield, FileText,
-    Plus, Lock, Clock, Calendar, Briefcase, CalendarClock, X, Edit3
+    MoveLeft, Save, Trash2, User, Shield, FileText,
+    Plus, Clock, Calendar, Briefcase, CalendarClock, Edit3
 } from "lucide-react";
 import {
     Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter

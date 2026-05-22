@@ -7,7 +7,7 @@ import { MetricCard } from "@/components/ui/card";
 import { Card, CardContent } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/badge";
 import { apiGet } from "@/lib/api-client";
-import { CalendarDays, Clock, Palmtree, DollarSign } from "lucide-react";
+import { CalendarDays, Clock, Palmtree, DollarSign, ClipboardList } from "lucide-react";
 import { useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
@@ -185,7 +185,7 @@ export default function EmployeeDashboardPage() {
                             <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-[hsl(var(--brand-light))]">
                                 <CalendarDays size={28} className="text-[hsl(var(--brand))]" />
                             </div>
-                            <div>
+                             <div>
                                 <p className="font-semibold text-lg">
                                     {new Date(nextShift.start_time).toLocaleDateString("en-AU", { weekday: "long", month: "short", day: "numeric" })}
                                 </p>
@@ -194,6 +194,14 @@ export default function EmployeeDashboardPage() {
                                     {" – "}
                                     {new Date(nextShift.end_time).toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit", hour12: false })}
                                 </p>
+                                {nextShift.ShiftChecklistItem && nextShift.ShiftChecklistItem.length > 0 && (
+                                    <div className="mt-2 flex items-center gap-1.5">
+                                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-600 border border-emerald-100 font-bold text-[10px] uppercase">
+                                            <ClipboardList size={11} className="shrink-0" />
+                                            {nextShift.ShiftChecklistItem.filter((item: any) => item.status === 'done').length}/{nextShift.ShiftChecklistItem.length} Tasks
+                                        </span>
+                                    </div>
+                                )}
                             </div>
                             <div className="ml-auto">
                                  <StatusBadge status={getShiftStatus(nextShift)} />

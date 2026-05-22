@@ -22,7 +22,8 @@ export type NotificationType =
     | 'SHIFT_DELETED'
     | 'SHIFT_POOL_AVAILABLE'
     | 'BROADCAST'
-    | 'ATTENDANCE_REQUESTED';
+    | 'ATTENDANCE_REQUESTED'
+    | 'CHECKLIST_REMINDER';
 
 export interface CreateNotificationParams {
     business_id: string;

@@ -21,6 +21,7 @@ import {
     LogOut,
     Menu,
     X,
+    ClipboardList,
 } from "lucide-react";
 
 interface MobileNavProps {
@@ -53,6 +54,7 @@ const primaryNav = {
 const moreNav = {
     owner: [
         { label: "Payroll", href: "/owner/payroll", icon: <DollarSign size={20} /> },
+        { label: "Checklists", href: "/owner/checklists", icon: <ClipboardList size={20} /> },
         { label: "Attendance", href: "/owner/attendance", icon: <Clock size={20} /> },
         { label: "Timesheets", href: "/owner/timesheets", icon: <FileText size={20} /> },
         { label: "Leave", href: "/owner/leave", icon: <Palmtree size={20} /> },
@@ -62,6 +64,7 @@ const moreNav = {
         { label: "Settings", href: "/owner/settings", icon: <Settings size={20} /> },
     ],
     manager: [
+        { label: "Checklists", href: "/owner/checklists", icon: <ClipboardList size={20} /> },
         { label: "Attendance", href: "/manager/attendance", icon: <Clock size={20} /> },
         { label: "Timesheets", href: "/manager/timesheets", icon: <FileText size={20} /> },
         { label: "Leave", href: "/manager/leave", icon: <Palmtree size={20} /> },

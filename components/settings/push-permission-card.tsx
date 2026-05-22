@@ -75,6 +75,7 @@ export function PushPermissionCard() {
     const [permission, setPermission] = useState<NotificationPermission>("default");
     const [isSubscribed, setIsSubscribed] = useState(false);
     const [loading, setLoading] = useState(false);
+    const [testing, setTesting] = useState(false);
 
     // ── Initialise ──────────────────────────────────────────────────────────
     useEffect(() => {
@@ -167,6 +168,30 @@ export function PushPermissionCard() {
             toast.error("Could not disable notifications", { description: err.message });
         } finally {
             setLoading(false);
+        }
+    };
+
+    // ── Test Push Notification ───────────────────────────────────────────────
+    const handleSendTest = async () => {
+        setTesting(true);
+        try {
+            const res = await fetch("/api/notifications/test-push", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+            });
+            if (!res.ok) {
+                const data = await res.json();
+                throw new Error(data.message || "Failed to trigger test notification");
+            }
+            toast.success("Test notification sent", {
+                description: "You should see a push notification on this device shortly.",
+            });
+        } catch (err: any) {
+            toast.error("Could not send test notification", {
+                description: err.message || "Please try again.",
+            });
+        } finally {
+            setTesting(false);
         }
     };
 
@@ -280,16 +305,26 @@ export function PushPermissionCard() {
                                 </p>
                             </div>
                         </div>
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            className="gap-2"
-                            onClick={handleDisable}
-                            disabled={loading}
-                        >
-                            <BellOff size={14} />
-                            Disable
-                        </Button>
+                        <div className="flex items-center gap-2">
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={handleSendTest}
+                                disabled={loading || testing}
+                            >
+                                {testing ? "Sending..." : "Send Test"}
+                            </Button>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                className="gap-2"
+                                onClick={handleDisable}
+                                disabled={loading || testing}
+                            >
+                                <BellOff size={14} />
+                                Disable
+                            </Button>
+                        </div>
                     </div>
                 )}
 
