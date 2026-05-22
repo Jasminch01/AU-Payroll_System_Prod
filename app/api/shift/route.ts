@@ -4,6 +4,7 @@ import { requireRole } from '@/lib/auth';
 import { successResponse, errorResponse, validateRequiredFields } from '@/lib/api-helpers';
 import { checkShiftConflictWithLeave } from '@/lib/leave-logic';
 import { notifyShiftPublished } from '@/lib/notifications';
+import { copyTemplateTasksToShift } from '@/lib/checklist-engine';
 
 /**
  * GET /api/shift
@@ -26,7 +27,7 @@ export async function GET(request: NextRequest) {
 
         let query = supabase
             .from('Shift')
-            .select('*, Employee:employee_id(employee_id, first_name, last_name, role_title), Roster:roster_id(*)')
+            .select('*, Employee:employee_id(employee_id, first_name, last_name, role_title), Roster:roster_id(*), ShiftChecklistItem(status)')
             .eq('business_id', authUser.business_id)
             .order('shift_date', { ascending: false });
 
@@ -211,12 +212,22 @@ export async function POST(request: NextRequest) {
                 start_time,
                 end_time,
                 shift_type,
-                shift_status: 'draft', // Shifts are draft by default
+                shift_status: notify ? 'published' : 'draft', // Shifts are draft by default unless notified
             })
             .select()
             .single();
 
         if (error) return errorResponse(error.message, 400);
+        
+        // AUTO-ATTACH CHECKLIST TASKS
+        if (shift) {
+            try {
+                await copyTemplateTasksToShift(shift.shift_id, shift_type, authUser.business_id, supabase);
+            } catch (checklistErr) {
+                // We don't block shift creation if checklist fails, but we log it
+                console.error(`[Checklist] Auto-attach failed for shift ${shift.shift_id}:`, checklistErr);
+            }
+        }
 
         // If the shift is published and the roster is still draft, publish the roster too
         if (shift && shift.shift_status === 'published') {

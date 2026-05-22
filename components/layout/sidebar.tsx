@@ -19,6 +19,7 @@ import {
     ChevronLeft,
     ChevronRight,
     MonitorSmartphone,
+    ClipboardList,
 } from "lucide-react";
 
 export interface NavItem {
@@ -39,6 +40,7 @@ const ownerNav: NavItem[] = [
     { label: "Dashboard", href: "/owner/dashboard", icon: <LayoutDashboard size={20} /> },
     { label: "Employees", href: "/owner/employees", icon: <Users size={20} /> },
     { label: "Roster", href: "/owner/roster", icon: <CalendarDays size={20} /> },
+    { label: "Checklists", href: "/owner/checklists", icon: <ClipboardList size={20} /> },
     { label: "Attendance", href: "/owner/attendance", icon: <Clock size={20} /> },
     { label: "Approvals", href: "/owner/approvals", icon: <ShieldCheck size={20} /> },
     { label: "Timesheets", href: "/owner/timesheets", icon: <FileText size={20} /> },
@@ -53,6 +55,7 @@ const managerNav: NavItem[] = [
     { label: "Dashboard", href: "/manager/dashboard", icon: <LayoutDashboard size={20} /> },
     { label: "Team", href: "/manager/team", icon: <Users size={20} /> },
     { label: "Roster", href: "/manager/roster", icon: <CalendarDays size={20} /> },
+    { label: "Checklists", href: "/owner/checklists", icon: <ClipboardList size={20} /> },
     { label: "My Shifts", href: "/manager/shifts", icon: <CalendarDays size={20} /> },
     { label: "Attendance", href: "/manager/attendance", icon: <Clock size={20} /> },
     { label: "Timesheets", href: "/manager/timesheets", icon: <FileText size={20} /> },

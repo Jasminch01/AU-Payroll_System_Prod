@@ -93,6 +93,13 @@ export async function POST(request: NextRequest) {
 
         const userId = authData.user.id;
 
+        // Auto-confirm user email using Admin Client
+        const { createAdminClient } = await import('@/lib/supabase/admin');
+        const adminClient = createAdminClient();
+        await adminClient.auth.admin.updateUserById(userId, { email_confirm: true }).catch(err => {
+            console.error('[Auth] Failed to auto-confirm user email:', err);
+        });
+
         // Step 3: Create User record (role = owner)
         const { data: userData, error: userError } = await supabase
             .from('User')

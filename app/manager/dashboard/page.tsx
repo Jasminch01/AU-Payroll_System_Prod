@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { apiGet, apiPut } from "@/lib/api-client";
 import { 
     Users, CalendarDays, FileText, Palmtree, Clock, MonitorPlay, 
-    ArrowLeftRight, TrendingUp, CheckCircle, XCircle 
+    ArrowLeftRight, TrendingUp, CheckCircle, XCircle, ClipboardList 
 } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
@@ -148,6 +148,14 @@ export default function ManagerDashboardPage() {
                                         {" - "}
                                         {new Date(nextShift.end_time).toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit", hour12: false })}
                                     </p>
+                                    {nextShift.ShiftChecklistItem && nextShift.ShiftChecklistItem.length > 0 && (
+                                        <div className="mt-2 flex items-center gap-1.5">
+                                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-600 border border-emerald-100 font-bold text-[10px] uppercase">
+                                                <ClipboardList size={11} className="shrink-0" />
+                                                {nextShift.ShiftChecklistItem.filter((item: any) => item.status === 'done').length}/{nextShift.ShiftChecklistItem.length} Tasks
+                                            </span>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                             <Link href="/manager/shifts">

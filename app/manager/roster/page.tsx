@@ -16,7 +16,7 @@ import { getShiftTypeFromTime, calculateShiftDuration, formatDurationHours } fro
 import { EmployeeSearchPicker } from "@/components/roster/employee-search-picker";
 import { useEffect } from "react";
 import { toast } from "sonner";
-import { Plus, ChevronLeft, ChevronRight, Clock, Trash2, CheckCircle2, FileText, RefreshCcw, Copy, Bell, CalendarDays, Search, Filter, ChevronsLeft, ChevronsRight, GripVertical, MoreHorizontal, Users, ChevronDown, ArrowUpDown, Settings2, ChevronUp, Info, X } from "lucide-react";
+import { Plus, ChevronLeft, ChevronRight, Clock, Trash2, CheckCircle2, FileText, RefreshCcw, Copy, Bell, CalendarDays, Search, Filter, ChevronsLeft, ChevronsRight, GripVertical, MoreHorizontal, Users, ChevronDown, ArrowUpDown, Settings2, ChevronUp, Info, X, ClipboardList } from "lucide-react";
 import { Reorder, AnimatePresence, motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -173,6 +173,9 @@ export default function ManagerRosterPage() {
     const [shiftStart, setShiftStart] = useState("09:00");
     const [shiftEnd, setShiftEnd] = useState("17:00");
     const [shiftType, setShiftType] = useState("morning");
+    const [isShiftTypeOverridden, setIsShiftTypeOverridden] = useState(false);
+    const [isShiftTypeModalOpen, setIsShiftTypeModalOpen] = useState(false);
+    const [shiftTypeSearch, setShiftTypeSearch] = useState("");
     const [initialFormState, setInitialFormState] = useState<any>(null);
     const [isStartDropdownOpen, setIsStartDropdownOpen] = useState(false);
     const [isEndDropdownOpen, setIsEndDropdownOpen] = useState(false);
@@ -181,11 +184,11 @@ export default function ManagerRosterPage() {
     // Auto-detect shift type when start time changes (works for both new and editing shifts)
     // eslint-disable-next-line react-hooks/exhaustive-deps
     useEffect(() => {
-        if (shiftStart) {
+        if (shiftStart && !isShiftTypeOverridden) {
             const detectedType = getShiftTypeFromTime(shiftStart);
             setShiftType(detectedType);
         }
-    }, [shiftStart]);
+    }, [shiftStart, isShiftTypeOverridden]);
 
     // Reset form when dialog closes
     useEffect(() => {
@@ -195,6 +198,9 @@ export default function ManagerRosterPage() {
             setShiftStart("09:00");
             setShiftEnd("17:00");
             setShiftType("morning");
+            setIsShiftTypeOverridden(false);
+            setIsShiftTypeModalOpen(false);
+            setShiftTypeSearch("");
             setInitialFormState(null);
             setIsStartDropdownOpen(false);
             setIsEndDropdownOpen(false);
@@ -292,6 +298,12 @@ export default function ManagerRosterPage() {
         queryKey: ["shifts", rangeStart, rangeEnd],
         queryFn: () => apiGet<any[]>("/shift", { from: rangeStart, to: rangeEnd }),
     });
+
+    const dynamicRosterShiftTypes = useMemo(() => {
+        const baseTypes = ['morning', 'day', 'afternoon', 'evening', 'night', 'closing', 'delivery', 'ordering', 'manager', 'daily'];
+        const activeTypes = shifts.map((s: any) => s.shift_type?.toLowerCase()).filter(Boolean);
+        return Array.from(new Set([...baseTypes, ...activeTypes]));
+    }, [shifts]);
 
     const isEditingShiftLocked = useMemo(() => {
         if (!editingShiftId) return false;
@@ -668,20 +680,21 @@ export default function ManagerRosterPage() {
             const startTime = parseTime(shift.start_time);
             const endTime = parseTime(shift.end_time);
 
-
-            // Auto-detect the shift type based on start time (not the old type from DB)
+            const savedType = shift.shift_type || getShiftTypeFromTime(startTime);
             const autoDetectedType = getShiftTypeFromTime(startTime);
+            const overridden = savedType !== autoDetectedType;
 
             setShiftStart(startTime);
             setShiftEnd(endTime);
-            setShiftType(autoDetectedType);
+            setShiftType(savedType);
+            setIsShiftTypeOverridden(overridden);
 
             setInitialFormState({
                 employee_id: empId,
                 shift_date: date,
                 start_time: startTime,
                 end_time: endTime,
-                shift_type: autoDetectedType
+                shift_type: savedType
             });
         } else {
             setEditingShiftId(null);
@@ -701,6 +714,7 @@ export default function ManagerRosterPage() {
                 setShiftEnd("17:00");
             }
             setShiftType("morning");
+            setIsShiftTypeOverridden(false);
         }
         setAddShiftOpen(true);
     };
@@ -880,9 +894,9 @@ export default function ManagerRosterPage() {
                             }}
                         />
                         {isSearchExpanded && (
-                             <Button variant="ghost" size="icon" className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8 hover:bg-transparent" onClick={() => { setIsSearchExpanded(false); setSearchQuery(""); }}>
-                                 <X size={14} className="text-[hsl(var(--muted-foreground))]" />
-                             </Button>
+                            <Button variant="ghost" size="icon" className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8 hover:bg-transparent" onClick={() => { setIsSearchExpanded(false); setSearchQuery(""); }}>
+                                <X size={14} className="text-[hsl(var(--muted-foreground))]" />
+                            </Button>
                         )}
                     </div>
 
@@ -1238,30 +1252,30 @@ export default function ManagerRosterPage() {
                         {!isCalendarExpanded && (
                             <div className="flex flex-col sticky top-0 z-10 bg-white">
                                 <div className="flex overflow-x-auto p-3 no-scrollbar gap-2">
-                                {rosterDates.map((d, i) => {
-                                    const isSelected = selectedDayIndex === i;
-                                    const isToday = formatDate(d) === formatDate(new Date());
-                                    const dayName = d.toLocaleDateString("en-AU", { weekday: "short" });
-                                    const dayNum = d.getDate();
+                                    {rosterDates.map((d, i) => {
+                                        const isSelected = selectedDayIndex === i;
+                                        const isToday = formatDate(d) === formatDate(new Date());
+                                        const dayName = d.toLocaleDateString("en-AU", { weekday: "short" });
+                                        const dayNum = d.getDate();
 
-                                    return (
-                                        <button
-                                            key={i}
-                                            id={`day-btn-${i}`}
-                                            onClick={() => setSelectedDayIndex(i)}
-                                            className={cn(
-                                                "flex flex-col items-center justify-center min-w-[56px] h-14 rounded-xl transition-all shrink-0",
-                                                isSelected
-                                                    ? "bg-[hsl(var(--brand))] text-white shadow-md shadow-[hsl(var(--brand))]/20 scale-105"
-                                                    : "bg-[hsl(var(--muted))]/10 text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted))]/20",
-                                                isToday && !isSelected && "ring-2 ring-[hsl(var(--brand))]/30"
-                                            )}
-                                        >
-                                            <span className="text-[9px] uppercase font-black tracking-tighter opacity-70">{dayName}</span>
-                                            <span className="text-base font-black leading-tight">{dayNum}</span>
-                                        </button>
-                                    );
-                                })}
+                                        return (
+                                            <button
+                                                key={i}
+                                                id={`day-btn-${i}`}
+                                                onClick={() => setSelectedDayIndex(i)}
+                                                className={cn(
+                                                    "flex flex-col items-center justify-center min-w-[56px] h-14 rounded-xl transition-all shrink-0",
+                                                    isSelected
+                                                        ? "bg-[hsl(var(--brand))] text-white shadow-md shadow-[hsl(var(--brand))]/20 scale-105"
+                                                        : "bg-[hsl(var(--muted))]/10 text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted))]/20",
+                                                    isToday && !isSelected && "ring-2 ring-[hsl(var(--brand))]/30"
+                                                )}
+                                            >
+                                                <span className="text-[9px] uppercase font-black tracking-tighter opacity-70">{dayName}</span>
+                                                <span className="text-base font-black leading-tight">{dayNum}</span>
+                                            </button>
+                                        );
+                                    })}
                                 </div>
                             </div>
                         )}
@@ -1321,20 +1335,20 @@ export default function ManagerRosterPage() {
                                                 </div>
                                             ) : (
                                                 <div className="flex items-center w-full gap-2 relative">
-                                                     <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[hsl(var(--muted-foreground))]" />
-                                                     <Input
-                                                         placeholder="Search employee..."
-                                                         className="pl-9 h-10 w-full bg-white border-[hsl(var(--border))] rounded-xl focus:ring-2 focus:ring-[hsl(var(--brand))]/10 pr-10 shadow-sm"
-                                                         value={searchQuery}
-                                                         autoFocus
-                                                         onChange={(e) => {
-                                                             setSearchQuery(e.target.value);
-                                                             setCurrentPage(1);
-                                                         }}
-                                                     />
-                                                     <Button variant="ghost" size="icon" className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8 hover:bg-transparent" onClick={() => { setIsSearchExpanded(false); setSearchQuery(""); }}>
-                                                         <X size={14} className="text-[hsl(var(--muted-foreground))]" />
-                                                     </Button>
+                                                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[hsl(var(--muted-foreground))]" />
+                                                    <Input
+                                                        placeholder="Search employee..."
+                                                        className="pl-9 h-10 w-full bg-white border-[hsl(var(--border))] rounded-xl focus:ring-2 focus:ring-[hsl(var(--brand))]/10 pr-10 shadow-sm"
+                                                        value={searchQuery}
+                                                        autoFocus
+                                                        onChange={(e) => {
+                                                            setSearchQuery(e.target.value);
+                                                            setCurrentPage(1);
+                                                        }}
+                                                    />
+                                                    <Button variant="ghost" size="icon" className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8 hover:bg-transparent" onClick={() => { setIsSearchExpanded(false); setSearchQuery(""); }}>
+                                                        <X size={14} className="text-[hsl(var(--muted-foreground))]" />
+                                                    </Button>
                                                 </div>
                                             )}
                                         </div>
@@ -1410,18 +1424,26 @@ export default function ManagerRosterPage() {
                                                                                         {" – "}
                                                                                         {s.end_time?.split('T')[1]?.substring(0, 5)}
                                                                                         {s.start_time && s.end_time && (
-                                                                                            <span className="text-xs opacity-60 ml-0.5 font-bold">
+                                                                                    <span className="text-xs opacity-60 ml-0.5 font-bold">
                                                                                                 ({formatDurationHours(calculateShiftDuration(s.start_time.split('T')[1]?.substring(0, 5) || "00:00", s.end_time.split('T')[1]?.substring(0, 5) || "00:00"))})
                                                                                             </span>
                                                                                         )}
                                                                                     </span>
                                                                                 </div>
-                                                                                <Badge variant="secondary" className={cn(
-                                                                                    "text-[8px] uppercase font-black tracking-widest h-4 w-min whitespace-nowrap",
-                                                                                    isPublished ? "bg-green-200 text-green-900" : "bg-orange-100 text-orange-900"
-                                                                                )}>
-                                                                                    {s.shift_type}
-                                                                                </Badge>
+                                                                                <div className="flex items-center gap-1.5 flex-wrap">
+                                                                                    <Badge variant="secondary" className={cn(
+                                                                                        "text-[8px] uppercase font-black tracking-widest h-4 w-min whitespace-nowrap",
+                                                                                        isPublished ? "bg-green-200 text-green-900" : "bg-orange-100 text-orange-900"
+                                                                                    )}>
+                                                                                        {s.shift_type}
+                                                                                    </Badge>
+                                                                                    {s.ShiftChecklistItem && s.ShiftChecklistItem.length > 0 && (
+                                                                                        <Badge variant="secondary" className="text-[8px] uppercase font-black tracking-widest h-4 w-min whitespace-nowrap bg-emerald-100 text-emerald-955 border border-emerald-200 flex items-center gap-0.5">
+                                                                                            <ClipboardList size={8} />
+                                                                                            {s.ShiftChecklistItem.filter((item: any) => item.status === 'done').length}/{s.ShiftChecklistItem.length}
+                                                                                        </Badge>
+                                                                                    )}
+                                                                                </div>
                                                                             </div>
                                                                             <div className={cn(
                                                                                 "flex h-7 w-7 items-center justify-center rounded-lg transition-colors shadow-sm",
@@ -1737,10 +1759,16 @@ export default function ManagerRosterPage() {
                                                                                     ({formatDurationHours(calculateShiftDuration(startTimeStr, endTimeStr))})
                                                                                 </span>
                                                                             </div>
-                                                                            <div className="mt-auto pt-1">
-                                                                                <span className="text-[9px] font-black uppercase tracking-tighter truncate block opacity-80">
+                                                                            <div className="mt-auto pt-1 flex items-center justify-between gap-1 w-full overflow-hidden">
+                                                                                <span className="text-[9px] font-black uppercase tracking-tighter truncate block opacity-80 max-w-[60%]">
                                                                                     {s.shift_type}
                                                                                 </span>
+                                                                                {s.ShiftChecklistItem && s.ShiftChecklistItem.length > 0 && (
+                                                                                    <span className="text-[8px] font-bold bg-emerald-100 text-emerald-800 px-0.5 rounded flex items-center gap-0.5 shrink-0">
+                                                                                        <ClipboardList size={7} />
+                                                                                        {s.ShiftChecklistItem.filter((item: any) => item.status === 'done').length}/{s.ShiftChecklistItem.length}
+                                                                                    </span>
+                                                                                )}
                                                                             </div>
                                                                             {/* Bottom Accent Bar as requested in reference image */}
                                                                             <div className={cn(
@@ -2006,10 +2034,20 @@ export default function ManagerRosterPage() {
                         <div className="grid grid-cols-2 gap-3 items-center">
                             <div className="space-y-1.5 bg-[hsl(var(--brand-light))]/10 p-3 rounded-xl border border-[hsl(var(--brand))]/10">
                                 <label className="text-[10px] font-black uppercase text-[hsl(var(--muted-foreground))] tracking-widest block mb-1">Shift Type</label>
-                                <div className="flex items-center gap-2">
-                                    <Clock size={14} className="text-[hsl(var(--brand))]" />
-                                    <span className="text-sm font-bold capitalize text-[hsl(var(--foreground))]">{shiftType}</span>
-                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setIsShiftTypeModalOpen(true)}
+                                    className="w-full flex items-center justify-between text-left focus:outline-none hover:opacity-85 transition-opacity"
+                                >
+                                    <div className="flex items-center gap-2">
+                                        <Clock size={14} className="text-[hsl(var(--brand))]" />
+                                        <span className="text-sm font-bold capitalize text-[hsl(var(--foreground))]">
+                                            {shiftType}
+                                            {isShiftTypeOverridden && <span className="ml-1 text-[9px] font-black text-[hsl(var(--brand))] uppercase tracking-wider bg-[hsl(var(--brand-light))]/40 px-1.5 py-0.5 rounded">Custom</span>}
+                                        </span>
+                                    </div>
+                                    <ChevronDown size={14} className="text-slate-400" />
+                                </button>
                             </div>
                             <div className="space-y-1.5 bg-[hsl(var(--muted))]/30 p-3 rounded-xl border border-[hsl(var(--border))]">
                                 <label className="text-[10px] font-black uppercase text-[hsl(var(--muted-foreground))] tracking-widest block mb-1">Total Hours</label>
@@ -2387,6 +2425,131 @@ export default function ManagerRosterPage() {
                             onClick={() => setResultModalOpen(false)}
                         >
                             Done
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={isShiftTypeModalOpen} onOpenChange={setIsShiftTypeModalOpen}>
+                <DialogContent className="sm:max-w-[425px] bg-white rounded-2xl shadow-2xl border border-slate-100 p-6 z-100">
+                    <DialogHeader>
+                        <DialogTitle className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                            <Clock className="text-[hsl(var(--brand))]" size={20} />
+                            Select Shift Type
+                        </DialogTitle>
+                        <DialogDescription className="text-xs text-slate-400">
+                            Choose or type a custom shift type name for this roster shift.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="space-y-4 my-4">
+                        <div className="space-y-1.5">
+                            <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Search or Type Custom Type</label>
+                            <input
+                                autoFocus
+                                type="text"
+                                placeholder="e.g. Midday, Stock Count, Saturday Night..."
+                                value={shiftTypeSearch}
+                                onChange={e => setShiftTypeSearch(e.target.value)}
+                                className="w-full h-10 px-3 rounded-xl border border-slate-200 bg-white focus:outline-none focus:border-[hsl(var(--brand))] focus:ring-2 focus:ring-[hsl(var(--brand))]/20 text-sm font-semibold"
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter' && shiftTypeSearch.trim()) {
+                                        const customVal = shiftTypeSearch.trim().toLowerCase();
+                                        setShiftType(customVal);
+                                        setIsShiftTypeOverridden(true);
+                                        setIsShiftTypeModalOpen(false);
+                                        setShiftTypeSearch("");
+                                    }
+                                }}
+                            />
+                            <p className="text-[9px] text-slate-400 leading-normal">Press Enter or click Add to create &apos;{shiftTypeSearch}&apos; as a custom shift type.</p>
+                        </div>
+
+                        <div className="max-h-60 overflow-y-auto space-y-2 p-1 custom-scrollbar border border-slate-100 rounded-xl bg-slate-50/50">
+                            {/* Auto-detect Suggestion Option */}
+                            {(() => {
+                                const autoType = getShiftTypeFromTime(shiftStart);
+                                const isActive = !isShiftTypeOverridden && shiftType === autoType;
+                                return (
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setShiftType(autoType);
+                                            setIsShiftTypeOverridden(false);
+                                            setIsShiftTypeModalOpen(false);
+                                            setShiftTypeSearch("");
+                                        }}
+                                        className={cn(
+                                            "w-full text-left px-3.5 py-2.5 text-xs font-bold rounded-xl transition-all flex items-center justify-between border",
+                                            isActive
+                                                ? "bg-[hsl(var(--brand))] text-white border-transparent shadow-md"
+                                                : "bg-white hover:bg-slate-50 border-slate-100 text-[hsl(var(--brand))]"
+                                        )}
+                                    >
+                                        <span className="flex items-center gap-1.5">
+                                            <span>✨ Auto-Detect Shift Type</span>
+                                        </span>
+                                        <Badge variant="outline" className={cn("text-[9px] font-black uppercase px-2 py-0.5", isActive ? "text-white border-white/30 bg-white/10" : "text-[hsl(var(--brand))] border-[hsl(var(--brand))]/20")}>
+                                            {autoType}
+                                        </Badge>
+                                    </button>
+                                );
+                            })()}
+
+                            <div className="text-[10px] font-black uppercase text-slate-400 tracking-wider pt-2 pb-1 px-1 border-t border-slate-100/50">
+                                Configured Shift Types
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-2">
+                                {dynamicRosterShiftTypes
+                                    .filter(t => t.toLowerCase().includes(shiftTypeSearch.toLowerCase()))
+                                    .map(type => {
+                                        const isActive = isShiftTypeOverridden && shiftType === type;
+                                        return (
+                                            <button
+                                                key={type}
+                                                type="button"
+                                                onClick={() => {
+                                                    setShiftType(type);
+                                                    setIsShiftTypeOverridden(true);
+                                                    setIsShiftTypeModalOpen(false);
+                                                    setShiftTypeSearch("");
+                                                }}
+                                                className={cn(
+                                                    "text-left px-3 py-2.5 text-xs font-bold rounded-xl transition-all border capitalize flex items-center justify-between",
+                                                    isActive
+                                                        ? "bg-[hsl(var(--brand))] text-white border-transparent shadow-md"
+                                                        : "bg-white hover:bg-slate-50 border-slate-100 text-slate-700"
+                                                )}
+                                            >
+                                                <span>{type}</span>
+                                            </button>
+                                        );
+                                    })
+                                }
+                            </div>
+
+                            {shiftTypeSearch.trim() && !dynamicRosterShiftTypes.some(t => t.toLowerCase() === shiftTypeSearch.trim().toLowerCase()) && (
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        const customVal = shiftTypeSearch.trim().toLowerCase();
+                                        setShiftType(customVal);
+                                        setIsShiftTypeOverridden(true);
+                                        setIsShiftTypeModalOpen(false);
+                                        setShiftTypeSearch("");
+                                    }}
+                                    className="w-full text-center py-2.5 text-xs rounded-xl bg-[hsl(var(--brand))]/10 border border-dashed border-[hsl(var(--brand))]/30 text-[hsl(var(--brand))] hover:bg-[hsl(var(--brand))]/20 transition-all font-bold mt-2"
+                                >
+                                    + Create &quot;{shiftTypeSearch.trim()}&quot; Custom Shift Type
+                                </button>
+                            )}
+                        </div>
+                    </div>
+
+                    <DialogFooter className="mt-4">
+                        <Button type="button" variant="outline" className="rounded-xl" onClick={() => setIsShiftTypeModalOpen(false)}>
+                            Cancel
                         </Button>
                     </DialogFooter>
                 </DialogContent>

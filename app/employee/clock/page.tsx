@@ -12,8 +12,20 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useBusinessTimezone } from "@/lib/timezone-context";
 
+import { useRouter } from "next/navigation";
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from "@/components/ui/dialog";
+
 export default function EmployeeClockPage() {
+    const router = useRouter();
     const [lastAction, setLastAction] = useState<{ type: string; time: string } | null>(null);
+    const [checklistError, setChecklistError] = useState<string | null>(null);
     const { businessTimezone } = useBusinessTimezone();
     
     const { data: profile } = useQuery({
@@ -62,7 +74,11 @@ export default function EmployeeClockPage() {
         },
         onError: (err: Error) => {
             console.error('[CLOCK PAGE] Clock error:', err);
-            toast.error(err.message);
+            if (err.message?.includes('Incomplete Checklist')) {
+                setChecklistError(err.message);
+            } else {
+                toast.error(err.message);
+            }
         },
     });
 
@@ -177,6 +193,40 @@ export default function EmployeeClockPage() {
                     </CardContent>
                 </Card>
             </div>
+
+            <Dialog open={!!checklistError} onOpenChange={(open) => { if (!open) setChecklistError(null); }}>
+                <DialogContent className="max-w-md">
+                    <DialogHeader>
+                        <DialogTitle className="text-lg font-black text-rose-600">Checklist Incomplete</DialogTitle>
+                        <DialogDescription className="text-xs text-slate-500 font-medium mt-1">
+                            {checklistError?.replace('Incomplete Checklist: ', '')}
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="py-4 text-center">
+                        <p className="text-sm font-semibold text-slate-600">
+                            You must complete all required checklist items or provide a reason on the Shifts page before you can clock out.
+                        </p>
+                    </div>
+                    <DialogFooter className="flex items-center justify-end gap-2">
+                        <Button 
+                            variant="ghost" 
+                            className="h-10 rounded-xl"
+                            onClick={() => setChecklistError(null)}
+                        >
+                            Close
+                        </Button>
+                        <Button 
+                            className="h-10 rounded-xl px-5 bg-[hsl(var(--brand))] hover:bg-[hsl(var(--brand))]/95 text-white"
+                            onClick={() => {
+                                setChecklistError(null);
+                                router.push('/employee/shifts');
+                            }}
+                        >
+                            Go to My Tasks
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </DashboardLayout>
     );
 }

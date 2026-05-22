@@ -31,7 +31,11 @@ import {
     ArrowRight,
     List,
     CalendarDays,
-    Search
+    Search,
+    ClipboardList,
+    CheckCircle2,
+    XCircle,
+    MinusCircle
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { AttendanceLog } from "@/types/database";
@@ -185,6 +189,19 @@ export default function ManagerAttendancePage() {
         queryKey: ["attendance-shifts", fromDate, toDate],
         queryFn: () => apiGet<any[]>("/shift", queryParams),
         enabled: !!fromDate && !!toDate
+    });
+
+    const activeShift = useMemo(() => {
+        if (!detailRow) return null;
+        return shifts.find(
+            (s: any) => s.employee_id === detailRow.employee_id && s.shift_date === detailRow.date
+        );
+    }, [detailRow, shifts]);
+
+    const { data: checklistItems = [], isLoading: isLoadingChecklist } = useQuery({
+        queryKey: ["shift-checklist-attendance", activeShift?.shift_id],
+        queryFn: () => apiGet<any[]>(`/shift/${activeShift?.shift_id}/checklist`),
+        enabled: !!activeShift?.shift_id
     });
 
     const isLoading = isLoadingAttendance || isLoadingShifts;
@@ -984,6 +1001,131 @@ export default function ManagerAttendancePage() {
                                         </div>
                                     );
                                 })}
+                            </div>
+
+                            {/* Checklist Section */}
+                            <div className="mt-6 pt-6 border-t border-[hsl(var(--border))]">
+                                <p className="text-[10px] uppercase font-bold text-[hsl(var(--muted-foreground))] tracking-wider mb-3 flex items-center gap-1.5">
+                                    <ClipboardList size={12} />
+                                    Shift Checklist
+                                </p>
+                                
+                                {!activeShift ? (
+                                    <div className="p-4 rounded-xl bg-[hsl(var(--muted))]/20 border border-[hsl(var(--border))]/50 text-center text-xs text-[hsl(var(--muted-foreground))] font-medium">
+                                        No scheduled shift found on this date.
+                                    </div>
+                                ) : isLoadingChecklist ? (
+                                    <div className="space-y-2">
+                                        <div className="h-10 bg-[hsl(var(--muted))]/30 animate-pulse rounded-xl" />
+                                        <div className="h-10 bg-[hsl(var(--muted))]/30 animate-pulse rounded-xl" />
+                                    </div>
+                                ) : !checklistItems || checklistItems.length === 0 ? (
+                                    <div className="p-4 rounded-xl bg-[hsl(var(--muted))]/20 border border-[hsl(var(--border))]/50 text-center text-xs text-[hsl(var(--muted-foreground))] font-medium">
+                                        No checklist tasks assigned to this shift.
+                                    </div>
+                                ) : (
+                                    <div className="space-y-3">
+                                        {/* Progress Bar */}
+                                        {(() => {
+                                            const total = checklistItems.length;
+                                            const completed = checklistItems.filter((item: any) => item.status === 'done').length;
+                                            const percent = total > 0 ? Math.round((completed / total) * 100) : 0;
+                                            return (
+                                                <div className="p-4 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/10 space-y-2">
+                                                    <div className="flex justify-between items-center text-xs font-bold text-[hsl(var(--foreground))]">
+                                                        <span>Task Completion</span>
+                                                        <span>{completed}/{total} Tasks ({percent}%)</span>
+                                                    </div>
+                                                    <div className="h-2 w-full bg-[hsl(var(--border))] rounded-full overflow-hidden">
+                                                        <div 
+                                                            className="h-full bg-[hsl(var(--brand))] rounded-full transition-all duration-500 ease-out" 
+                                                            style={{ width: `${percent}%` }}
+                                                        />
+                                                    </div>
+                                                </div>
+                                            );
+                                        })()}
+
+                                        {/* Tasks List */}
+                                        <div className="space-y-2">
+                                            {checklistItems.map((item: any) => {
+                                                const isDone = item.status === 'done';
+                                                const isNotDone = item.status === 'not_done';
+                                                const isNa = item.status === 'not_applicable';
+                                                const isPending = item.status === 'pending';
+
+                                                return (
+                                                    <div 
+                                                        key={item.checklist_item_id}
+                                                        className="flex flex-col gap-2 p-3.5 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/20"
+                                                    >
+                                                        <div className="flex items-start justify-between gap-3">
+                                                            <div className="flex flex-col gap-1 min-w-0">
+                                                                <div className="flex items-center gap-1.5 flex-wrap">
+                                                                    <span className={cn(
+                                                                        "text-sm font-semibold text-[hsl(var(--foreground))]",
+                                                                        isDone && "line-through text-[hsl(var(--muted-foreground))]"
+                                                                    )}>
+                                                                        {item.task_text}
+                                                                    </span>
+                                                                    {item.is_required && (
+                                                                        <span className="text-[9px] uppercase font-black tracking-wider text-[hsl(var(--danger))] bg-[hsl(var(--danger-light))]/30 px-1.5 py-0.5 rounded">
+                                                                            Required
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                                {item.instructions && (
+                                                                    <p className="text-xs text-[hsl(var(--muted-foreground))]">
+                                                                        {item.instructions}
+                                                                    </p>
+                                                                )}
+                                                            </div>
+                                                            
+                                                            {/* Status Badge */}
+                                                            <div>
+                                                                {isDone && (
+                                                                    <span className="flex items-center gap-1 text-[11px] font-bold text-[hsl(var(--success))] bg-[hsl(var(--success-light))]/20 px-2 py-0.5 rounded-lg border border-[hsl(var(--success))]/10">
+                                                                        <CheckCircle2 size={12} />
+                                                                        Done
+                                                                    </span>
+                                                                )}
+                                                                {isNotDone && (
+                                                                    <span className="flex items-center gap-1 text-[11px] font-bold text-[hsl(var(--danger))] bg-[hsl(var(--danger-light))]/20 px-2 py-0.5 rounded-lg border border-[hsl(var(--danger))]/10">
+                                                                        <XCircle size={12} />
+                                                                        Not Done
+                                                                    </span>
+                                                                )}
+                                                                {isNa && (
+                                                                    <span className="flex items-center gap-1 text-[11px] font-bold text-[hsl(var(--muted-foreground))] bg-[hsl(var(--muted))]/50 px-2 py-0.5 rounded-lg border border-[hsl(var(--border))]">
+                                                                        <MinusCircle size={12} />
+                                                                        N/A
+                                                                    </span>
+                                                                )}
+                                                                {isPending && (
+                                                                    <span className="flex items-center gap-1 text-[11px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-lg border border-amber-200">
+                                                                        <Clock size={12} className="text-amber-500" />
+                                                                        Pending
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Audit Reason Callout */}
+                                                        {item.reason && (
+                                                            <div className="flex items-start gap-1.5 p-2 rounded-lg bg-[hsl(var(--muted))]/50 border border-[hsl(var(--border))] text-xs text-[hsl(var(--muted-foreground))] mt-1">
+                                                                <AlertCircle size={13} className="text-[hsl(var(--muted-foreground))] shrink-0 mt-0.5" />
+                                                                <div className="min-w-0">
+                                                                    <span className="font-semibold text-[hsl(var(--foreground))]">Reason: </span>
+                                                                    <span className="italic">"{item.reason}"</span>
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </div>
 
