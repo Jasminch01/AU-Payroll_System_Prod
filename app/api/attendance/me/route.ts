@@ -7,7 +7,7 @@ import { EventType } from '@/types/database';
 import { notifyAttendanceEvent } from '@/lib/attendance-notifications';
 import { groupAttendanceIntoSessions } from '@/lib/attendance-grouper';
 import { getTodayRangeInTimezone } from '@/lib/timezone-utils';
-import { validateClockOutChecklist, notifyChecklistStatus } from '@/lib/checklist-engine';
+import { getShiftChecklistProgress, validateClockOutChecklist, notifyChecklistStatus } from '@/lib/checklist-engine';
 
 export async function GET(request: NextRequest) {
     try {
@@ -172,6 +172,38 @@ export async function POST(request: NextRequest) {
             authUser.business_id,
             'Employee App'
         ).catch(err => console.error('Failed to send attendance notification:', err));
+
+        // --- CLOCK_IN: Checklist Reminder Notification (async, post-response) ---
+        // If the employee just clocked in and has a rostered shift with tasks, notify them.
+        if (nextEventType === 'CLOCK_IN' && authUser.user_id) {
+            (async () => {
+                try {
+                    const today = new Date().toISOString().split('T')[0];
+                    const { data: shift } = await supabase
+                        .from('Shift')
+                        .select('*')
+                        .eq('employee_id', authUser.employee_id)
+                        .eq('shift_date', today)
+                        .eq('shift_status', 'published')
+                        .maybeSingle();
+
+                    if (shift) {
+                        const { total } = await getShiftChecklistProgress(shift.shift_id, supabase);
+                        if (total > 0) {
+                            await notifyChecklistStatus(
+                                authUser.user_id!,
+                                authUser.business_id,
+                                'CLOCK_IN_REMINDER',
+                                shift.shift_type,
+                                total
+                            );
+                        }
+                    }
+                } catch (err) {
+                    console.error('[CLOCK ME] Failed to send checklist reminder notification:', err);
+                }
+            })();
+        }
 
         return successResponse(
             { log, event_type: nextEventType },
