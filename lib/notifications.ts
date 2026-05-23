@@ -34,10 +34,11 @@ export interface CreateNotificationParams {
     message: string;
     entity_id?: string | null;
     entity_type?: string | null;
+    link_url?: string | null;
 }
 
 export async function createNotification(params: CreateNotificationParams) {
-    const { business_id, user_ids, actor_id, type, title, message, entity_id, entity_type } = params;
+    const { business_id, user_ids, actor_id, type, title, message, entity_id, entity_type, link_url } = params;
 
     if (!user_ids || user_ids.length === 0) {
         return { success: false, error: 'No recipients provided' };
@@ -75,6 +76,7 @@ export async function createNotification(params: CreateNotificationParams) {
             message,
             entity_id: entity_id || null,
             entity_type: entity_type || null,
+            link_url: link_url || null,
             is_read: false
         }));
 
