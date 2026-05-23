@@ -6,6 +6,8 @@ import { getNextAttendanceEvent, validateAttendanceTransition } from '@/lib/atte
 import { notifyAttendanceEvent } from '@/lib/attendance-notifications';
 import { cookies } from 'next/headers';
 import { verifyKioskToken } from '@/lib/kiosk-auth';
+import { getBusinessTimezone } from '@/lib/auth';
+import { getDateInTimezone } from '@/lib/timezone-utils';
 import { generateBusinessPrefix } from '@/lib/utils/employee-id';
 import { getShiftChecklistProgress, validateClockOutChecklist, notifyChecklistStatus } from '@/lib/checklist-engine';
 
@@ -112,13 +114,15 @@ export async function POST(request: NextRequest) {
         // --- CHECKLIST LOGIC FOR CLOCK_OUT ---
         let rosteredShift = null;
         if (event_type === 'CLOCK_OUT') {
-            const today = new Date().toISOString().split('T')[0];
+            const tz = await getBusinessTimezone(employee.business_id);
+            const today = getDateInTimezone(body.timestamp || localTimestamp, tz);
             const { data: shift } = await supabase
                 .from('Shift')
                 .select('*')
                 .eq('employee_id', employee.employee_id)
                 .eq('shift_date', today)
                 .eq('shift_status', 'published')
+                .limit(1)
                 .maybeSingle();
             
             if (shift) {
@@ -160,8 +164,8 @@ export async function POST(request: NextRequest) {
 
         if (logError) return errorResponse(logError.message, 400);
 
-        // Notify owner and managers of attendance event (async, no await)
-        notifyAttendanceEvent(
+        // Notify owner and managers of attendance event
+        await notifyAttendanceEvent(
             employee.employee_id,
             event_type as EventType,
             body.timestamp || localTimestamp,
@@ -178,18 +182,18 @@ export async function POST(request: NextRequest) {
         console.error('Kiosk attendance error:', err);
         return errorResponse('Internal server error', 500);
     } finally {
-        // --- CHECKLIST LOGIC FOR CLOCK_IN (Post-Response/Background) ---
-        // Note: In Next.js App Router, code after return doesn't run reliably unless using after() 
-        // which is in canary. So we wrap in try-finally or just run before return but async.
+        // Note: We MUST await this so the Next.js runtime doesn't kill it early.
         if (event_type === 'CLOCK_IN' && employee?.user_id) {
-            (async () => {
-                const today = new Date().toISOString().split('T')[0];
+            await (async () => {
+                const tz = await getBusinessTimezone(employee.business_id);
+                const today = getDateInTimezone(new Date().toISOString(), tz);
                 const { data: shift } = await supabase
                     .from('Shift')
                     .select('*')
                     .eq('employee_id', employee.employee_id)
                     .eq('shift_date', today)
                     .eq('shift_status', 'published')
+                    .limit(1)
                     .maybeSingle();
 
                 if (shift) {

@@ -18,6 +18,7 @@ interface NotificationData {
     is_read: boolean;
     created_at: string;
     entity_id: string | null;
+    link_url?: string | null;
 }
 
 export function NotificationBell() {
@@ -171,7 +172,18 @@ export function NotificationBell() {
         }
         setOpen(false);
 
-        // Use centralized routing utility
+        // First prioritize explicit link_url if provided
+        if (n.link_url) {
+            // Check if it's a relative path that needs role prepending (e.g. /attendance)
+            if (user?.role && n.link_url.startsWith('/') && !n.link_url.startsWith(`/${user.role}`)) {
+                router.push(`/${user.role}${n.link_url}`);
+            } else {
+                router.push(n.link_url);
+            }
+            return;
+        }
+
+        // Use centralized routing utility for entity-based routing
         if (user?.role) {
             const route = getNotificationRoute(
                 n.type as any,

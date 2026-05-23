@@ -1,7 +1,8 @@
 import { NextRequest } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { requireRole } from '@/lib/auth';
+import { requireRole, getBusinessTimezone } from '@/lib/auth';
 import { successResponse, errorResponse, validateRequiredFields } from '@/lib/api-helpers';
+import { getDateInTimezone, getTimeInTimezone } from '@/lib/timezone-utils';
 import { checkShiftConflictWithLeave } from '@/lib/leave-logic';
 import { notifyShiftPublished } from '@/lib/notifications';
 import { copyTemplateTasksToShift } from '@/lib/checklist-engine';
@@ -91,8 +92,14 @@ export async function POST(request: NextRequest) {
             return errorResponse('Cannot create shifts or rosters for past dates', 400);
         }
 
-        // New shifts cannot start in the past
-        if (start < today && !body.id) {
+        // New shifts cannot start in the past (using business timezone for exact match)
+        const tz = await getBusinessTimezone(authUser.business_id);
+        const nowStr = new Date().toISOString();
+        const nowBusinessDate = getDateInTimezone(nowStr, tz);
+        const nowBusinessTime = getTimeInTimezone(nowStr, tz);
+        const nowBusinessTimestamp = `${nowBusinessDate}T${nowBusinessTime}:00`;
+
+        if (start_time < nowBusinessTimestamp && !body.id) {
             return errorResponse('Cannot create a shift that starts in the past.', 400);
         }
 

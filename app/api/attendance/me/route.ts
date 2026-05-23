@@ -6,7 +6,7 @@ import { getNextAttendanceEvent, validateAttendanceTransition } from '@/lib/atte
 import { EventType } from '@/types/database';
 import { notifyAttendanceEvent } from '@/lib/attendance-notifications';
 import { groupAttendanceIntoSessions } from '@/lib/attendance-grouper';
-import { getTodayRangeInTimezone } from '@/lib/timezone-utils';
+import { getTodayRangeInTimezone, getDateInTimezone } from '@/lib/timezone-utils';
 import { getShiftChecklistProgress, validateClockOutChecklist, notifyChecklistStatus } from '@/lib/checklist-engine';
 
 export async function GET(request: NextRequest) {
@@ -115,13 +115,15 @@ export async function POST(request: NextRequest) {
 
         // Checklist check for CLOCK_OUT
         if (nextEventType === 'CLOCK_OUT') {
-            const today = new Date().toISOString().split('T')[0];
+            const tz = await getBusinessTimezone(authUser.business_id);
+            const today = getDateInTimezone(now, tz);
             const { data: shift } = await supabase
                 .from('Shift')
                 .select('*')
                 .eq('employee_id', authUser.employee_id)
                 .eq('shift_date', today)
                 .eq('shift_status', 'published')
+                .limit(1)
                 .maybeSingle();
 
             if (shift) {
@@ -164,8 +166,8 @@ export async function POST(request: NextRequest) {
             return errorResponse(logError.message, 400);
         }
 
-        // Notify managers/owners of the clock event (async, no await)
-        notifyAttendanceEvent(
+        // Notify managers/owners of the clock event
+        await notifyAttendanceEvent(
             authUser.employee_id,
             nextEventType,
             now,
@@ -173,18 +175,20 @@ export async function POST(request: NextRequest) {
             'Employee App'
         ).catch(err => console.error('Failed to send attendance notification:', err));
 
-        // --- CLOCK_IN: Checklist Reminder Notification (async, post-response) ---
+        // --- CLOCK_IN: Checklist Reminder Notification ---
         // If the employee just clocked in and has a rostered shift with tasks, notify them.
         if (nextEventType === 'CLOCK_IN' && authUser.user_id) {
-            (async () => {
+            await (async () => {
                 try {
-                    const today = new Date().toISOString().split('T')[0];
+                    const tz = await getBusinessTimezone(authUser.business_id);
+                    const today = getDateInTimezone(now, tz);
                     const { data: shift } = await supabase
                         .from('Shift')
                         .select('*')
                         .eq('employee_id', authUser.employee_id)
                         .eq('shift_date', today)
                         .eq('shift_status', 'published')
+                        .limit(1)
                         .maybeSingle();
 
                     if (shift) {

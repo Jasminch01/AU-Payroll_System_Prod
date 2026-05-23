@@ -7,7 +7,7 @@ import { Clock, ArrowLeft, LogOut, CheckCircle2, ClipboardList } from "lucide-re
 import { apiGet, apiPost } from "@/lib/api-client";
 import { toast } from "sonner";
 import { EventType } from "@/types/database";
-import { useBusinessTimezone } from "@/lib/timezone-context";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 
 type KioskAction = {
     type: EventType;
@@ -16,21 +16,27 @@ type KioskAction = {
 };
 
 export default function KioskPage() {
-    const { businessTimezone } = useBusinessTimezone();
     const [currentTime, setCurrentTime] = useState(new Date());
+    const [kioskTimezone, setKioskTimezone] = useState("Australia/Sydney");
     const [step, setStep] = useState<'id' | 'board' | 'success'>('id');
     const [employeeId, setEmployeeId] = useState("");
     const [employeeData, setEmployeeData] = useState<{ name: string; available_actions: KioskAction[] } | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [lastAction, setLastAction] = useState<string>("");
     const [checklistError, setChecklistError] = useState<{ count: number, message: string } | null>(null);
-    const [showReminder, setShowReminder] = useState(false);
 
     // Timers for auto-reset
     const resetTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-    // Live clock
+    // Live clock & Timezone fetch
     useEffect(() => {
+        // Fetch the kiosk's business timezone once on mount
+        apiGet('/kiosk/settings')
+            .then((res: any) => {
+                if (res.timezone) setKioskTimezone(res.timezone);
+            })
+            .catch(console.error);
+
         const timer = setInterval(() => setCurrentTime(new Date()), 1000);
         return () => clearInterval(timer);
     }, []);
@@ -42,7 +48,6 @@ export default function KioskPage() {
         setEmployeeData(null);
         setLastAction("");
         setChecklistError(null);
-        setShowReminder(false);
         setIsLoading(false);
     };
 
@@ -53,10 +58,6 @@ export default function KioskPage() {
         setIsLoading(true);
         try {
             const res: any = await apiGet(`/attendance/kiosk/status?employee_id=${idToSubmit}`);
-            console.log('[Kiosk Page] Status response:', res);
-            console.log('[Kiosk Page] available_actions:', res.available_actions);
-            console.log('[Kiosk Page] available_actions length:', res.available_actions?.length);
-
             setEmployeeData({
                 name: res.employee_name,
                 available_actions: res.available_actions
@@ -96,13 +97,10 @@ export default function KioskPage() {
             });
 
             setLastAction(action.label);
-            if (action.type === 'CLOCK_IN') {
-                setShowReminder(true);
-            }
             setStep('success');
 
-            // Reset to home after 5 seconds if reminder shown, else 3
-            startAutoReset(action.type === 'CLOCK_IN' ? 5000 : 3000);
+            // Reset to home after 3 seconds
+            startAutoReset(3000);
         } catch (err: any) {
             console.error('[Kiosk Action Error]', err);
             // Handle checklist validation error
@@ -131,10 +129,10 @@ export default function KioskPage() {
             <div className="mb-12 flex flex-col items-center animate-in fade-in slide-in-from-top-4 duration-700">
                 <Clock className="mb-4 text-[hsl(var(--brand))]" size={48} />
                 <h1 className="text-6xl sm:text-7xl font-bold tracking-tight text-[hsl(var(--foreground))] tabular-nums">
-                    {currentTime.toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: businessTimezone })}
+                    {currentTime.toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: kioskTimezone })}
                 </h1>
                 <p className="mt-2 text-lg text-[hsl(var(--muted-foreground))]">
-                    {currentTime.toLocaleDateString("en-AU", { weekday: "long", month: "long", day: "numeric", timeZone: businessTimezone })}
+                    {currentTime.toLocaleDateString("en-AU", { weekday: "long", month: "long", day: "numeric", timeZone: kioskTimezone })}
                 </p>
             </div>
 
@@ -153,8 +151,8 @@ export default function KioskPage() {
                                 <div
                                     key={i}
                                     className={`h-16 w-16 rounded-2xl border-2 flex items-center justify-center text-3xl font-black transition-all ${employeeId.length > i
-                                            ? "border-[hsl(var(--brand))] bg-[hsl(var(--brand))]/5 text-[hsl(var(--brand))]"
-                                            : "border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))]"
+                                        ? "border-[hsl(var(--brand))] bg-[hsl(var(--brand))]/5 text-[hsl(var(--brand))]"
+                                        : "border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))]"
                                         }`}
                                 >
                                     {employeeId[i] || ""}
@@ -221,30 +219,35 @@ export default function KioskPage() {
                     </div>
                 )}
 
-                {checklistError && (
-                    <div className="animate-in fade-in zoom-in-95 duration-300">
-                        <div className="mb-8 text-center">
-                            <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-[hsl(var(--danger))]/10 text-[hsl(var(--danger))]">
-                                <ClipboardList size={40} />
-                            </div>
-                            <h2 className="text-3xl font-black text-[hsl(var(--danger))]">Checklist Incomplete</h2>
-                            <p className="mt-4 text-lg font-medium text-[hsl(var(--foreground))]">{checklistError.message}</p>
-                            <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">You must complete all required tasks in your mobile app before you can clock out.</p>
+            {/* Checklist Error Modal */}
+            <Dialog open={!!checklistError} onOpenChange={(open) => { if (!open) setChecklistError(null); }}>
+                <DialogContent className="sm:max-w-md text-center border-[hsl(var(--danger))]/20">
+                    <DialogHeader>
+                        <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-[hsl(var(--danger))]/10 text-[hsl(var(--danger))]">
+                            <ClipboardList size={32} />
                         </div>
+                        <DialogTitle className="text-2xl font-bold text-[hsl(var(--danger))]">Checklist Incomplete</DialogTitle>
+                        <DialogDescription className="text-base mt-2 text-[hsl(var(--foreground))]">
+                            {checklistError?.message}
+                        </DialogDescription>
+                    </DialogHeader>
+                    
+                    <div className="py-4">
+                        <p className="text-sm text-[hsl(var(--muted-foreground))]">
+                            You must complete all required tasks in your mobile app before you can clock out.
+                        </p>
+                    </div>
+
+                    <DialogFooter className="flex-col sm:flex-col gap-2 w-full mt-2">
                         <Button
-                            className="w-full h-16 text-xl font-bold rounded-2xl bg-[hsl(var(--foreground))] text-white hover:bg-[hsl(var(--foreground))]/90"
+                            className="w-full h-12 text-lg font-bold bg-[hsl(var(--foreground))] text-[hsl(var(--background))] hover:bg-[hsl(var(--foreground))]/90"
                             onClick={() => setChecklistError(null)}
                         >
                             I Understand
                         </Button>
-                        <div className="mt-6 flex justify-center">
-                            <Button variant="ghost" onClick={resetToHome} className="text-[hsl(var(--muted-foreground))]">
-                                <ArrowLeft className="mr-2" size={18} />
-                                Logout
-                            </Button>
-                        </div>
-                    </div>
-                )}
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
 
                 {step === 'success' && (
                     <div className="flex flex-col items-center justify-center py-12 animate-in fade-in zoom-in duration-500">
@@ -255,16 +258,6 @@ export default function KioskPage() {
                         <p className="text-xl text-[hsl(var(--muted-foreground))] text-center">
                             {employeeData?.name} - {lastAction} successful.
                         </p>
-                        
-                        {showReminder && (
-                            <div className="mt-8 p-4 bg-[hsl(var(--brand-light))]/20 border border-[hsl(var(--brand))]/20 rounded-2xl animate-in slide-in-from-bottom-4 duration-500 delay-300">
-                                <div className="flex items-center gap-3 mb-2">
-                                    <ClipboardList size={20} className="text-[hsl(var(--brand))]" />
-                                    <span className="font-bold text-[hsl(var(--brand))]">Checklist Reminder</span>
-                                </div>
-                                <p className="text-sm text-[hsl(var(--foreground))]">You have tasks assigned for this shift. Please check your **My Tasks** list in the mobile app.</p>
-                            </div>
-                        )}
 
                         <p className="mt-8 text-sm text-[hsl(var(--muted-foreground))] animate-pulse">
                             Resetting for next employee...
