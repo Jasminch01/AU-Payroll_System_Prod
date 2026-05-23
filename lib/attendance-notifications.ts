@@ -77,7 +77,8 @@ export async function notifyAttendanceEvent(
     const title = `Employee ${eventLabel.toUpperCase()}`;
     const message = `${employee.employee_id} | ${employeeName}${roleInfo} ${eventLabel} at ${timeStr} on ${dateStr}${deviceMsg}`;
 
-    // 6. Create notification with entity tracking for navigation
+    // 6. Create notification with explicit link_url instead of entity_id
+    // This avoids UUID parsing errors if entity_id in the DB is strictly a UUID column.
     await createNotification({
       business_id: businessId,
       user_ids: recipientUserIds,
@@ -85,8 +86,9 @@ export async function notifyAttendanceEvent(
       type: 'ATTENDANCE_CLOCK_EVENT',
       title,
       message,
-      entity_id: employeeId, // For navigation in notification-bell
-      entity_type: 'attendance'
+      entity_id: null,
+      entity_type: 'attendance',
+      link_url: `/attendance?employee_id=${employeeId}`
     });
 
 
