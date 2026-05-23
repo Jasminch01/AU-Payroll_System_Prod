@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 import { createNotification } from '@/lib/notifications';
+import { getBusinessTimezone } from '@/lib/auth';
 import { EventType } from '@/types/database';
 
 /**
@@ -38,12 +39,12 @@ export async function notifyAttendanceEvent(
       return;
     }
 
-    // 2. Fetch owner and all managers for this business
+    // 2. Fetch owner for this business (excluding managers for now)
     const { data: recipients, error: recipError } = await supabase
       .from('User')
       .select('user_id')
       .eq('business_id', businessId)
-      .or('role.eq.owner,role.eq.manager');
+      .eq('role', 'owner');
 
     if (recipError) {
       console.error(`[Attendance Notifications] Failed to fetch recipients`, recipError);
@@ -60,14 +61,18 @@ export async function notifyAttendanceEvent(
     // 3. Format the event type for display
     const eventLabel = eventType === 'CLOCK_IN' ? 'clocked in' : 'clocked out';
 
-    // 4. Format timestamp
+    // 3.5 Get timezone
+    const tz = await getBusinessTimezone(businessId);
+
+    // 4. Format timestamp using business timezone
     const eventDate = new Date(timestamp);
     const timeStr = eventDate.toLocaleTimeString('en-AU', {
+      timeZone: tz,
       hour: '2-digit',
       minute: '2-digit',
       hour12: false
     });
-    const dateStr = eventDate.toLocaleDateString('en-AU');
+    const dateStr = eventDate.toLocaleDateString('en-AU', { timeZone: tz });
 
     // 5. Build detailed message
     const employeeName = `${employee.first_name || ''} ${employee.last_name || ''}`.trim();

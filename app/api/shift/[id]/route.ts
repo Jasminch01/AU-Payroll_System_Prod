@@ -1,9 +1,9 @@
 import { NextRequest } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { requireRole } from '@/lib/auth';
+import { requireRole, getBusinessTimezone } from '@/lib/auth';
 import { successResponse, errorResponse } from '@/lib/api-helpers';
+import { getDateInTimezone, getTimeInTimezone } from '@/lib/timezone-utils';
 import { checkShiftConflictWithLeave } from '@/lib/leave-logic';
-import { logAudit } from '@/lib/audit';
 import { notifyShiftUpdated, notifyShiftDeleted, notifyShiftPublished } from '@/lib/notifications';
 
 interface RouteParams {
@@ -72,7 +72,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
             .single();
 
         if (findError || !existing) return errorResponse('Shift not found', 404);
-        
+
         // Check if shift has already started
         const now = new Date();
         const startTime = new Date(existing.start_time);
@@ -157,7 +157,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
             if (roster && roster.status === 'draft' && !roster.published_at) {
                 await supabase
                     .from('Roster')
-                    .update({ 
+                    .update({
                         status: 'published',
                         published_at: new Date().toISOString(),
                         updated_at: new Date().toISOString()
@@ -182,16 +182,16 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
                 const newShiftDate = updateData.shift_date as string || (existing.shift_date as string);
                 const new_start = newShiftDate < roster.start_date ? rosterStart : roster.start_date;
                 const new_end = newShiftDate > roster.end_date ? rosterEnd : roster.end_date;
-                
+
                 const needsExpansion = new_start !== roster.start_date || new_end !== roster.end_date;
 
                 if (needsExpansion) {
                     await supabase
                         .from('Roster')
-                        .update({ 
-                            start_date: new_start, 
-                            end_date: new_end, 
-                            updated_at: new Date().toISOString() 
+                        .update({
+                            start_date: new_start,
+                            end_date: new_end,
+                            updated_at: new Date().toISOString()
                         })
                         .eq('roster_id', existing.roster_id);
                 }
@@ -211,7 +211,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
                 if (!wasAlreadyPublished) {
                     // NEW PUBLISH
                     if (newEmpId) {
-                        notifyShiftPublished(id).catch((err: Error) => 
+                        notifyShiftPublished(id).catch((err: Error) =>
                             console.error(`[Notify] new shift assigned email failed for ${id}:`, err)
                         );
                     }
@@ -229,7 +229,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
                     }
                     // 2. Notify NEW about assignment
                     if (newEmpId) {
-                        notifyShiftPublished(id).catch((err: Error) => 
+                        notifyShiftPublished(id).catch((err: Error) =>
                             console.error(`[Notify] new shift assigned email failed for ${id}:`, err)
                         );
                     }
@@ -275,10 +275,14 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
 
         if (findError || !shift) return errorResponse('Shift not found', 404);
 
-        // Check if shift has already started
-        const now = new Date();
-        const startTime = new Date(shift.start_time);
-        if (shift.shift_status !== 'draft' && now >= startTime) {
+        // Check if shift has already started using business timezone comparison
+        const tz = await getBusinessTimezone(authUser.business_id);
+        const now = new Date().toISOString();
+        const nowBusinessDate = getDateInTimezone(now, tz);
+        const nowBusinessTime = getTimeInTimezone(now, tz);
+        const nowBusinessStr = `${nowBusinessDate}T${nowBusinessTime}:00`;
+
+        if (shift.shift_status !== 'draft' && nowBusinessStr >= shift.start_time) {
             return errorResponse('Cannot delete a shift that has already started.', 400);
         }
 
@@ -302,9 +306,9 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
             if (!countError && count === 0) {
                 await supabase
                     .from('Roster')
-                    .update({ 
-                        status: 'draft', 
-                        updated_at: new Date().toISOString() 
+                    .update({
+                        status: 'draft',
+                        updated_at: new Date().toISOString()
                     })
                     .eq('roster_id', shift.roster_id);
             }
