@@ -166,8 +166,8 @@ export async function POST(request: NextRequest) {
             return errorResponse(logError.message, 400);
         }
 
-        // Notify managers/owners of the clock event (async, no await)
-        notifyAttendanceEvent(
+        // Notify managers/owners of the clock event
+        await notifyAttendanceEvent(
             authUser.employee_id,
             nextEventType,
             now,
@@ -175,10 +175,10 @@ export async function POST(request: NextRequest) {
             'Employee App'
         ).catch(err => console.error('Failed to send attendance notification:', err));
 
-        // --- CLOCK_IN: Checklist Reminder Notification (async, post-response) ---
+        // --- CLOCK_IN: Checklist Reminder Notification ---
         // If the employee just clocked in and has a rostered shift with tasks, notify them.
         if (nextEventType === 'CLOCK_IN' && authUser.user_id) {
-            (async () => {
+            await (async () => {
                 try {
                     const tz = await getBusinessTimezone(authUser.business_id);
                     const today = getDateInTimezone(now, tz);
