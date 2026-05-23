@@ -184,7 +184,20 @@ export default function EmployeeShiftsPage() {
     );
 
     // Fetch checklist for the current/most relevant shift
-    const activeShift = ongoing[0] || upcoming[0];
+    // If clocked in, the active shift might be in the past if they worked past their scheduled end time!
+    const activeShift = useMemo(() => {
+        if (ongoing.length > 0) return ongoing[0];
+        if (isClockedIn && past.length > 0) {
+            const lastShift = past[0];
+            const end = parseShiftTime(lastShift.end_time);
+            // If the shift ended less than 16 hours ago and they are still clocked in,
+            // assume this is the shift they are trying to check out of.
+            if (new Date().getTime() - end.getTime() < 16 * 60 * 60 * 1000) {
+                return lastShift;
+            }
+        }
+        return upcoming[0];
+    }, [ongoing, upcoming, past, isClockedIn, parseShiftTime]);
     const { data: detailsChecklist = [], isLoading: isLoadingDetailsChecklist } = useQuery({
         queryKey: ["shift-checklist", selectedShiftDetails?.shift_id],
         queryFn: () => apiGet<any[]>(`/shift/${selectedShiftDetails.shift_id}/checklist`),
