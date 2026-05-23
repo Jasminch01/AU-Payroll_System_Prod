@@ -1677,6 +1677,7 @@ export default function ManagerRosterPage() {
                                                             formatDate(d) === formatDate(new Date()) ? "bg-[hsl(var(--brand-light))]/5" : "",
                                                             isPast ? "bg-[hsl(var(--muted))]/10" : (!isAvailable ? "bg-[hsl(var(--danger))]/5" : "hover:bg-[hsl(var(--brand))]/5")
                                                         )}
+                                                        title={!isAvailable ? "Not Available" : undefined}
                                                         onClick={() => {
                                                             if (isPast || rosterPeriod === "monthly") return;
                                                             if (!isAvailable) {
@@ -1689,7 +1690,7 @@ export default function ManagerRosterPage() {
                                                         {/* Unavailable indicator */}
                                                         {!isAvailable && dayShifts.length === 0 && (
                                                             <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-40">
-                                                                <span className="text-[10px] font-bold text-[hsl(var(--danger))] uppercase tracking-widest rotate-[-15deg]">Unavailable</span>
+                                                                <span className="text-[12px] font-bold text-[hsl(var(--danger))] uppercase tracking-widest">N/A</span>
                                                             </div>
                                                         )}
 
