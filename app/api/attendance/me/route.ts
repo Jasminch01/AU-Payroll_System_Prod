@@ -6,7 +6,7 @@ import { getNextAttendanceEvent, validateAttendanceTransition } from '@/lib/atte
 import { EventType } from '@/types/database';
 import { notifyAttendanceEvent } from '@/lib/attendance-notifications';
 import { groupAttendanceIntoSessions } from '@/lib/attendance-grouper';
-import { getTodayRangeInTimezone } from '@/lib/timezone-utils';
+import { getTodayRangeInTimezone, getDateInTimezone } from '@/lib/timezone-utils';
 import { getShiftChecklistProgress, validateClockOutChecklist, notifyChecklistStatus } from '@/lib/checklist-engine';
 
 export async function GET(request: NextRequest) {
@@ -115,13 +115,15 @@ export async function POST(request: NextRequest) {
 
         // Checklist check for CLOCK_OUT
         if (nextEventType === 'CLOCK_OUT') {
-            const today = new Date().toISOString().split('T')[0];
+            const tz = await getBusinessTimezone(authUser.business_id);
+            const today = getDateInTimezone(now, tz);
             const { data: shift } = await supabase
                 .from('Shift')
                 .select('*')
                 .eq('employee_id', authUser.employee_id)
                 .eq('shift_date', today)
                 .eq('shift_status', 'published')
+                .limit(1)
                 .maybeSingle();
 
             if (shift) {
@@ -178,13 +180,15 @@ export async function POST(request: NextRequest) {
         if (nextEventType === 'CLOCK_IN' && authUser.user_id) {
             (async () => {
                 try {
-                    const today = new Date().toISOString().split('T')[0];
+                    const tz = await getBusinessTimezone(authUser.business_id);
+                    const today = getDateInTimezone(now, tz);
                     const { data: shift } = await supabase
                         .from('Shift')
                         .select('*')
                         .eq('employee_id', authUser.employee_id)
                         .eq('shift_date', today)
                         .eq('shift_status', 'published')
+                        .limit(1)
                         .maybeSingle();
 
                     if (shift) {
