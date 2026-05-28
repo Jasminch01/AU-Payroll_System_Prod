@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { requireRole } from '@/lib/auth';
 import { successResponse, errorResponse } from '@/lib/api-helpers';
-import { calculateSuggestedQty } from '@/lib/order-guide-engine';
+import { calculateSuggestedQty } from '@/lib/order-guide-utils';
 
 /**
  * PATCH /api/daily-orders/[id]
