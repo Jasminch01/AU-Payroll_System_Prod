@@ -61,15 +61,28 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         }
 
         // Get system role from User table
-        const { data: userData } = await supabase
-            .from('User')
-            .select('role')
-            .eq('user_id', employee.user_id)
-            .maybeSingle();
+        let userData = null;
+        if (employee.user_id) {
+            let userRes = await supabase
+                .from('User')
+                .select('role, can_order_liquor')
+                .eq('user_id', employee.user_id)
+                .maybeSingle();
+
+            if (userRes.error && userRes.error.message.includes('can_order_liquor')) {
+                userRes = await supabase
+                    .from('User')
+                    .select('role')
+                    .eq('user_id', employee.user_id)
+                    .maybeSingle();
+            }
+            userData = userRes.data;
+        }
 
         return successResponse({
             ...employee,
             role: userData?.role || 'employee',
+            can_order_liquor: userData?.can_order_liquor ?? false,
             current_rate: (authUser.role === 'manager' && !isSelf) ? null : (currentRate || null),
             certificates: certificates || [],
         });
@@ -188,28 +201,51 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
             updatedEmployee = beforeValue;
         }
 
+        // Validation: only owners can toggle can_order_liquor
+        if (body.can_order_liquor !== undefined && authUser.role !== 'owner') {
+            return errorResponse('Forbidden. Only owners can toggle manager liquor permissions.', 403);
+        }
+
         // --- SYSTEM ROLE SYNCHRONIZATION ---
-        // If 'role' was provided, update it in the User table (restricted to employee/manager only)
+        // If 'role' was provided or can_order_liquor was changed, update it in the User table (restricted to employee/manager only)
         if (body.role !== undefined && beforeValue.user_id) {
             // Validation: only allow manager or employee roles to be set via this endpoint
             if (body.role !== 'employee' && body.role !== 'manager') {
                 console.warn(`Attempted to set restricted role: ${body.role}`);
             } else {
-                const { data: existingUser } = await supabase
+                let userRes = await supabase
                     .from('User')
-                    .select('role')
+                    .select('role, can_order_liquor')
                     .eq('user_id', beforeValue.user_id)
                     .maybeSingle();
 
+                if (userRes.error && userRes.error.message.includes('can_order_liquor')) {
+                    userRes = await supabase
+                        .from('User')
+                        .select('role')
+                        .eq('user_id', beforeValue.user_id)
+                        .maybeSingle();
+                }
+
+                const existingUser = userRes.data;
+
                 if (existingUser) {
+                    const updates: Record<string, any> = {};
                     if (existingUser.role !== body.role) {
+                        updates.role = body.role;
+                    }
+                    if (body.can_order_liquor !== undefined && existingUser.can_order_liquor !== body.can_order_liquor) {
+                        updates.can_order_liquor = body.can_order_liquor;
+                    }
+
+                    if (Object.keys(updates).length > 0) {
                         const { error: roleUpdateError } = await adminClient
                             .from('User')
-                            .update({ role: body.role })
+                            .update(updates)
                             .eq('user_id', beforeValue.user_id);
 
                         if (roleUpdateError) {
-                            console.error('System role update failed:', roleUpdateError.message);
+                            console.error('System user update failed:', roleUpdateError.message);
                         }
                     }
                 } else if (body.role === 'manager') {
@@ -222,11 +258,36 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
                             role: 'manager',
                             first_name: beforeValue.first_name,
                             last_name: beforeValue.last_name,
+                            can_order_liquor: body.can_order_liquor !== undefined ? body.can_order_liquor : false,
                         });
 
                     if (roleCreateError) {
                         console.error('System role creation failed:', roleCreateError.message);
                     }
+                }
+            }
+        } else if (body.can_order_liquor !== undefined && beforeValue.user_id) {
+            // If role is not provided but can_order_liquor is, update the existing User record
+            let userRes: any = await supabase
+                .from('User')
+                .select('can_order_liquor')
+                .eq('user_id', beforeValue.user_id)
+                .maybeSingle();
+
+            if (userRes.error && userRes.error.message.includes('can_order_liquor')) {
+                userRes = { data: null, error: null };
+            }
+
+            const existingUser = userRes.data;
+
+            if (existingUser && existingUser.can_order_liquor !== body.can_order_liquor) {
+                const { error: permUpdateError } = await adminClient
+                    .from('User')
+                    .update({ can_order_liquor: body.can_order_liquor })
+                    .eq('user_id', beforeValue.user_id);
+
+                if (permUpdateError) {
+                    console.error('System permission update failed:', permUpdateError.message);
                 }
             }
         }

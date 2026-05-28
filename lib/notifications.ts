@@ -23,7 +23,10 @@ export type NotificationType =
     | 'SHIFT_POOL_AVAILABLE'
     | 'BROADCAST'
     | 'ATTENDANCE_REQUESTED'
-    | 'CHECKLIST_REMINDER';
+    | 'CHECKLIST_REMINDER'
+    // ---- Order Guide ----
+    | 'ORDER_REMINDER'         // Sent on clock-in when shift has ordering tasks
+    | 'ORDER_CUTOFF_REMINDER'; // Sent by cron before supplier cut-off time
 
 export interface CreateNotificationParams {
     business_id: string;
