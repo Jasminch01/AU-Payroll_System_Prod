@@ -42,6 +42,7 @@ export async function GET() {
                 business_id: userRecord.business_id,
                 business: userRecord.Business,
                 employee_id: linkedEmp?.employee_id,
+                can_order_liquor: userRecord.can_order_liquor ?? false,
             });
         }
 
@@ -63,6 +64,7 @@ export async function GET() {
                 business_id: employeeRecord.business_id,
                 business: employeeRecord.Business,
                 status: employeeRecord.status,
+                can_order_liquor: false,
             });
         }
 

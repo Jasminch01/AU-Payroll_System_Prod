@@ -19,6 +19,7 @@ export interface AuthProfile {
     };
     employee_id?: string;
     status?: string;
+    can_order_liquor?: boolean;
 }
 
 /**

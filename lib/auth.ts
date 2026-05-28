@@ -11,6 +11,8 @@ export interface AuthUser {
     first_name: string;
     last_name: string;
     employee_id?: string;
+    /** True if owner granted this manager access to Liquor Key Items ordering */
+    can_order_liquor: boolean;
 }
 
 /**
@@ -27,19 +29,30 @@ export async function getAuthUser(): Promise<AuthUser | null> {
 
     if (authError || !user) return null;
 
-    // Run User table + Employee table lookups in PARALLEL (saves one full round-trip)
-    const [{ data: userRecord }, { data: employeeRecord }] = await Promise.all([
-        supabase
+    // Fetch employee and user records safely
+    const empPromise = supabase
+        .from('Employee')
+        .select('employee_id, business_id, first_name, last_name')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+    let userRes = await supabase
+        .from('User')
+        .select('role, business_id, first_name, last_name, can_order_liquor')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+    // Fallback if can_order_liquor column is missing in database
+    if (userRes.error && userRes.error.message.includes('can_order_liquor')) {
+        userRes = await supabase
             .from('User')
             .select('role, business_id, first_name, last_name')
             .eq('user_id', user.id)
-            .maybeSingle(),
-        supabase
-            .from('Employee')
-            .select('employee_id, business_id, first_name, last_name')
-            .eq('user_id', user.id)
-            .maybeSingle(),
-    ]);
+            .maybeSingle();
+    }
+
+    const userRecord = userRes.data;
+    const { data: employeeRecord } = await empPromise;
 
     if (userRecord) {
         return {
@@ -49,8 +62,8 @@ export async function getAuthUser(): Promise<AuthUser | null> {
             business_id: userRecord.business_id,
             first_name: userRecord.first_name,
             last_name: userRecord.last_name,
-            // Employee record linked to this user (managers who also clock in)
             employee_id: employeeRecord?.employee_id,
+            can_order_liquor: userRecord.can_order_liquor ?? false,
         };
     }
 
@@ -63,6 +76,7 @@ export async function getAuthUser(): Promise<AuthUser | null> {
             first_name: employeeRecord.first_name ?? '',
             last_name: employeeRecord.last_name ?? '',
             employee_id: employeeRecord.employee_id,
+            can_order_liquor: false, // Employees never have liquor ordering access
         };
     }
 

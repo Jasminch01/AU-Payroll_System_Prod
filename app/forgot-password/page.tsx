@@ -57,17 +57,17 @@ export default function ForgotPasswordPage() {
                         <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[hsl(var(--sidebar-accent))] font-bold text-lg">
                             AP
                         </div>
-                        <span className="text-xl font-bold">AU Payroll</span>
+                        <span className="text-xl font-bold text-[hsl(var(--sidebar-accent))]">AU Payroll</span>
                     </div>
                 </div>
 
                 <div className="space-y-6">
-                    <h2 className="text-4xl font-bold leading-tight">
+                    <h2 className="text-4xl font-bold leading-tight text-[hsl(var(--sidebar-accent))]">
                         Secure access to your
                         <br />
-                        <span className="text-[hsl(var(--sidebar-accent))]">account.</span>
+                        <span className="">account.</span>
                     </h2>
-                    <p className="text-lg text-white/60 max-w-md">
+                    <p className="text-lg max-w-md text-[hsl(var(--sidebar-accent))]">
                         Reset your password to regain access to your dashboard, rosters, and timesheets.
                     </p>
                 </div>
