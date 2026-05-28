@@ -18,9 +18,14 @@ import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Toolti
 
 export default function OwnerDashboardPage() {
     const queryClient = useQueryClient();
-    const searchParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
-    const xeroStatusParam = searchParams?.get('xero');
-    const xeroErrorMsg = searchParams?.get('msg');
+    const [xeroStatusParam, setXeroStatusParam] = React.useState<string | null>(null);
+    const [xeroErrorMsg, setXeroErrorMsg] = React.useState<string | null>(null);
+
+    React.useEffect(() => {
+        const searchParams = new URLSearchParams(window.location.search);
+        setXeroStatusParam(searchParams.get('xero'));
+        setXeroErrorMsg(searchParams.get('msg'));
+    }, []);
 
     const { data: summary, isLoading } = useQuery({
         queryKey: ["analytics-summary"],

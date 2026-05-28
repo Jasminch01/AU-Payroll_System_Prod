@@ -31,6 +31,13 @@ export type AuditAction = 'INSERT' | 'UPDATE' | 'DELETE';
 export type UserRole = 'owner' | 'manager';
 export type EmployeeRole = 'employee' | 'manager';
 
+// ==================== ORDER GUIDE ENUMS ====================
+
+export type OrderingMethod = 'portal' | 'phone' | 'sms' | 'email' | 'rep' | 'metcash';
+export type OrderFrequency = 'daily' | 'weekly' | 'specific_days' | 'manual';
+export type StockStatus    = 'enough' | 'low' | 'out_of_stock' | 'not_checked';
+export type OrderStatus    = 'pending' | 'ordered' | 'not_required' | 'issue';
+
 export type SwapStatus = 'pending_acceptance' | 'pending_approval' | 'approved' | 'rejected' | 'cancelled' | 'expired';
 
 export type XeroSyncStatus = 'pending' | 'synced' | 'failed';
@@ -57,6 +64,8 @@ export interface User {
   last_name: string;
   created_at: string;
   updated_at: string;
+  // Owner can grant this to specific managers for Liquor Key Items access
+  can_order_liquor: boolean;
 }
 
 export interface Employee {
@@ -392,6 +401,85 @@ export interface ShiftTypeTemplateDefault {
 
 export type ShiftChecklistItemStatus = 'pending' | 'done' | 'not_done' | 'not_applicable';
 
+// ==================== ORDER GUIDE TABLES ====================
+
+export interface OrderSupplier {
+  supplier_id: string;
+  business_id: string;
+  supplier_name: string;
+  contact_person: string | null;
+  phone: string | null;
+  email: string | null;
+  /** Portal URL for reference only — passwords are NEVER stored */
+  portal_url: string | null;
+  order_cutoff_time: string | null;   // e.g. '14:00:00'
+  delivery_days: string[] | null;     // e.g. ['Mon','Wed','Fri']
+  ordering_method: OrderingMethod | null;
+  notes: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface OrderCategory {
+  category_id: string;
+  business_id: string;
+  category_name: string;
+  default_supplier_id: string | null;
+  default_ordering_method: OrderingMethod | null;
+  order_days: string[] | null;
+  cutoff_time: string | null;         // e.g. '14:00:00'
+  responsible_role: string;           // 'owner' | 'manager'
+  is_active: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface OrderGuideItem {
+  item_id: string;
+  business_id: string;
+  category_id: string;
+  supplier_id: string | null;         // Overrides category default if set
+  product_name: string;
+  min_stock_qty: number;
+  max_stock_qty: number;
+  default_order_qty: number | null;   // Fallback when no min/max logic applies
+  unit: string;                       // each, box, carton, crate, kg, tray...
+  order_frequency: OrderFrequency;
+  order_days: string[] | null;        // Used when frequency = 'specific_days'
+  ordering_method: OrderingMethod | null;
+  ordering_instruction: string | null;
+  comment: string | null;
+  is_active: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DailyOrderTask {
+  order_task_id: string;
+  business_id: string;
+  order_date: string;                 // 'YYYY-MM-DD'
+  category_id: string;
+  item_id: string;
+  supplier_id: string | null;
+  suggested_qty: number | null;       // max - current, when current <= min
+  current_stock_qty: number | null;   // Entered by manager during stock check
+  final_qty: number | null;           // Confirmed/adjusted quantity
+  stock_status: StockStatus;
+  order_status: OrderStatus;
+  /** FK → User.user_id  (manager role lives in User, not Employee) */
+  ordered_by: string | null;
+  ordered_at: string | null;
+  comment_reason: string | null;      // Required when order_status = 'issue'
+  order_reference: string | null;
+  /** Auto-detected: shift checklist template category = 'ordering' */
+  shift_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface ShiftChecklistItem {
   checklist_item_id: string;
   shift_id: string;
@@ -495,6 +583,24 @@ export type XeroSyncInsert = Omit<XeroSync, 'sync_id' | 'created_at'> & {
 export type EmployeeAvailabilityInsert = Omit<EmployeeAvailability, 'availability_id' | 'created_at' | 'updated_at'> & {
   availability_id?: string;
   updated_at?: string;
+};
+
+// ==================== ORDER GUIDE INSERT TYPES ====================
+
+export type OrderSupplierInsert = Omit<OrderSupplier, 'supplier_id' | 'created_at' | 'updated_at'> & {
+  supplier_id?: string;
+};
+
+export type OrderCategoryInsert = Omit<OrderCategory, 'category_id' | 'created_at' | 'updated_at'> & {
+  category_id?: string;
+};
+
+export type OrderGuideItemInsert = Omit<OrderGuideItem, 'item_id' | 'created_at' | 'updated_at'> & {
+  item_id?: string;
+};
+
+export type DailyOrderTaskInsert = Omit<DailyOrderTask, 'order_task_id' | 'created_at' | 'updated_at'> & {
+  order_task_id?: string;
 };
 
 // ==================== CHECKLIST INSERT TYPES ====================

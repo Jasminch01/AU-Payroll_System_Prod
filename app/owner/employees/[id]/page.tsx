@@ -19,6 +19,7 @@ import {
     Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter
 } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Switch } from "@/components/ui/switch";
 import { EmployeeShifts } from "./components/employee-shifts";
 import { EmployeeTimesheets } from "./components/employee-timesheets";
 import { EmployeeLeave } from "./components/employee-leave";
@@ -50,6 +51,17 @@ export default function OwnerEmployeeDetailPage() {
     const [eveningStartTime, setEveningStartTime] = useState("");
     const [eveningEndTime, setEveningEndTime] = useState("");
     const [editingRateId, setEditingRateId] = useState<string | null>(null);
+
+    // Reset password state
+    const [resetModalOpen, setResetModalOpen] = useState(false);
+    const [resetPassword, setResetPassword] = useState("");
+
+    // Reset password form when dialog closes
+    useEffect(() => {
+        if (!resetModalOpen) {
+            setResetPassword("");
+        }
+    }, [resetModalOpen]);
 
     // Reset rate form when dialog closes
     useEffect(() => {
@@ -94,6 +106,7 @@ export default function OwnerEmployeeDetailPage() {
                 bank_account_number: employee.bank_account_number || "",
                 abn: employee.abn || "",
                 tfn: employee.tfn || "",
+                can_order_liquor: employee.can_order_liquor ?? false,
             };
 
             setFormData(normalizedData);
@@ -158,6 +171,27 @@ export default function OwnerEmployeeDetailPage() {
         onError: (err: Error) => toast.error(err.message),
     });
 
+    const resetPasswordMutation = useMutation({
+        mutationFn: (password: string) => {
+            return apiPost(`/employees/${employeeId}/reset-password`, { password });
+        },
+        onSuccess: () => {
+            toast.success("Password successfully reset");
+            setResetModalOpen(false);
+        },
+        onError: (err: Error) => {
+            toast.error(err.message || "Failed to reset password");
+        },
+    });
+
+    const handleResetPassword = () => {
+        if (resetPassword.length < 6) {
+            toast.error("Password must be at least 6 characters");
+            return;
+        }
+        resetPasswordMutation.mutate(resetPassword);
+    };
+
     const handleSave = () => {
         if (!formData || !employee) return;
 
@@ -168,7 +202,7 @@ export default function OwnerEmployeeDetailPage() {
             'emergency_contact_name', 'emergency_contact_phone',
             'bank_account_name', 'bank_bsb', 'bank_account_number',
             'abn', 'tfn', 'role_title', 'role', 'employment_type',
-            'pay_cycle', 'status'
+            'pay_cycle', 'status', 'can_order_liquor'
         ];
 
         fieldsToCompare.forEach(field => {
@@ -385,6 +419,65 @@ export default function OwnerEmployeeDetailPage() {
                                             </TabsContent>
 
                                             <TabsContent value="auth" className="mt-0">
+                                                <div className="space-y-6">
+                                                    <div>
+                                                        <h3 className="text-lg font-bold text-[hsl(var(--foreground))]">Security & System Permissions</h3>
+                                                        <p className="text-sm text-[hsl(var(--muted-foreground))]">Manage access controls and special feature permissions.</p>
+                                                    </div>
+
+                                                    {data.role === 'manager' ? (
+                                                        <Card className="border border-[hsl(var(--border))] bg-white">
+                                                            <CardContent className="p-6 flex items-center justify-between gap-6">
+                                                                <div className="space-y-1 max-w-lg">
+                                                                    <p className="font-bold text-sm text-[hsl(var(--foreground))]">Liquor Ordering Authorization</p>
+                                                                    <p className="text-xs text-[hsl(var(--muted-foreground))] leading-relaxed">
+                                                                        Allow this manager to finalize daily liquor/alcohol orders. If disabled, they can count liquor stock, but cannot submit the replenishment order to liquor suppliers.
+                                                                    </p>
+                                                                </div>
+                                                                <Switch
+                                                                    checked={!!data.can_order_liquor}
+                                                                    onCheckedChange={(val) => {
+                                                                        updateField("can_order_liquor", val);
+                                                                    }}
+                                                                />
+                                                            </CardContent>
+                                                        </Card>
+                                                    ) : (
+                                                        <div className="text-center p-8 rounded-xl border border-dashed border-[hsl(var(--border))] bg-[hsl(var(--muted))]/5">
+                                                            <Shield size={32} className="text-[hsl(var(--muted-foreground))] opacity-30 mx-auto mb-3" />
+                                                            <p className="text-sm text-[hsl(var(--muted-foreground))] font-medium">Standard Employee Permissions</p>
+                                                            <p className="text-xs text-[hsl(var(--muted-foreground))] mt-1 max-w-md mx-auto">
+                                                                Standard employee accounts cannot manage catalogs, setup suppliers, or place liquor orders. Permissions can be set if their System Access Level is upgraded to Manager.
+                                                            </p>
+                                                        </div>
+                                                    )}
+
+                                                    {/* Password Reset Section */}
+                                                    <Card className="border border-[hsl(var(--border))] bg-white">
+                                                        <CardContent className="p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
+                                                            <div className="space-y-1 max-w-lg">
+                                                                <p className="font-bold text-sm text-[hsl(var(--foreground))]">Reset Account Password</p>
+                                                                {data.user_id ? (
+                                                                    <p className="text-xs text-[hsl(var(--muted-foreground))] leading-relaxed">
+                                                                        Force update the password for this user's account. They will use the new password on their next sign in.
+                                                                    </p>
+                                                                ) : (
+                                                                    <p className="text-xs text-amber-600 bg-amber-50 dark:bg-amber-950/20 px-2.5 py-1.5 rounded-lg border border-amber-200/50 leading-relaxed">
+                                                                        No login account exists for this employee. Users must have a system account (linked email) to reset their password.
+                                                                    </p>
+                                                                )}
+                                                            </div>
+                                                            <Button
+                                                                variant="outline"
+                                                                disabled={!data.user_id}
+                                                                onClick={() => setResetModalOpen(true)}
+                                                                className="text-xs shrink-0 rounded-lg"
+                                                            >
+                                                                Reset Password
+                                                            </Button>
+                                                        </CardContent>
+                                                    </Card>
+                                                </div>
                                             </TabsContent>
 
                                             <TabsContent value="compliance" className="mt-0">
@@ -825,6 +918,43 @@ export default function OwnerEmployeeDetailPage() {
                             onClick={() => deleteMutation.mutate()}
                         >
                             Delete
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Password Reset Modal */}
+            <Dialog open={resetModalOpen} onOpenChange={setResetModalOpen}>
+                <DialogContent className="max-w-sm">
+                    <DialogHeader>
+                        <DialogTitle className="text-xl font-bold">Reset Password</DialogTitle>
+                        <DialogDescription className="text-sm text-[hsl(var(--muted-foreground))] pt-1">
+                            Set a new password for <span className="font-semibold text-[hsl(var(--foreground))]">{employee.first_name} {employee.last_name}</span>. It must be at least 6 characters.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-3">
+                        <div className="space-y-1.5">
+                            <label className="text-xs font-semibold text-[hsl(var(--foreground))]">New Password</label>
+                            <Input
+                                type="password"
+                                placeholder="Enter at least 6 characters"
+                                value={resetPassword}
+                                onChange={(e) => setResetPassword(e.target.value)}
+                                className="w-full"
+                            />
+                        </div>
+                    </div>
+                    <DialogFooter className="gap-2 pt-2">
+                        <Button variant="outline" className="flex-1" onClick={() => setResetModalOpen(false)}>
+                            Cancel
+                        </Button>
+                        <Button
+                            className="flex-1 font-bold bg-[hsl(var(--brand))] text-white hover:bg-[hsl(var(--brand-hover))]"
+                            loading={resetPasswordMutation.isPending}
+                            disabled={resetPassword.length < 6}
+                            onClick={handleResetPassword}
+                        >
+                            Reset Password
                         </Button>
                     </DialogFooter>
                 </DialogContent>

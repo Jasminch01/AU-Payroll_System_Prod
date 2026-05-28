@@ -9,7 +9,8 @@ import { verifyKioskToken } from '@/lib/kiosk-auth';
 import { getBusinessTimezone } from '@/lib/auth';
 import { getDateInTimezone } from '@/lib/timezone-utils';
 import { generateBusinessPrefix } from '@/lib/utils/employee-id';
-import { getShiftChecklistProgress, validateClockOutChecklist, notifyChecklistStatus } from '@/lib/checklist-engine';
+import { getShiftChecklistProgress, validateClockOutChecklist, notifyChecklistStatus, validateClockOutOrdering } from '@/lib/checklist-engine';
+import { detectShiftHasOrdering, generateDailyOrderTasks, notifyOrderStatus } from '@/lib/order-guide-engine';
 
 /**
  * POST /api/attendance/kiosk
@@ -127,6 +128,7 @@ export async function POST(request: NextRequest) {
             
             if (shift) {
                 rosteredShift = shift;
+                // 1. Regular checklist
                 const { blocked, pendingCount } = await validateClockOutChecklist(shift.shift_id, supabase);
                 if (blocked) {
                     // Send blocked notification
@@ -144,6 +146,25 @@ export async function POST(request: NextRequest) {
                         `Incomplete Checklist: Please complete your shift checklist before clocking out. You have ${pendingCount} pending task(s).`,
                         422,
                         { blocked: true, pending_count: pendingCount }
+                    );
+                }
+
+                // 2. Ordering checklist
+                const { blocked: orderBlocked, pendingCount: orderPendingCount, pendingCategories } = await validateClockOutOrdering(shift.shift_id, employee.business_id, today, supabase);
+                if (orderBlocked) {
+                    if (employee.user_id) {
+                        notifyOrderStatus(
+                            employee.user_id,
+                            employee.business_id,
+                            'clock_out',
+                            { pendingCount: orderPendingCount, categories: pendingCategories }
+                        ).catch(err => console.error('Failed to send order clock out notification:', err));
+                    }
+
+                    return errorResponse(
+                        `Incomplete Orders Checklist: Please complete your ordering tasks for today before clocking out. You have ${orderPendingCount} pending item(s) in category: ${pendingCategories.join(', ')}.`,
+                        422,
+                        { blocked: true, pending_count: orderPendingCount }
                     );
                 }
             }
@@ -197,6 +218,7 @@ export async function POST(request: NextRequest) {
                     .maybeSingle();
 
                 if (shift) {
+                    // 1. Regular checklist reminder
                     const { total } = await getShiftChecklistProgress(shift.shift_id, supabase);
                     if (total > 0) {
                         await notifyChecklistStatus(
@@ -205,6 +227,19 @@ export async function POST(request: NextRequest) {
                             'CLOCK_IN_REMINDER',
                             shift.shift_type,
                             total
+                        );
+                    }
+
+                    // 2. Ordering checklist generation & notification
+                    const hasOrdering = await detectShiftHasOrdering(shift.shift_id, supabase);
+                    if (hasOrdering) {
+                        // Generate tasks for today (idempotent)
+                        await generateDailyOrderTasks(employee.business_id, today, supabase, shift.shift_id);
+                        // Notify employee
+                        await notifyOrderStatus(
+                            employee.user_id!,
+                            employee.business_id,
+                            'clock_in'
                         );
                     }
                 }

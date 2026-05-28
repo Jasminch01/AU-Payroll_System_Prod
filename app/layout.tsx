@@ -19,12 +19,15 @@ export const metadata: Metadata = {
     apple: "/icons/icon-192x192.png",
   },
   manifest: "/manifest.json",
-  themeColor: "#3724B3",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
     title: "AU Payroll",
   },
+};
+
+export const viewport = {
+  themeColor: "#3724B3",
 };
 
 export default function RootLayout({

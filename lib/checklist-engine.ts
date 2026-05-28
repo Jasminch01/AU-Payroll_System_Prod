@@ -1,6 +1,7 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import { ChecklistTemplateItem, ShiftChecklistItemInsert, ShiftChecklistItemStatus } from '@/types/database';
 import { createNotification } from '@/lib/notifications';
+import { validateOrderCompletion } from './order-guide-engine';
 
 /**
  * Core engine for the Shift Checklist System
@@ -201,3 +202,17 @@ export async function duplicateChecklist(
         console.error(`[ChecklistEngine] Failed to duplicate checklist from ${sourceShiftId} to ${targetShiftId}:`, err);
     }
 }
+
+/**
+ * Validates if an employee can clock out based on daily ordering requirements.
+ * Delegated to the order guide engine.
+ */
+export async function validateClockOutOrdering(
+    shiftId: string,
+    businessId: string,
+    date: string,
+    supabase: SupabaseClient
+) {
+    return validateOrderCompletion(businessId, date, shiftId, supabase);
+}
+

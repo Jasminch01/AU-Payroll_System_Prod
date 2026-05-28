@@ -3,11 +3,96 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
-import { User, Settings, LogOut } from "lucide-react";
+import { User, Settings, LogOut, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
 import { NotificationBell } from "@/components/ui/notification-bell";
 import { motion, AnimatePresence } from "framer-motion";
+
+function BusinessClock() {
+    const { user } = useAuth();
+    const [timeStr, setTimeStr] = useState<string>("");
+    const [dateStr, setDateStr] = useState<string>("");
+    const [tzLabel, setTzLabel] = useState<string>("");
+    const [mounted, setMounted] = useState(false);
+
+    useEffect(() => {
+        setMounted(true);
+        const timezone = user?.business?.timezone || "Australia/Sydney";
+
+        const updateClock = () => {
+            const now = new Date();
+            try {
+                // Time Formatter: 24-hour format (e.g. 15:45:06)
+                const timeFormatter = new Intl.DateTimeFormat("en-AU", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    second: "2-digit",
+                    hour12: false,
+                    timeZone: timezone,
+                });
+
+                // Date Formatter: Thu, 28 May
+                const dateFormatter = new Intl.DateTimeFormat("en-AU", {
+                    weekday: "short",
+                    day: "numeric",
+                    month: "short",
+                    timeZone: timezone,
+                });
+
+                // Timezone short name formatter
+                const tzFormatter = new Intl.DateTimeFormat("en-AU", {
+                    timeZoneName: "short",
+                    timeZone: timezone,
+                });
+
+                setTimeStr(timeFormatter.format(now));
+                setDateStr(dateFormatter.format(now));
+
+                // Extract timezone abbreviation
+                const tzParts = tzFormatter.formatToParts(now);
+                const tzName = tzParts.find((p) => p.type === "timeZoneName")?.value || "";
+                setTzLabel(tzName);
+            } catch (err) {
+                console.error("Error formatting business clock:", err);
+            }
+        };
+
+        updateClock();
+        const intervalId = setInterval(updateClock, 1000);
+        return () => clearInterval(intervalId);
+    }, [user?.business?.timezone]);
+
+    if (!mounted) {
+        return (
+            <div className="hidden sm:flex items-center gap-2 rounded-full border border-[hsl(var(--border))]/80 bg-[hsl(var(--muted))]/40 px-3 py-1.5 text-xs text-[hsl(var(--muted-foreground))]/80">
+                <Clock size={13} className="animate-pulse" />
+                <span className="h-4 w-28 bg-[hsl(var(--muted))] animate-pulse rounded" />
+            </div>
+        );
+    }
+
+    return (
+        <div className="hidden sm:flex items-center gap-2 rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-3 py-1.5 text-xs shadow-xs transition-all duration-300 hover:border-[hsl(var(--brand))]/30 hover:shadow-sm">
+            {/* Live pulsing dot indicator */}
+            <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[hsl(var(--success))] opacity-75 animate-duration-1000"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-[hsl(var(--success))]"></span>
+            </span>
+            <Clock size={13} className="text-[hsl(var(--muted-foreground))]" />
+            <div className="flex items-center gap-1.5 font-medium select-none">
+                <span className="text-[hsl(var(--muted-foreground))] hidden md:inline">{dateStr}</span>
+                <span className="text-[hsl(var(--border))] hidden md:inline">•</span>
+                <span className="font-mono text-[hsl(var(--foreground))] font-semibold">{timeStr}</span>
+                {tzLabel && (
+                    <span className="text-[10px] font-bold text-[hsl(var(--muted-foreground))] bg-[hsl(var(--muted))] px-1.5 py-0.5 rounded border border-[hsl(var(--border))] uppercase tracking-wider">
+                        {tzLabel}
+                    </span>
+                )}
+            </div>
+        </div>
+    );
+}
 
 export function TopNav() {
     const router = useRouter();
@@ -67,7 +152,8 @@ export function TopNav() {
             </div>
 
             {/* Right — Notifications + Profile */}
-            <div className="flex items-center gap-2 ml-auto">
+            <div className="flex items-center gap-3 ml-auto">
+                <BusinessClock />
                 <NotificationBell />
                 {/* User Profile Dropdown */}
                 <div ref={dropdownRef} className="relative">
