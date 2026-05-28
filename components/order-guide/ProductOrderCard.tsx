@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { OrderGuideItem, DailyOrderTask, OrderStatus, StockStatus } from "@/types/database";
-import { calculateSuggestedQty } from "@/lib/order-guide-engine";
+import { calculateSuggestedQty } from "@/lib/order-guide-utils";
 import { HelpCircle, AlertTriangle, Check, Loader2 } from "lucide-react";
 import { StockStatusBadge } from "./StockStatusBadge";
 import { OrderStatusBadge } from "./OrderStatusBadge";

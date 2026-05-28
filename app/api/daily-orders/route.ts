@@ -3,7 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { requireRole } from '@/lib/auth';
 import { successResponse, errorResponse } from '@/lib/api-helpers';
 import { generateDailyOrderTasks } from '@/lib/order-guide-engine';
-import { calculateSuggestedQty } from '@/lib/order-guide-engine';
+import { calculateSuggestedQty } from '@/lib/order-guide-utils';
 import { format } from 'date-fns';
 
 /**
