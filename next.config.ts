@@ -5,7 +5,8 @@ const nextConfig: NextConfig = {
   compress: true,
 
   // React strict mode — catches double-render bugs and deprecated APIs early
-  reactStrictMode: true,
+  // Disabled: breaks @dnd-kit drag-and-drop in development due to component remounts
+  reactStrictMode: false,
 
   // Image optimisation — serve modern formats to supported browsers
   images: {

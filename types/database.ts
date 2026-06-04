@@ -373,6 +373,7 @@ export interface ChecklistTemplate {
   category: string;
   description: string | null;
   is_active: boolean;
+  sort_order: number;
   created_by: string;
   created_at: string;
   updated_at: string;

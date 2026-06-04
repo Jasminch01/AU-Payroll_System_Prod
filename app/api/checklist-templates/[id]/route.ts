@@ -1,7 +1,7 @@
-import { NextRequest } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { errorResponse, successResponse } from '@/lib/api-helpers';
 import { requireRole } from '@/lib/auth';
-import { successResponse, errorResponse, validateRequiredFields } from '@/lib/api-helpers';
+import { createClient } from '@/lib/supabase/server';
+import { NextRequest } from 'next/server';
 
 /**
  * GET /api/checklist-templates/[id]
@@ -64,6 +64,17 @@ export async function PUT(
         
         const supabase = await createClient();
 
+        // First get the current template to check if category is changing
+        const { data: currentTemplate, error: fetchError } = await supabase
+            .from('ChecklistTemplate')
+            .select('category, sort_order')
+            .eq('template_id', id)
+            .eq('business_id', authUser.business_id)
+            .single();
+
+        if (fetchError) return errorResponse(fetchError.message, 400);
+        if (!currentTemplate) return errorResponse('Template not found', 404);
+
         const { data: template, error } = await supabase
             .from('ChecklistTemplate')
             .update({
@@ -80,6 +91,46 @@ export async function PUT(
 
         if (error) return errorResponse(error.message, 400);
         if (!template) return errorResponse('Template not found', 404);
+
+        // If category changed, recalculate sort_order for both categories
+        if (currentTemplate.category !== body.category) {
+            // Get all templates in both the old and new categories
+            const { data: allTemplates } = await supabase
+                .from('ChecklistTemplate')
+                .select('template_id, category, sort_order')
+                .eq('business_id', authUser.business_id)
+                .in('category', [currentTemplate.category, body.category])
+                .order('category', { ascending: true })
+                .order('sort_order', { ascending: true });
+
+            if (allTemplates) {
+                // Group by category and assign new sort_order
+                const grouped: Record<string, any[]> = {};
+                allTemplates.forEach(t => {
+                    if (!grouped[t.category]) grouped[t.category] = [];
+                    grouped[t.category].push(t);
+                });
+
+                // Build updates for both categories
+                const updates: any[] = [];
+                Object.entries(grouped).forEach(([category, templates]) => {
+                    templates.forEach((t, index) => {
+                        updates.push({
+                            template_id: t.template_id,
+                            sort_order: index
+                        });
+                    });
+                });
+
+                // Batch update sort_order for all affected templates
+                for (const update of updates) {
+                    await supabase
+                        .from('ChecklistTemplate')
+                        .update({ sort_order: update.sort_order })
+                        .eq('template_id', update.template_id);
+                }
+            }
+        }
 
         return successResponse(template, 'Template updated successfully');
     } catch (err) {
