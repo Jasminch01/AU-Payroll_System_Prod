@@ -1,52 +1,49 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import Link from "next/link";
 import { DashboardLayout } from "@/components/layout";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui";
-import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/api-client";
-import { toast } from "sonner";
-import {
-    Plus,
-    Search,
-    MoreHorizontal,
-    GripVertical,
-    Trash2,
-    ClipboardList,
-    Settings2,
-    CheckCircle2,
-    AlertCircle,
-    ChevronRight,
-    Edit3,
-    Check,
-    X,
-    Filter,
-    LayoutGrid,
-    Clock,
-    BarChart3
-} from "lucide-react";
-import { cn } from "@/lib/utils";
-import type { ChecklistTemplate, ChecklistTemplateItem, ShiftTypeTemplateDefault } from "@/types/database";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
     Dialog,
     DialogContent,
-    DialogHeader,
-    DialogTitle,
     DialogDescription,
     DialogFooter,
+    DialogHeader,
+    DialogTitle,
 } from "@/components/ui/dialog";
 import {
     DropdownMenu,
     DropdownMenuContent,
     DropdownMenuItem,
-    DropdownMenuSeparator,
-    DropdownMenuTrigger,
+    DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
-import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { apiDelete, apiGet, apiPost, apiPut } from "@/lib/api-client";
+import { cn } from "@/lib/utils";
+import type { ChecklistTemplate, ChecklistTemplateItem, ShiftTypeTemplateDefault } from "@/types/database";
+import { DragDropContext, Draggable, Droppable, DropResult } from '@hello-pangea/dnd';
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+    AlertCircle,
+    BarChart3,
+    CheckCircle2,
+    ChevronRight,
+    ClipboardList,
+    Clock,
+    Edit3,
+    GripVertical,
+    LayoutGrid,
+    MoreHorizontal,
+    Plus,
+    Search,
+    Settings2,
+    Trash2
+} from "lucide-react";
+import Link from "next/link";
+import { useMemo, useState } from "react";
+import { toast } from "sonner";
 
 const CATEGORIES = [
     { id: 'morning', label: 'Morning' },
@@ -147,6 +144,20 @@ export default function ChecklistsPage() {
             apiPut(`/checklist-templates/${id}/items/${itemId}`, data),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["checklist-template", selectedTemplateId] });
+        },
+        onError: (err: any) => toast.error(err.message),
+    });
+
+    const reorderItemsMutation = useMutation({
+        mutationFn: ({ id, items }: { id: string, items: any[] }) =>
+            apiPut(`/checklist-templates/${id}/items`, { items }),
+        onError: (err: any) => toast.error(err.message),
+    });
+
+    const reorderTemplatesMutation = useMutation({
+        mutationFn: (reorders: any[]) => apiPut("/checklist-templates/reorder", { reorders }),
+        onSuccess: () => {
+            // queryClient.invalidateQueries({ queryKey: ["checklist-templates"] }); // Optional: Avoid invalidation to prevent jitter since we optimistically updated
         },
         onError: (err: any) => toast.error(err.message),
     });
@@ -280,6 +291,122 @@ export default function ChecklistsPage() {
         });
     };
 
+    const handleTaskDragEnd = (result: DropResult) => {
+        const { source, destination } = result;
+
+        if (!destination) return;
+        if (source.index === destination.index) return;
+        if (!selectedTemplate) return;
+
+        // Optimistic update
+        const items = Array.from(selectedTemplate.items || []);
+        const [reorderedItem] = items.splice(source.index, 1);
+        items.splice(destination.index, 0, reorderedItem);
+
+        const updatedItems = items.map((item, index) => ({
+            ...item,
+            sort_order: index
+        }));
+
+        queryClient.setQueryData(
+            ["checklist-template", selectedTemplateId],
+            { ...selectedTemplate, items: updatedItems }
+        );
+
+        // Save to backend
+        reorderItemsMutation.mutate({
+            id: selectedTemplate.template_id,
+            items: updatedItems.map(i => ({
+                item_id: i.item_id,
+                sort_order: i.sort_order,
+                task_text: i.task_text,
+                instructions: i.instructions,
+                is_required: i.is_required,
+                is_active: i.is_active,
+                template_id: i.template_id,
+                business_id: i.business_id,
+            }))
+        });
+    };
+
+    // handle drag end for reordering templates within and across categories
+    const handleDragEnd = (result: DropResult) => {
+        const { source, destination } = result;
+
+        // 1. Dropped outside a valid droppable area
+        if (!destination) return;
+
+        // 2. Dropped in the exact same spot
+        if (source.droppableId === destination.droppableId && source.index === destination.index) {
+            return;
+        }
+
+        const sourceCategory = source.droppableId;
+        const destCategory = destination.droppableId;
+
+        // 3. Get the current templates directly from the TanStack Query cache
+        const currentTemplates = queryClient.getQueryData<ChecklistTemplate[]>(["checklist-templates"]) || [];
+
+        // 4. Group current cached templates by category so we can modify the slices safely
+        const grouped: Record<string, ChecklistTemplate[]> = {};
+        currentTemplates.forEach(t => {
+            if (!grouped[t.category]) grouped[t.category] = [];
+            grouped[t.category].push(t);
+        });
+
+        const sourceItems = [...(grouped[sourceCategory] || [])];
+        const destItems = sourceCategory === destCategory
+            ? sourceItems
+            : [...(grouped[destCategory] || [])];
+
+        // 5. Pull out the dragged template
+        const [movedItem] = sourceItems.splice(source.index, 1);
+
+        // 6. Update its category string to match the destination category
+        const updatedMovedItem = {
+            ...movedItem,
+            category: destCategory
+        };
+
+        // 7. Insert it into its new index position
+        destItems.splice(destination.index, 0, updatedMovedItem);
+
+        // 8. Reconstruct the final flattened array for the cache
+        const untouchedTemplates = currentTemplates.filter(
+            (t) => t.category !== sourceCategory && t.category !== destCategory
+        );
+
+        const finalTemplates = sourceCategory === destCategory
+            ? [...untouchedTemplates, ...sourceItems]
+            : [...untouchedTemplates, ...sourceItems, ...destItems];
+
+        // 9. Optimistically update the TanStack Query cache so the UI updates instantly
+        queryClient.setQueryData(["checklist-templates"], finalTemplates);
+
+        // 10. Persist changes to your database
+        if (sourceCategory !== destCategory) {
+            // If it switched categories, fire your existing update mutation
+            updateTemplateMutation.mutate({
+                id: updatedMovedItem.template_id,
+                data: {
+                    name: updatedMovedItem.name,
+                    category: destCategory,
+                    description: updatedMovedItem.description,
+                    is_active: updatedMovedItem.is_active
+                }
+            });
+            // Also update the sort_order of items in the destination category
+            reorderTemplatesMutation.mutate(
+                destItems.map((t, idx) => ({ template_id: t.template_id, sort_order: idx }))
+            );
+        } else {
+            // Reordering items within the same category
+            reorderTemplatesMutation.mutate(
+                destItems.map((t, idx) => ({ template_id: t.template_id, sort_order: idx }))
+            );
+        }
+    };
+
     return (
         <DashboardLayout role="owner" pageTitle="Checklists" pageDescription="Manage shift task templates">
             <div className="flex h-[calc(100vh-180px)] gap-6 overflow-hidden">
@@ -326,38 +453,73 @@ export default function ChecklistsPage() {
                                 <Button variant="link" size="sm" onClick={() => setIsCreateDialogOpen(true)}>Create one</Button>
                             </div>
                         ) : (
-                            CATEGORIES.map(cat => {
-                                const catTemplates = templatesByCategory[cat.id];
-                                if (!catTemplates) return null;
-                                return (
-                                    <div key={cat.id} className="space-y-1">
-                                        <h3 className="px-3 text-[10px] font-black uppercase tracking-widest text-[hsl(var(--muted-foreground))] mb-1 flex items-center justify-between">
-                                            {cat.label}
-                                            <span className="bg-[hsl(var(--muted))] px-1.5 py-0.5 rounded text-[8px]">{catTemplates.length}</span>
-                                        </h3>
-                                        {catTemplates.map(t => (
-                                            <button
-                                                key={t.template_id}
-                                                onClick={() => setSelectedTemplateId(t.template_id)}
-                                                className={cn(
-                                                    "w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-left transition-all group",
-                                                    selectedTemplateId === t.template_id
-                                                        ? "bg-[hsl(var(--brand))] text-white shadow-lg shadow-[hsl(var(--brand))]/20 scale-[1.02] z-10"
-                                                        : "hover:bg-[hsl(var(--muted))]/50 text-[hsl(var(--foreground))]"
+                            /* 2. Wrap the entire scrollable/draggable area in DragDropContext */
+                            <DragDropContext onDragEnd={handleDragEnd}>
+                                {CATEGORIES.map(cat => {
+                                    const catTemplates = templatesByCategory[cat.id];
+                                    if (!catTemplates) return null;
+                                    return (
+                                        <div key={cat.id} className="space-y-1">
+                                            <h3 className="px-3 text-[10px] font-black uppercase tracking-widest text-[hsl(var(--muted-foreground))] mb-1 flex items-center justify-between">
+                                                {cat.label}
+                                                <span className="bg-[hsl(var(--muted))] px-1.5 py-0.5 rounded text-[8px]">{catTemplates.length}</span>
+                                            </h3>
+
+
+                                            <Droppable droppableId={cat.id.toString()}>
+                                                {(provided, snapshot) => (
+                                                    <div
+                                                        ref={provided.innerRef}
+                                                        {...provided.droppableProps}
+                                                        className={cn(
+                                                            "space-y-1 min-h-[10px] transition-colors rounded-xl",
+                                                            snapshot.isDraggingOver && "bg-[hsl(var(--muted))]/20"
+                                                        )}
+                                                    >
+                                                        {catTemplates.map((t, index) => (
+
+                                                            <Draggable
+                                                                key={t.template_id}
+                                                                draggableId={t.template_id.toString()}
+                                                                index={index}
+                                                            >
+                                                                {(provided, snapshot) => (
+                                                                    <div
+                                                                        ref={provided.innerRef}
+                                                                        {...provided.draggableProps}
+                                                                        {...provided.dragHandleProps}
+                                                                        style={{
+                                                                            ...provided.draggableProps.style,
+                                                                        }}
+                                                                        onClick={() => setSelectedTemplateId(t.template_id)}
+                                                                        className={cn(
+                                                                            "w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-left transition-all group cursor-pointer select-none",
+                                                                            selectedTemplateId === t.template_id
+                                                                                ? "bg-[hsl(var(--brand))] text-white shadow-lg shadow-[hsl(var(--brand))]/20 scale-[1.02] z-10"
+                                                                                : "hover:bg-[hsl(var(--muted))]/50 text-[hsl(var(--foreground))]",
+                                                                            snapshot.isDragging && "shadow-xl bg-[hsl(var(--accent))] scale-[1.04]"
+                                                                        )}
+                                                                    >
+                                                                        <div className="truncate pr-2">
+                                                                            <p className="text-sm font-bold truncate leading-tight mb-0.5">{t.name}</p>
+                                                                            <p className={cn("text-[10px] font-medium opacity-60", selectedTemplateId === t.template_id ? "text-white" : "")}>
+                                                                                {(t as any).item_count} tasks
+                                                                            </p>
+                                                                        </div>
+                                                                        <ChevronRight size={14} className={cn("shrink-0 opacity-0 group-hover:opacity-100 transition-opacity", selectedTemplateId === t.template_id ? "opacity-100" : "")} />
+                                                                    </div>
+                                                                )}
+                                                            </Draggable>
+                                                        ))}
+                                                        {/* 5. Crucial placeholder element to prevent structural collapse during drag */}
+                                                        {provided.placeholder}
+                                                    </div>
                                                 )}
-                                            >
-                                                <div className="truncate pr-2">
-                                                    <p className="text-sm font-bold truncate leading-tight mb-0.5">{t.name}</p>
-                                                    <p className={cn("text-[10px] font-medium opacity-60", selectedTemplateId === t.template_id ? "text-white" : "")}>
-                                                        {(t as any).item_count} tasks
-                                                    </p>
-                                                </div>
-                                                <ChevronRight size={14} className={cn("shrink-0 opacity-0 group-hover:opacity-100 transition-opacity", selectedTemplateId === t.template_id ? "opacity-100" : "")} />
-                                            </button>
-                                        ))}
-                                    </div>
-                                );
-                            })
+                                            </Droppable>
+                                        </div>
+                                    );
+                                })}
+                            </DragDropContext>
                         )}
                     </div>
                 </div>
@@ -416,10 +578,10 @@ export default function ChecklistsPage() {
                                             </p>
                                         </div>
                                         <div className="flex items-center gap-2">
-                                            <Button 
-                                                variant="outline" 
-                                                size="icon" 
-                                                className="h-10 w-10 rounded-xl" 
+                                            <Button
+                                                variant="outline"
+                                                size="icon"
+                                                className="h-10 w-10 rounded-xl"
                                                 title="Edit Template Metadata"
                                                 onClick={handleEditTemplateClick}
                                             >
@@ -456,93 +618,115 @@ export default function ChecklistsPage() {
                                             </Button>
                                         </div>
 
-                                        <div className="space-y-3">
-                                            {selectedTemplate.items && selectedTemplate.items.length > 0 ? (
-                                                selectedTemplate.items.map((item, idx) => (
+                                        <DragDropContext onDragEnd={handleTaskDragEnd}>
+                                            <Droppable droppableId="tasks-list">
+                                                {(provided) => (
                                                     <div
-                                                        key={item.item_id}
-                                                        className="group flex items-center gap-4 p-4 bg-[hsl(var(--muted))]/20 border border-[hsl(var(--border))] rounded-2xl hover:border-[hsl(var(--brand))] hover:bg-[hsl(var(--brand-light))]/5 transition-all"
+                                                        {...provided.droppableProps}
+                                                        ref={provided.innerRef}
+                                                        className="space-y-3"
                                                     >
-                                                        <div className="cursor-grab active:cursor-grabbing text-[hsl(var(--muted-foreground))] opacity-20 group-hover:opacity-100 transition-opacity">
-                                                            <GripVertical size={18} />
-                                                        </div>
+                                                        {selectedTemplate.items && selectedTemplate.items.length > 0 ? (
+                                                            selectedTemplate.items.map((item, idx) => (
+                                                                <Draggable key={item.item_id} draggableId={item.item_id} index={idx}>
+                                                                    {(provided, snapshot) => (
+                                                                        <div
+                                                                            ref={provided.innerRef}
+                                                                            {...provided.draggableProps}
+                                                                            className={cn(
+                                                                                "group flex items-center gap-4 p-4 bg-[hsl(var(--muted))]/20 border border-[hsl(var(--border))] rounded-2xl hover:border-[hsl(var(--brand))] hover:bg-[hsl(var(--brand-light))]/5 transition-all",
+                                                                                snapshot.isDragging && "shadow-xl bg-white border-[hsl(var(--brand))] scale-[1.02] z-50"
+                                                                            )}
+                                                                        >
+                                                                            <div
+                                                                                {...provided.dragHandleProps}
+                                                                                className="cursor-grab active:cursor-grabbing text-[hsl(var(--muted-foreground))] opacity-20 group-hover:opacity-100 transition-opacity"
+                                                                            >
+                                                                                <GripVertical size={18} />
+                                                                            </div>
 
-                                                        <div className="flex-1">
-                                                            <input
-                                                                className="w-full bg-transparent border-none font-bold text-sm focus:ring-0 p-0 placeholder:opacity-50"
-                                                                defaultValue={item.task_text}
-                                                                onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
-                                                                onBlur={(e) => {
-                                                                    if (e.target.value !== item.task_text) {
-                                                                        updateItemMutation.mutate({
-                                                                            id: selectedTemplate.template_id,
-                                                                            itemId: item.item_id,
-                                                                            data: { task_text: e.target.value }
-                                                                        });
-                                                                    }
-                                                                }}
-                                                            />
-                                                            <input
-                                                                className="w-full bg-transparent border-none text-[11px] text-[hsl(var(--muted-foreground))] font-medium focus:ring-0 p-0 placeholder:opacity-30 mt-0.5"
-                                                                placeholder="Add instructions (optional)..."
-                                                                defaultValue={item.instructions || ""}
-                                                                onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
-                                                                onBlur={(e) => {
-                                                                    if (e.target.value !== (item.instructions || "")) {
-                                                                        updateItemMutation.mutate({
-                                                                            id: selectedTemplate.template_id,
-                                                                            itemId: item.item_id,
-                                                                            data: { instructions: e.target.value || null }
-                                                                        });
-                                                                    }
-                                                                }}
-                                                            />
-                                                        </div>
+                                                                            <div className="flex-1">
+                                                                                <input
+                                                                                    className="w-full bg-transparent border-none font-bold text-sm focus:ring-0 p-0 placeholder:opacity-50"
+                                                                                    defaultValue={item.task_text}
+                                                                                    onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                                                                                    onBlur={(e) => {
+                                                                                        if (e.target.value !== item.task_text) {
+                                                                                            updateItemMutation.mutate({
+                                                                                                id: selectedTemplate.template_id,
+                                                                                                itemId: item.item_id,
+                                                                                                data: { task_text: e.target.value }
+                                                                                            });
+                                                                                        }
+                                                                                    }}
+                                                                                />
+                                                                                <input
+                                                                                    className="w-full bg-transparent border-none text-[11px] text-[hsl(var(--muted-foreground))] font-medium focus:ring-0 p-0 placeholder:opacity-30 mt-0.5"
+                                                                                    placeholder="Add instructions (optional)..."
+                                                                                    defaultValue={item.instructions || ""}
+                                                                                    onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                                                                                    onBlur={(e) => {
+                                                                                        if (e.target.value !== (item.instructions || "")) {
+                                                                                            updateItemMutation.mutate({
+                                                                                                id: selectedTemplate.template_id,
+                                                                                                itemId: item.item_id,
+                                                                                                data: { instructions: e.target.value || null }
+                                                                                            });
+                                                                                        }
+                                                                                    }}
+                                                                                />
+                                                                            </div>
 
-                                                        <div className="flex items-center gap-6 shrink-0">
-                                                            <div className="flex flex-col items-center gap-1">
-                                                                <span className="text-[9px] font-black uppercase text-[hsl(var(--muted-foreground))]">Required</span>
-                                                                <Switch
-                                                                    checked={item.is_required}
-                                                                    onCheckedChange={(val) => {
-                                                                        updateItemMutation.mutate({
-                                                                            id: selectedTemplate.template_id,
-                                                                            itemId: item.item_id,
-                                                                            data: { is_required: val }
-                                                                        });
-                                                                    }}
-                                                                    className="scale-75 data-[state=checked]:bg-[hsl(var(--brand))]"
-                                                                />
+                                                                            <div className="flex items-center gap-6 shrink-0">
+                                                                                <div className="flex flex-col items-center gap-1">
+                                                                                    <span className="text-[9px] font-black uppercase text-[hsl(var(--muted-foreground))]">Required</span>
+                                                                                    <Switch
+                                                                                        checked={item.is_required}
+                                                                                        onCheckedChange={(val) => {
+                                                                                            updateItemMutation.mutate({
+                                                                                                id: selectedTemplate.template_id,
+                                                                                                itemId: item.item_id,
+                                                                                                data: { is_required: val }
+                                                                                            });
+                                                                                        }}
+                                                                                        className="scale-75 data-[state=checked]:bg-[hsl(var(--brand))]"
+                                                                                    />
+                                                                                </div>
+                                                                                <Button
+                                                                                    variant="ghost"
+                                                                                    size="icon"
+                                                                                    className="h-8 w-8 rounded-full text-[hsl(var(--danger))] opacity-0 group-hover:opacity-100 transition-opacity"
+                                                                                    onClick={() => {
+                                                                                        setTaskToDelete({
+                                                                                            id: selectedTemplate.template_id,
+                                                                                            itemId: item.item_id
+                                                                                        });
+                                                                                        setIsDeleteTaskDialogOpen(true);
+                                                                                    }}
+                                                                                >
+                                                                                    <Trash2 size={16} />
+                                                                                </Button>
+                                                                            </div>
+                                                                        </div>
+                                                                    )}
+                                                                </Draggable>
+                                                            ))
+                                                        ) : (
+                                                            <div className="flex flex-col items-center justify-center py-12 bg-[hsl(var(--muted))]/10 border-2 border-dashed border-[hsl(var(--border))] rounded-3xl text-center">
+                                                                <div className="bg-white p-4 rounded-full shadow-sm mb-4">
+                                                                    <Plus size={32} className="text-[hsl(var(--muted-foreground))] opacity-20" />
+                                                                </div>
+                                                                <p className="text-sm font-bold text-[hsl(var(--muted-foreground))] mb-4">Your checklist is empty.</p>
+                                                                <Button onClick={handleAddTask} variant="outline" size="sm" className="rounded-xl">
+                                                                    Add First Task
+                                                                </Button>
                                                             </div>
-                                                            <Button
-                                                                variant="ghost"
-                                                                size="icon"
-                                                                className="h-8 w-8 rounded-full text-[hsl(var(--danger))] opacity-0 group-hover:opacity-100 transition-opacity"
-                                                                onClick={() => {
-                                                                    setTaskToDelete({
-                                                                        id: selectedTemplate.template_id,
-                                                                        itemId: item.item_id
-                                                                    });
-                                                                    setIsDeleteTaskDialogOpen(true);
-                                                                }}
-                                                            >
-                                                                <Trash2 size={16} />
-                                                            </Button>
-                                                        </div>
+                                                        )}
+                                                        {provided.placeholder}
                                                     </div>
-                                                ))
-                                            ) : (
-                                                <div className="flex flex-col items-center justify-center py-12 bg-[hsl(var(--muted))]/10 border-2 border-dashed border-[hsl(var(--border))] rounded-3xl text-center">
-                                                    <div className="bg-white p-4 rounded-full shadow-sm mb-4">
-                                                        <Plus size={32} className="text-[hsl(var(--muted-foreground))] opacity-20" />
-                                                    </div>
-                                                    <p className="text-sm font-bold text-[hsl(var(--muted-foreground))] mb-4">Your checklist is empty.</p>
-                                                    <Button onClick={handleAddTask} variant="outline" size="sm" className="rounded-xl">
-                                                        Add First Task
-                                                    </Button>
-                                                </div>
-                                            )}
-                                        </div>
+                                                )}
+                                            </Droppable>
+                                        </DragDropContext>
                                     </div>
                                 </div>
                             ) : null}
@@ -571,7 +755,7 @@ export default function ChecklistsPage() {
                                             onChange={e => setNewShiftTypeName(e.target.value)}
                                             className="rounded-xl"
                                         />
-                                        <Button 
+                                        <Button
                                             type="button"
                                             onClick={() => {
                                                 const cleaned = newShiftTypeName.trim().toLowerCase();
@@ -716,9 +900,9 @@ export default function ChecklistsPage() {
                     </DialogHeader>
                     <DialogFooter className="gap-2 sm:gap-0">
                         <Button variant="outline" onClick={() => setIsDeleteDialogOpen(false)} className="rounded-xl">Cancel</Button>
-                        <Button 
-                            variant="danger" 
-                            onClick={handleDeleteTemplateConfirm} 
+                        <Button
+                            variant="danger"
+                            onClick={handleDeleteTemplateConfirm}
                             loading={deleteTemplateMutation.isPending}
                             className="rounded-xl px-6 bg-[hsl(var(--danger))] hover:bg-[hsl(var(--danger))]/90 text-white border-transparent"
                         >
@@ -742,9 +926,9 @@ export default function ChecklistsPage() {
                     </DialogHeader>
                     <DialogFooter className="gap-2 sm:gap-0">
                         <Button variant="outline" onClick={() => setIsDeleteTaskDialogOpen(false)} className="rounded-xl">Cancel</Button>
-                        <Button 
-                            variant="danger" 
-                            onClick={handleDeleteTaskConfirm} 
+                        <Button
+                            variant="danger"
+                            onClick={handleDeleteTaskConfirm}
                             loading={removeItemMutation.isPending}
                             className="rounded-xl px-6 bg-[hsl(var(--danger))] hover:bg-[hsl(var(--danger))]/90 text-white border-transparent"
                         >
@@ -795,9 +979,9 @@ export default function ChecklistsPage() {
 
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setIsAddTaskDialogOpen(false)} className="rounded-xl">Cancel</Button>
-                        <Button 
-                            onClick={handleAddTaskSubmit} 
-                            loading={addItemMutation.isPending} 
+                        <Button
+                            onClick={handleAddTaskSubmit}
+                            loading={addItemMutation.isPending}
                             className="rounded-xl px-6"
                             disabled={!newTaskText.trim()}
                         >
@@ -857,9 +1041,9 @@ export default function ChecklistsPage() {
 
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setIsEditDialogOpen(false)} className="rounded-xl">Cancel</Button>
-                        <Button 
-                            onClick={handleUpdateTemplate} 
-                            loading={updateTemplateMutation.isPending} 
+                        <Button
+                            onClick={handleUpdateTemplate}
+                            loading={updateTemplateMutation.isPending}
                             className="rounded-xl px-6"
                             disabled={!editTemplateName.trim()}
                         >
