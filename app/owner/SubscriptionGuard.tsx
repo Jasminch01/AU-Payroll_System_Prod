@@ -18,7 +18,6 @@ export function SubscriptionGuard({ children }: { children: React.ReactNode }) {
         let isMounted = true;
 
         async function checkSubscription() {
-            // Do not block access to billing or pricing pages
             if (pathname === '/owner/settings/billing' || pathname.startsWith('/pricing')) {
                 if (isMounted) setStatus('active');
                 return;
@@ -31,35 +30,38 @@ export function SubscriptionGuard({ children }: { children: React.ReactNode }) {
                     return;
                 }
 
-                const { data: userData } = await supabase
+                const { data: userData, error: userError } = await supabase
                     .from('User')
                     .select('business_id, role')
                     .eq('user_id', user.id)
-                    .single();
+                    .maybeSingle();  // ← changed from single()
+
+                console.log('[SubscriptionGuard] userData:', userData, 'error:', userError);
 
                 if (userData?.role === 'owner' || userData?.role === 'manager') {
                     if (userData.business_id) {
-                        // Check for an active subscription first
-                        const { data: subData } = await supabase
+
+                        // Check for active subscription
+                        const { data: subData, error: subError } = await supabase
                             .from('Subscriptions')
                             .select('status, current_period_end, stripe_subscription_id')
                             .eq('business_id', userData.business_id)
-                            .single();
+                            .maybeSingle();  // ← changed from single()
 
-                        // If they have a subscription, validate its expiry date
+                        console.log('[SubscriptionGuard] subData:', subData, 'error:', subError);
+
                         if (subData && subData.stripe_subscription_id) {
                             const periodEndDate = subData.current_period_end ? new Date(subData.current_period_end) : null;
                             const now = new Date();
 
-                            // Check if subscription is active AND not expired
                             if ((subData.status === 'active' || subData.status === 'trialing') && periodEndDate && periodEndDate > now) {
-                                // Valid subscription — allow access
+                                console.log('[SubscriptionGuard] ✅ Active subscription found');
                                 if (isMounted) setStatus('active');
                                 return;
                             }
 
-                            // Subscription exists but has expired
                             if (periodEndDate && periodEndDate <= now) {
+                                console.log('[SubscriptionGuard] ❌ Subscription expired');
                                 if (isMounted) {
                                     setSubscriptionEndDate(subData.current_period_end);
                                     setStatus('subscription_expired');
@@ -68,8 +70,8 @@ export function SubscriptionGuard({ children }: { children: React.ReactNode }) {
                             }
                         }
 
-                        // No active/valid subscription — check free trial based on signup date
-                        // Dev override: use trial_expired_at from user_metadata if present
+                        // No valid subscription — check free trial
+                        console.log('[SubscriptionGuard] No subscription found, checking trial...');
                         const trialStartDate = user.user_metadata?.trial_expired_at
                             ? new Date(user.user_metadata.trial_expired_at)
                             : new Date(user.created_at);
@@ -78,8 +80,9 @@ export function SubscriptionGuard({ children }: { children: React.ReactNode }) {
                         const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
                         const daysLeft = TRIAL_DAYS - diffDays;
 
+                        console.log('[SubscriptionGuard] Trial days left:', daysLeft);
+
                         if (daysLeft > 0) {
-                            // Still in free trial
                             if (isMounted) {
                                 setTrialDaysLeft(daysLeft);
                                 setStatus('trial');
@@ -87,15 +90,12 @@ export function SubscriptionGuard({ children }: { children: React.ReactNode }) {
                             return;
                         }
 
-                        // Trial expired and no subscription — lock out
-                        if (isMounted) {
-                            setStatus('trial_expired');
-                        }
+                        if (isMounted) setStatus('trial_expired');
                         return;
                     }
                 }
             } catch (err) {
-                console.error('Subscription check failed:', err);
+                console.error('[SubscriptionGuard] Check failed:', err);
             }
 
             if (isMounted) setStatus('active');
@@ -103,9 +103,7 @@ export function SubscriptionGuard({ children }: { children: React.ReactNode }) {
 
         checkSubscription();
 
-        return () => {
-            isMounted = false;
-        };
+        return () => { isMounted = false; };
     }, [pathname, router, supabase]);
 
     if (status === 'loading') {
@@ -118,8 +116,8 @@ export function SubscriptionGuard({ children }: { children: React.ReactNode }) {
 
     if (status === 'subscription_expired') {
         return (
-             <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
-                 <div className="text-center bg-white p-8 rounded-lg shadow-sm max-w-md w-full border border-gray-100">
+            <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
+                <div className="text-center bg-white p-8 rounded-lg shadow-sm max-w-md w-full border border-gray-100">
                     <h2 className="text-2xl font-bold text-gray-900 mb-2">Subscription Expired</h2>
                     <p className="text-gray-600 mb-2">
                         Your subscription ended on <strong>{subscriptionEndDate ? new Date(subscriptionEndDate).toLocaleDateString() : 'N/A'}</strong>
@@ -142,15 +140,15 @@ export function SubscriptionGuard({ children }: { children: React.ReactNode }) {
                             Switch Account
                         </button>
                     </div>
-                 </div>
-             </div>
+                </div>
+            </div>
         );
     }
 
     if (status === 'trial_expired') {
         return (
-             <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
-                 <div className="text-center bg-white p-8 rounded-lg shadow-sm max-w-md w-full border border-gray-100">
+            <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
+                <div className="text-center bg-white p-8 rounded-lg shadow-sm max-w-md w-full border border-gray-100">
                     <h2 className="text-2xl font-bold text-gray-900 mb-2">Free Trial Expired</h2>
                     <p className="text-gray-500 mb-6">Choose a plan below to continue using the platform.</p>
                     <div className="flex flex-col gap-3">
@@ -173,12 +171,11 @@ export function SubscriptionGuard({ children }: { children: React.ReactNode }) {
                     <div className="animate-pulse flex justify-center mt-6">
                         <div className="h-2 w-24 bg-indigo-200 rounded"></div>
                     </div>
-                 </div>
-             </div>
+                </div>
+            </div>
         );
     }
 
-    // If in trial, show a banner above the children
     if (status === 'trial') {
         return (
             <>
