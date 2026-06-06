@@ -63,7 +63,7 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
     matcher: [
-        // Match all routes except Next.js internals, static assets, and PWA files
-        '/((?!_next/static|_next/image|favicon.ico|manifest.json|sw.js|icons/|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|js|css|woff2?)$).*)',
+        // Match all routes except Next.js internals, static assets, PWA files, and Stripe webhook
+        '/((?!_next/static|_next/image|favicon.ico|manifest.json|sw.js|icons/|api/stripe/webhook|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|js|css|woff2?)$).*)',
     ],
 };
