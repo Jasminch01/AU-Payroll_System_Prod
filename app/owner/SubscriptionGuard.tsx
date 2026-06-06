@@ -7,7 +7,7 @@ import { usePathname, useRouter } from 'next/navigation';
 const TRIAL_DAYS = 10;
 
 export function SubscriptionGuard({ children }: { children: React.ReactNode }) {
-    const [status, setStatus] = useState<'loading' | 'active' | 'trial' | 'subscription_expired' | 'trial_expired'>('loading');
+    const [status, setStatus] = useState<'loading' | 'active' | 'trial' | 'subscription_expired' | 'trial_expired' | 'unauthorized'>('loading');
     const [trialDaysLeft, setTrialDaysLeft] = useState<number>(0);
     const [subscriptionEndDate, setSubscriptionEndDate] = useState<string | null>(null);
     const pathname = usePathname();
@@ -18,6 +18,7 @@ export function SubscriptionGuard({ children }: { children: React.ReactNode }) {
         let isMounted = true;
 
         async function checkSubscription() {
+            // Allow access to billing and pricing pages without checks
             if (pathname === '/owner/settings/billing' || pathname.startsWith('/pricing')) {
                 if (isMounted) setStatus('active');
                 return;
@@ -34,71 +35,82 @@ export function SubscriptionGuard({ children }: { children: React.ReactNode }) {
                     .from('User')
                     .select('business_id, role')
                     .eq('user_id', user.id)
-                    .maybeSingle();  // ← changed from single()
+                    .maybeSingle();
 
                 console.log('[SubscriptionGuard] userData:', userData, 'error:', userError);
 
-                if (userData?.role === 'owner' || userData?.role === 'manager') {
-                    if (userData.business_id) {
+                // 1. Verify Role Access First
+                if (!userData || (userData.role !== 'owner' && userData.role !== 'manager')) {
+                    console.log('[SubscriptionGuard] ❌ Unauthorized role:', userData?.role);
+                    if (isMounted) setStatus('unauthorized');
+                    return;
+                }
 
-                        // Check for active subscription
-                        const { data: subData, error: subError } = await supabase
-                            .from('Subscriptions')
-                            .select('status, current_period_end, stripe_subscription_id')
-                            .eq('business_id', userData.business_id)
-                            .maybeSingle();  // ← changed from single()
+                // 2. Verify Business ID exists
+                if (!userData.business_id) {
+                    console.log('[SubscriptionGuard] ❌ No business_id assigned to user');
+                    if (isMounted) setStatus('unauthorized');
+                    return;
+                }
 
-                        console.log('[SubscriptionGuard] subData:', subData, 'error:', subError);
+                // 3. Check for active subscription (Fixed duplicate rows issue here)
+                const { data: subData, error: subError } = await supabase
+                    .from('Subscriptions')
+                    .select('status, current_period_end, stripe_subscription_id')
+                    .eq('business_id', userData.business_id)
+                    .order('created_at', { ascending: false }) // 👈 Grab the newest entry
+                    .limit(1)                                  // 👈 Enforce 1 row constraint
+                    .maybeSingle();
 
-                        if (subData && subData.stripe_subscription_id) {
-                            const periodEndDate = subData.current_period_end ? new Date(subData.current_period_end) : null;
-                            const now = new Date();
+                console.log('[SubscriptionGuard] subData:', subData, 'error:', subError);
 
-                            if ((subData.status === 'active' || subData.status === 'trialing') && periodEndDate && periodEndDate > now) {
-                                console.log('[SubscriptionGuard] ✅ Active subscription found');
-                                if (isMounted) setStatus('active');
-                                return;
-                            }
+                if (subData && subData.stripe_subscription_id) {
+                    const periodEndDate = subData.current_period_end ? new Date(subData.current_period_end) : null;
+                    const now = new Date();
 
-                            if (periodEndDate && periodEndDate <= now) {
-                                console.log('[SubscriptionGuard] ❌ Subscription expired');
-                                if (isMounted) {
-                                    setSubscriptionEndDate(subData.current_period_end);
-                                    setStatus('subscription_expired');
-                                }
-                                return;
-                            }
+                    if ((subData.status === 'active' || subData.status === 'trialing') && periodEndDate && periodEndDate > now) {
+                        console.log('[SubscriptionGuard] ✅ Active subscription found');
+                        if (isMounted) setStatus('active');
+                        return;
+                    }
+
+                    if (periodEndDate && periodEndDate <= now) {
+                        console.log('[SubscriptionGuard] ❌ Subscription expired');
+                        if (isMounted) {
+                            setSubscriptionEndDate(subData.current_period_end);
+                            setStatus('subscription_expired');
                         }
-
-                        // No valid subscription — check free trial
-                        console.log('[SubscriptionGuard] No subscription found, checking trial...');
-                        const trialStartDate = user.user_metadata?.trial_expired_at
-                            ? new Date(user.user_metadata.trial_expired_at)
-                            : new Date(user.created_at);
-                        const now = new Date();
-                        const diffMs = now.getTime() - trialStartDate.getTime();
-                        const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-                        const daysLeft = TRIAL_DAYS - diffDays;
-
-                        console.log('[SubscriptionGuard] Trial days left:', daysLeft);
-
-                        if (daysLeft > 0) {
-                            if (isMounted) {
-                                setTrialDaysLeft(daysLeft);
-                                setStatus('trial');
-                            }
-                            return;
-                        }
-
-                        if (isMounted) setStatus('trial_expired');
                         return;
                     }
                 }
+
+                // 4. Fallback: No valid subscription found — check free trial
+                console.log('[SubscriptionGuard] No active subscription found, checking trial...');
+                const trialStartDate = user.user_metadata?.trial_expired_at
+                    ? new Date(user.user_metadata.trial_expired_at)
+                    : new Date(user.created_at);
+                const now = new Date();
+                const diffMs = now.getTime() - trialStartDate.getTime();
+                const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+                const daysLeft = TRIAL_DAYS - diffDays;
+
+                console.log('[SubscriptionGuard] Trial days left:', daysLeft);
+
+                if (daysLeft > 0) {
+                    if (isMounted) {
+                        setTrialDaysLeft(daysLeft);
+                        setStatus('trial');
+                    }
+                    return;
+                }
+
+                if (isMounted) setStatus('trial_expired');
+                return;
+
             } catch (err) {
                 console.error('[SubscriptionGuard] Check failed:', err);
+                if (isMounted) setStatus('unauthorized'); // Block access if an error breaks the check
             }
-
-            if (isMounted) setStatus('active');
         }
 
         checkSubscription();
@@ -110,6 +122,26 @@ export function SubscriptionGuard({ children }: { children: React.ReactNode }) {
         return (
             <div className="min-h-screen flex items-center justify-center bg-gray-50">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+            </div>
+        );
+    }
+
+    if (status === 'unauthorized') {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
+                <div className="text-center bg-white p-8 rounded-lg shadow-sm max-w-md w-full border border-gray-100">
+                    <h2 className="text-2xl font-bold text-red-600 mb-2">Access Denied</h2>
+                    <p className="text-gray-600 mb-6">You do not have the required permissions to access this dashboard.</p>
+                    <button
+                        onClick={async () => {
+                            await supabase.auth.signOut();
+                            router.push('/login');
+                        }}
+                        className="px-4 py-2 bg-gray-800 text-white rounded hover:bg-gray-900 font-medium transition-colors w-full"
+                    >
+                        Sign Out / Switch Account
+                    </button>
+                </div>
             </div>
         );
     }
@@ -167,9 +199,6 @@ export function SubscriptionGuard({ children }: { children: React.ReactNode }) {
                         >
                             Switch Account
                         </button>
-                    </div>
-                    <div className="animate-pulse flex justify-center mt-6">
-                        <div className="h-2 w-24 bg-indigo-200 rounded"></div>
                     </div>
                 </div>
             </div>
