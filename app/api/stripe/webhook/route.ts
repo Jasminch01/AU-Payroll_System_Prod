@@ -40,15 +40,15 @@ export async function POST(request: Request) {
                     break;
                 }
 
-                // Save stripe_customer_id to business table
+                // Save stripe_customer_id to Business table
                 if (session.customer) {
                     const { error: customerError } = await supabaseAdmin
-                        .from('business')
+                        .from('Business')
                         .update({ stripe_customer_id: session.customer as string })
-                        .eq('id', businessId);
+                        .eq('business_id', businessId);  // ← correct PK
 
                     if (customerError) {
-                        console.error('[Stripe Webhook] Error saving stripe_customer_id:', customerError);
+                        console.error('[Stripe Webhook] Error saving stripe_customer_id:', JSON.stringify(customerError));
                     } else {
                         console.log(`[Stripe Webhook] Saved stripe_customer_id: ${session.customer}`);
                     }
@@ -72,8 +72,8 @@ export async function POST(request: Request) {
                 console.log(`[Stripe Webhook] Looking up business for customer: ${customerId}`);
 
                 const { data: businessData, error: businessError } = await supabaseAdmin
-                    .from('business')
-                    .select('id')
+                    .from('Business')
+                    .select('business_id')           // ← correct PK
                     .eq('stripe_customer_id', customerId)
                     .single();
 
@@ -82,8 +82,8 @@ export async function POST(request: Request) {
                     break;
                 }
 
-                console.log(`[Stripe Webhook] Found business: ${businessData.id}`);
-                await upsertSubscription(supabaseAdmin, businessData.id, subscription);
+                console.log(`[Stripe Webhook] Found business: ${businessData.business_id}`);
+                await upsertSubscription(supabaseAdmin, businessData.business_id, subscription);
                 break;
             }
 
@@ -102,14 +102,12 @@ async function upsertSubscription(
     businessId: string,
     subscription: Stripe.Subscription
 ) {
-    // Safely get current_period_end — location changed in newer Stripe API versions
     const periodEnd =
         (subscription as any).current_period_end ??
         (subscription as any).items?.data?.[0]?.current_period_end ??
         null;
 
     console.log(`[Stripe Webhook] current_period_end raw value: ${periodEnd}`);
-    console.log(`[Stripe Webhook] Full subscription object keys: ${Object.keys(subscription).join(', ')}`);
 
     const subscriptionData = {
         business_id:            businessId,
@@ -123,7 +121,7 @@ async function upsertSubscription(
     console.log(`[Stripe Webhook] Upserting:`, JSON.stringify(subscriptionData));
 
     const { error } = await supabaseAdmin
-        .from('subscriptions')
+        .from('Subscriptions')
         .upsert(subscriptionData, { onConflict: 'stripe_subscription_id' });
 
     if (error) {
