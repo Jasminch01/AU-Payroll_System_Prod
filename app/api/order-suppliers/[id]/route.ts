@@ -97,9 +97,31 @@ export async function DELETE(
         const { id } = await params;
         const supabase = await createClient();
 
+        // 1. Nullify default_supplier_id in OrderCategory
+        await supabase
+            .from('OrderCategory')
+            .update({ default_supplier_id: null })
+            .eq('default_supplier_id', id)
+            .eq('business_id', authUser.business_id);
+
+        // 2. Nullify supplier_id in OrderGuideItem
+        await supabase
+            .from('OrderGuideItem')
+            .update({ supplier_id: null })
+            .eq('supplier_id', id)
+            .eq('business_id', authUser.business_id);
+
+        // 3. Nullify supplier_id in DailyOrderTask
+        await supabase
+            .from('DailyOrderTask')
+            .update({ supplier_id: null })
+            .eq('supplier_id', id)
+            .eq('business_id', authUser.business_id);
+
+        // 4. Delete the supplier itself
         const { data, error } = await supabase
             .from('OrderSupplier')
-            .update({ is_active: false })
+            .delete()
             .eq('supplier_id', id)
             .eq('business_id', authUser.business_id)
             .select()
@@ -108,7 +130,7 @@ export async function DELETE(
         if (error) return errorResponse(error.message, 400);
         if (!data)  return errorResponse('Supplier not found', 404);
 
-        return successResponse(null, 'Supplier deactivated successfully');
+        return successResponse(null, 'Supplier deleted successfully');
     } catch (err) {
         console.error('[order-suppliers/:id DELETE]', err);
         return errorResponse('Internal server error', 500);

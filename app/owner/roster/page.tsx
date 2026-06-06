@@ -17,7 +17,7 @@ import { getShiftTypeFromTime, calculateShiftDuration, formatDurationHours } fro
 import { EmployeeSearchPicker } from "@/components/roster/employee-search-picker";
 import { useEffect } from "react";
 import { toast } from "sonner";
-import { Plus, ChevronLeft, ChevronRight, Clock, Trash2, CheckCircle2, FileText, RefreshCcw, Copy, Bell, CalendarDays, Search, Filter, ChevronsLeft, ChevronsRight, GripVertical, MoreHorizontal, Users, ChevronDown, ArrowUpDown, ArrowDownAZ, ArrowDownZA, Settings2, ChevronUp, Info, X, ClipboardList, Check } from "lucide-react";
+import { Plus, ChevronLeft, ChevronRight, Clock, Trash2, CheckCircle2, FileText, RefreshCcw, Copy, Bell, CalendarDays, Search, Filter, ChevronsLeft, ChevronsRight, GripVertical, MoreHorizontal, Users, ChevronDown, ArrowUpDown, ArrowDownAZ, ArrowDownZA, Settings2, ChevronUp, Info, X, ClipboardList, Check, AlertTriangle } from "lucide-react";
 import { Reorder, AnimatePresence, motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -90,6 +90,23 @@ function formatDate(d: Date | string) {
     return `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, "0")}-${String(dateObj.getDate()).padStart(2, "0")}`;
 }
 
+function formatShiftTime(timeStr: string) {
+    if (!timeStr) return "";
+    if (timeStr.includes("T")) {
+        return timeStr.split('T')[1]?.substring(0, 5) || "";
+    }
+    return timeStr.substring(0, 5);
+}
+
+function parseConflictDate(dateStr: string) {
+    if (!dateStr) return null;
+    const parts = dateStr.split('-');
+    if (parts.length === 3) {
+        return new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+    }
+    return new Date(dateStr);
+}
+
 function getPeriodOptions(period: RosterPeriod, count: number = 12): { label: string, start: string, end: string, offset: number }[] {
     const options: { label: string, start: string, end: string, offset: number }[] = [];
 
@@ -128,6 +145,10 @@ export default function OwnerRosterPage() {
     const [collapsedGroups, setCollapsedGroups] = useState<{ [key: string]: boolean }>({});
     const [selectedDate, setSelectedDate] = useState("");
     const [editingShiftId, setEditingShiftId] = useState<string | null>(null);
+    const [conflictOpen, setConflictOpen] = useState(false);
+    const [conflictData, setConflictData] = useState<any>(null);
+    const [pendingForcePayload, setPendingForcePayload] = useState<any>(null);
+    const [isConflictEditing, setIsConflictEditing] = useState(false);
     const [duplicateOpen, setDuplicateOpen] = useState(false);
     const [targetDuplicateDate, setTargetDuplicateDate] = useState("");
     const [sourceOffset, setSourceOffset] = useState(0);
@@ -457,9 +478,19 @@ export default function OwnerRosterPage() {
             ]);
             return { previousShifts };
         },
-        onSuccess: () => {
-            toast.success("Shift created");
-            setAddShiftOpen(false);
+        onSuccess: (data: any, variables: any, context: any) => {
+            if (data && (data as any).status === 'conflict') {
+                if (context?.previousShifts) {
+                    queryClient.setQueryData(["shifts", rangeStart, rangeEnd], context.previousShifts);
+                }
+                setConflictData((data as any).conflict);
+                setPendingForcePayload(variables);
+                setIsConflictEditing(false);
+                setConflictOpen(true);
+            } else {
+                toast.success("Shift created");
+                setAddShiftOpen(false);
+            }
         },
         onError: (err: Error, newShift, context: any) => {
             toast.error(err.message);
@@ -483,9 +514,19 @@ export default function OwnerRosterPage() {
             );
             return { previousShifts };
         },
-        onSuccess: () => {
-            toast.success("Shift updated");
-            setAddShiftOpen(false);
+        onSuccess: (data: any, variables: any, context: any) => {
+            if (data && (data as any).status === 'conflict') {
+                if (context?.previousShifts) {
+                    queryClient.setQueryData(["shifts", rangeStart, rangeEnd], context.previousShifts);
+                }
+                setConflictData((data as any).conflict);
+                setPendingForcePayload(variables);
+                setIsConflictEditing(true);
+                setConflictOpen(true);
+            } else {
+                toast.success("Shift updated");
+                setAddShiftOpen(false);
+            }
         },
         onError: (err: Error, updatedShift, context: any) => {
             toast.error(err.message);
@@ -733,6 +774,20 @@ export default function OwnerRosterPage() {
         setPendingShiftData(null);
     };
 
+    const handleForceSchedule = () => {
+        if (!pendingForcePayload) return;
+        const payload = {
+            ...pendingForcePayload,
+            force: true
+        };
+        if (isConflictEditing && editingShiftId) {
+            updateShiftMutation.mutate(payload);
+        } else {
+            createShiftMutation.mutate(payload);
+        }
+        setConflictOpen(false);
+    };
+
     const openAddShift = (date: string, empId = "", shift: any = null) => {
         setSelectedDate(date);
         setShiftEmployee(empId);
@@ -800,6 +855,13 @@ export default function OwnerRosterPage() {
     }, [shifts]);
 
     const activeEmployees = employees.filter((e: any) => e.status === "active");
+
+    const conflictEmployee = employees.find(
+        (e: any) => e.employee_id === pendingForcePayload?.employee_id
+    );
+    const conflictEmployeeName = conflictEmployee
+        ? `${conflictEmployee.first_name || ""} ${conflictEmployee.last_name || ""}`.trim()
+        : "Employee";
 
     const currentRoster = useMemo(() => {
         // Find the roster record that encompasses the current view range
@@ -2884,6 +2946,71 @@ export default function OwnerRosterPage() {
                                     disabled={undoLastCopyMutation.isPending}
                                 >
                                     {undoLastCopyMutation.isPending ? "Undoing..." : "Yes, Undo IT"}
+                                </Button>
+                            </div>
+                        </div>
+                    </DialogContent>
+                </Dialog>
+
+                {/* Overlapping Shift Conflict Warning Modal */}
+                <Dialog open={conflictOpen} onOpenChange={setConflictOpen}>
+                    <DialogContent className="max-w-md rounded-2xl border-none shadow-2xl p-6 bg-white animate-in zoom-in-95 duration-200">
+                        <div className="space-y-4">
+                            <div className="w-12 h-12 rounded-2xl bg-amber-100 flex items-center justify-center mx-auto animate-bounce">
+                                <AlertTriangle className="w-6 h-6 text-amber-600" />
+                            </div>
+
+                            <DialogHeader className="text-center space-y-2">
+                                <DialogTitle className="text-lg font-bold text-gray-900">Overlapping Shift Conflict</DialogTitle>
+                                <DialogDescription className="text-sm text-gray-500 leading-relaxed px-2">
+                                    <span className="font-semibold text-gray-800">{conflictEmployeeName}</span> already has an overlapping shift on this day.
+                                </DialogDescription>
+                            </DialogHeader>
+
+                            {conflictData && (
+                                <div className="bg-slate-50 border border-slate-100 rounded-xl p-4 space-y-2 text-sm text-left">
+                                    <div className="flex justify-between text-slate-500">
+                                        <span>Date:</span>
+                                        <span className="font-medium text-slate-800">
+                                            {(() => {
+                                                const d = parseConflictDate(conflictData.shift_date);
+                                                return d ? format(d, "EEEE, d MMMM yyyy") : conflictData.shift_date;
+                                            })()}
+                                        </span>
+                                    </div>
+                                    <div className="flex justify-between text-slate-500">
+                                        <span>Shift Time:</span>
+                                        <span className="font-medium text-slate-800">
+                                            {formatShiftTime(conflictData.start_time)} - {formatShiftTime(conflictData.end_time)}
+                                        </span>
+                                    </div>
+                                    <div className="flex justify-between text-slate-500">
+                                        <span>Type:</span>
+                                        <span className="font-medium text-slate-800 capitalize font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-100 text-xs">
+                                            {conflictData.shift_type || "Standard"}
+                                        </span>
+                                    </div>
+                                </div>
+                            )}
+
+                            <div className="text-xs text-amber-600 bg-amber-50 border border-amber-100 rounded-lg p-3 text-center font-medium">
+                                Scheduling this shift will create overlapping roster hours for this employee.
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3 pt-2">
+                                <Button
+                                    variant="outline"
+                                    className="rounded-xl h-11 font-bold border-gray-200"
+                                    onClick={() => setConflictOpen(false)}
+                                >
+                                    Cancel
+                                </Button>
+                                <Button
+                                    variant="default"
+                                    className="rounded-xl h-11 font-bold bg-amber-600 hover:bg-amber-700 text-white shadow-lg shadow-amber-100"
+                                    onClick={handleForceSchedule}
+                                >
+                                    Continue Anyway
                                 </Button>
                             </div>
                         </div>

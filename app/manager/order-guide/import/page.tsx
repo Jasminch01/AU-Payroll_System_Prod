@@ -18,6 +18,7 @@ import {
     Info,
     ArrowRight,
     HelpCircle,
+    MoveLeft,
 } from "lucide-react";
 import Link from "next/link";
 import { useAuth } from "@/hooks/use-auth";
@@ -109,7 +110,17 @@ export default function SpreadsheetImport() {
     return (
         <DashboardLayout
             role={user?.role === "owner" ? "owner" : "manager"}
-            pageTitle="Bulk Import"
+            pageTitle={
+                <span className="flex items-center gap-3">
+                    <Link
+                        href={basePath}
+                        className="inline-flex items-center text-[hsl(var(--muted-foreground))] p-1.5 -ml-1.5 transition-transform duration-200 ease-in-out hover:-translate-x-1"
+                    >
+                        <MoveLeft size={20} strokeWidth={2.5} />
+                    </Link>
+                    <span>Bulk Import</span>
+                </span>
+            }
             pageDescription="Upload an Excel workbook or link a public Google Sheet. Each tab becomes a category, and rows become products."
         >
             <div className="space-y-6 max-w-4xl">

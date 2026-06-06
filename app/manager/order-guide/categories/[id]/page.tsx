@@ -2,6 +2,7 @@
 
 import React, { useState, use } from "react";
 import { DashboardLayout } from "@/components/layout";
+import { ConfirmationModal } from "@/components/ui/confirmation-modal";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,6 +26,7 @@ import {
     Clock,
     User,
     Check,
+    MoveLeft,
 } from "lucide-react";
 import Link from "next/link";
 import { OrderGuideItem, OrderSupplier, OrderingMethod, OrderFrequency } from "@/types/database";
@@ -388,6 +390,7 @@ export default function CategoryDetail({ params }: { params: Promise<{ id: strin
 
     const [isAddOpen, setIsAddOpen] = useState(false);
     const [editingProduct, setEditingProduct] = useState<any | null>(null);
+    const [productToDelete, setProductToDelete] = useState<{ id: string; name: string } | null>(null);
 
     // Track unsaved inline changes to min/max
     const [inlineChanges, setInlineChanges] = useState<Record<string, { min: string; max: string }>>({});
@@ -434,6 +437,7 @@ export default function CategoryDetail({ params }: { params: Promise<{ id: strin
         onSuccess: () => {
             toast.success("Product deleted successfully");
             queryClient.invalidateQueries({ queryKey: ["order-category-detail", categoryId] });
+            setProductToDelete(null);
         },
         onError: (err: any) => {
             toast.error(err.message || "Failed to delete product");
@@ -509,14 +513,12 @@ export default function CategoryDetail({ params }: { params: Promise<{ id: strin
     };
 
     const handleDeleteProduct = (id: string, name: string) => {
-        if (confirm(`Are you sure you want to delete the product "${name}"? Historical orders remain intact but future shifts won't generate tasks for this item.`)) {
-            deleteProductMutation.mutate(id);
-        }
+        setProductToDelete({ id, name });
     };
 
     const isLoading = catLoading || supsLoading;
 
-    const category = categoryData?.category;
+    const category = categoryData;
     const itemsList: OrderGuideItem[] = categoryData?.items || [];
 
     const getSupplierName = (id: string | null) => {
@@ -527,18 +529,20 @@ export default function CategoryDetail({ params }: { params: Promise<{ id: strin
     return (
         <DashboardLayout
             role={authUser?.role === "owner" ? "owner" : "manager"}
-            pageTitle={category ? `Order Guide: ${category.category_name}` : "Loading Category..."}
+            pageTitle={
+                <span className="flex items-center gap-3">
+                    <Link
+                        href={`${basePath}/categories`}
+                        className="inline-flex items-center text-[hsl(var(--muted-foreground))] p-1.5 -ml-1.5 transition-transform duration-200 ease-in-out hover:-translate-x-1"
+                    >
+                        <MoveLeft size={20} strokeWidth={2.5} />
+                    </Link>
+                    <span>{category ? `Order Guide: ${category.category_name}` : "Loading Category..."}</span>
+                </span>
+            }
             pageDescription="Manage products, set stock check limits (Min/Max thresholds), and configure supplier ordering pathways."
         >
             <div className="space-y-6">
-                {/* Back button */}
-                <div>
-                    <Button asChild variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground">
-                        <Link href={`${basePath}/categories`} className="flex items-center gap-1">
-                            <ArrowLeft className="h-4 w-4" /> Back to Categories
-                        </Link>
-                    </Button>
-                </div>
 
                 {isLoading ? (
                     <div className="flex justify-center py-12">
@@ -797,6 +801,23 @@ export default function CategoryDetail({ params }: { params: Promise<{ id: strin
                         isLoading={updateProductMutation.isPending}
                     />
                 )}
+
+                {/* Delete Confirmation Modal */}
+                <ConfirmationModal
+                    isOpen={!!productToDelete}
+                    onClose={() => setProductToDelete(null)}
+                    onConfirm={() => {
+                        if (productToDelete) {
+                            deleteProductMutation.mutate(productToDelete.id);
+                        }
+                    }}
+                    title="Delete Product?"
+                    description={`Are you sure you want to delete the product "${productToDelete?.name}"? Historical orders remain intact but future shifts won't generate tasks for this item.`}
+                    confirmLabel="Delete"
+                    cancelLabel="Cancel"
+                    variant="danger"
+                    isLoading={deleteProductMutation.isPending}
+                />
             </div>
         </DashboardLayout>
     );

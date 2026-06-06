@@ -102,7 +102,7 @@ export async function GET(request: NextRequest) {
                 .from('Shift')
                 .select(`
                     *,
-                    Roster!inner (
+                    Roster (
                         roster_id,
                         status,
                         start_date,
@@ -111,7 +111,7 @@ export async function GET(request: NextRequest) {
                     )
                 `)
                 .eq('employee_id', employeeId)
-                .not('Roster.published_at', 'is', null);
+                .eq('shift_status', 'published');
 
             result.checks.apiQuery = {
                 count: apiQueryResult?.length || 0,

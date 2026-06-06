@@ -41,16 +41,28 @@ export default function OrderGuideDashboard() {
         queryFn: () => apiGet<any[]>("/order-suppliers"),
     });
 
-    const { data: dailyOrders = [], isLoading: ordersLoading, refetch: refetchOrders } = useQuery({
+    const { data: ordersData, isLoading: ordersLoading, refetch: refetchOrders } = useQuery({
         queryKey: ["daily-orders", todayStr],
-        queryFn: () => apiGet<any[]>(`/daily-orders?date=${todayStr}`),
+        queryFn: () => apiGet<any>(`/daily-orders?date=${todayStr}`),
     });
+
+    const dailyOrders: any[] = ordersData?.tasks || [];
 
     // Mutation to generate today's order tasks
     const generateTasksMutation = useMutation({
         mutationFn: () => apiPost("/daily-orders", { date: todayStr }),
         onSuccess: (data: any) => {
-            toast.success(data?.message || "Today's ordering tasks generated successfully!");
+            const created = data?.created ?? 0;
+            const skipped = data?.skipped ?? 0;
+            if (created === 0) {
+                if (skipped > 0) {
+                    toast.info("All ordering tasks for today have already been generated.");
+                } else {
+                    toast.info("No tasks generated: Your active categories do not contain any active products scheduled to order today.");
+                }
+            } else {
+                toast.success(`Successfully generated ${created} ordering task(s) for today!`);
+            }
             queryClient.invalidateQueries({ queryKey: ["daily-orders"] });
         },
         onError: (err: any) => {
@@ -93,7 +105,7 @@ export default function OrderGuideDashboard() {
             description: `${pendingItems} pending checks`,
             icon: ClipboardList,
             color: "text-amber-500 bg-amber-50 dark:bg-amber-950/20",
-            href: "/employee/orders",
+            href: user?.role === "owner" ? "/owner/orders" : "/manager/orders",
         },
     ];
 
@@ -135,7 +147,6 @@ export default function OrderGuideDashboard() {
             pageDescription="Setup product catalogs, track stock counts, and monitor daily supplier ordering checklists."
         >
             <div className="space-y-8">
-                {/* Stats grid */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     {statsCards.map((card, idx) => {
                         const Icon = card.icon;
@@ -146,25 +157,27 @@ export default function OrderGuideDashboard() {
                                 animate={{ opacity: 1, y: 0 }}
                                 transition={{ duration: 0.3, delay: idx * 0.08 }}
                             >
-                                <Card className="hover:shadow-md transition-all">
-                                    <CardContent className="p-6 flex items-center justify-between">
-                                        <div className="space-y-1">
-                                            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                                                {card.title}
-                                            </p>
-                                            <p className="text-3xl font-extrabold text-foreground">{isLoading ? "..." : card.value}</p>
-                                            <p className="text-xs text-muted-foreground font-medium">{card.description}</p>
+                                <Link href={card.href} className="block group">
+                                    <Card className="hover:shadow-md hover:border-brand/40 group-hover:border-brand/40 transition-all cursor-pointer">
+                                        <CardContent className="p-6 flex items-center justify-between">
+                                            <div className="space-y-1">
+                                                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                                                    {card.title}
+                                                </p>
+                                                <p className="text-3xl font-extrabold text-foreground">{isLoading ? "..." : card.value}</p>
+                                                <p className="text-xs text-muted-foreground font-medium">{card.description}</p>
+                                            </div>
+                                            <div className={`p-4 rounded-xl ${card.color}`}>
+                                                <Icon className="h-6 w-6" />
+                                            </div>
+                                        </CardContent>
+                                        <div className="px-6 py-3 border-t bg-muted/10 flex justify-between items-center text-xs font-semibold text-brand group-hover:bg-muted/20 group-hover:text-brand-hover transition-colors">
+                                            <span className="flex items-center gap-1">
+                                                View Details <ArrowRight className="h-3 w-3 group-hover:translate-x-0.5 transition-transform" />
+                                            </span>
                                         </div>
-                                        <div className={`p-4 rounded-xl ${card.color}`}>
-                                            <Icon className="h-6 w-6" />
-                                        </div>
-                                    </CardContent>
-                                    <div className="px-6 py-3 border-t bg-muted/10 flex justify-between items-center text-xs font-semibold text-brand hover:bg-muted/20">
-                                        <Link href={card.href} className="flex items-center gap-1">
-                                            View Details <ArrowRight className="h-3 w-3" />
-                                        </Link>
-                                    </div>
-                                </Card>
+                                    </Card>
+                                </Link>
                             </motion.div>
                         );
                     })}
@@ -182,13 +195,14 @@ export default function OrderGuideDashboard() {
                             </CardDescription>
                         </div>
 
-                        {!isLoading && totalItems === 0 && (
+                        {!isLoading && (
                             <Button
                                 onClick={() => generateTasksMutation.mutate()}
                                 loading={generateTasksMutation.isPending}
                                 className="w-full sm:w-auto font-semibold"
+                                variant={totalItems > 0 ? "outline" : "default"}
                             >
-                                <Plus className="mr-2 h-4 w-4" /> Generate Ordering Tasks
+                                <Plus className="mr-2 h-4 w-4" /> {totalItems > 0 ? "Update Today's Checklist" : "Generate Ordering Tasks"}
                             </Button>
                         )}
                     </CardHeader>
@@ -261,7 +275,7 @@ export default function OrderGuideDashboard() {
 
                                 <div className="flex justify-end pt-2">
                                     <Button asChild variant="outline" className="font-semibold text-xs h-8">
-                                        <Link href="/employee/orders">
+                                        <Link href={user?.role === "owner" ? "/owner/orders" : "/manager/orders"}>
                                             Open Today's Checklist <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
                                         </Link>
                                     </Button>
@@ -284,26 +298,26 @@ export default function OrderGuideDashboard() {
                                     animate={{ opacity: 1, scale: 1 }}
                                     transition={{ duration: 0.25, delay: 0.15 + idx * 0.05 }}
                                 >
-                                    <Card className="hover:shadow-md hover:border-brand/40 transition-all flex flex-col justify-between h-full">
-                                        <CardHeader className="flex flex-row gap-4 items-start pb-4">
-                                            <div className="p-3 bg-brand/5 rounded-xl text-brand shrink-0">
-                                                <Icon className="h-6 w-6" />
-                                            </div>
-                                            <div className="space-y-1">
-                                                <CardTitle className="text-base font-bold">{link.title}</CardTitle>
-                                                <CardDescription className="leading-relaxed">
-                                                    {link.description}
-                                                </CardDescription>
-                                            </div>
-                                        </CardHeader>
-                                        <CardContent className="pt-0 flex justify-end">
-                                            <Button asChild size="sm" variant="ghost" className="text-xs font-semibold text-brand hover:text-brand-hover hover:bg-brand/5">
-                                                <Link href={link.href} className="flex items-center gap-1">
-                                                    {link.actionText} <ArrowRight className="h-3.5 w-3.5" />
-                                                </Link>
-                                            </Button>
-                                        </CardContent>
-                                    </Card>
+                                    <Link href={link.href} className="block group h-full">
+                                        <Card className="hover:shadow-md hover:border-brand/40 group-hover:border-brand/40 transition-all flex flex-col justify-between h-full cursor-pointer">
+                                            <CardHeader className="flex flex-row gap-4 items-start pb-4">
+                                                <div className="p-3 bg-brand/5 rounded-xl text-brand shrink-0">
+                                                    <Icon className="h-6 w-6" />
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <CardTitle className="text-base font-bold">{link.title}</CardTitle>
+                                                    <CardDescription className="leading-relaxed">
+                                                        {link.description}
+                                                    </CardDescription>
+                                                </div>
+                                            </CardHeader>
+                                            <CardContent className="pt-0 flex justify-end">
+                                                <div className="text-xs font-semibold text-brand flex items-center gap-1 group-hover:text-brand-hover transition-colors">
+                                                    {link.actionText} <ArrowRight className="h-3.5 w-3.5 group-hover:translate-x-0.5 transition-transform" />
+                                                </div>
+                                            </CardContent>
+                                        </Card>
+                                    </Link>
                                 </motion.div>
                             );
                         })}

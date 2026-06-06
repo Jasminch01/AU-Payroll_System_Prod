@@ -2,12 +2,14 @@
 
 import React, { useState } from "react";
 import { DashboardLayout } from "@/components/layout";
+import { ConfirmationModal } from "@/components/ui/confirmation-modal";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiGet, apiPost, apiPatch, apiDelete } from "@/lib/api-client";
 import { toast } from "sonner";
+import Link from "next/link";
 import { SupplierForm } from "@/components/order-guide/SupplierForm";
 import {
     Plus,
@@ -20,6 +22,7 @@ import {
     Trash2,
     Loader2,
     CheckCircle,
+    MoveLeft,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 
@@ -27,9 +30,11 @@ export default function SupplierManagement() {
     const queryClient = useQueryClient();
     const { user: authUser } = useAuth();
     const isOwner = authUser?.role === "owner";
+    const basePath = authUser?.role === "owner" ? "/owner/order-guide" : "/manager/order-guide";
 
     const [isCreateOpen, setIsCreateOpen] = useState(false);
     const [editingSupplier, setEditingSupplier] = useState<any | null>(null);
+    const [supplierToDelete, setSupplierToDelete] = useState<{ id: string; name: string } | null>(null);
 
     // Fetch suppliers list
     const { data: suppliers = [], isLoading } = useQuery({
@@ -65,8 +70,9 @@ export default function SupplierManagement() {
     const deleteMutation = useMutation({
         mutationFn: (id: string) => apiDelete(`/order-suppliers/${id}`),
         onSuccess: () => {
-            toast.success("Supplier deleted/deactivated successfully");
+            toast.success("Supplier deleted successfully");
             queryClient.invalidateQueries({ queryKey: ["order-suppliers"] });
+            setSupplierToDelete(null);
         },
         onError: (err: any) => {
             toast.error(err.message || "Failed to delete supplier");
@@ -87,20 +93,28 @@ export default function SupplierManagement() {
             toast.error("Only owners can delete suppliers.");
             return;
         }
-        if (confirm(`Are you sure you want to soft-delete supplier "${name}"? This preserves historical order records but removes them from active selections.`)) {
-            deleteMutation.mutate(id);
-        }
+        setSupplierToDelete({ id, name });
     };
 
     return (
         <DashboardLayout
             role={authUser?.role === "owner" ? "owner" : "manager"}
-            pageTitle="Supplier Directory"
+            pageTitle={
+                <span className="flex items-center gap-3">
+                    <Link
+                        href={basePath}
+                        className="inline-flex items-center text-[hsl(var(--muted-foreground))] p-1.5 -ml-1.5 transition-transform duration-200 ease-in-out hover:-translate-x-1"
+                    >
+                        <MoveLeft size={20} strokeWidth={2.5} />
+                    </Link>
+                    <span>Supplier Directory</span>
+                </span>
+            }
             pageDescription="Maintain delivery partners, cutoff times, primary ordering methods, and portal links safely."
         >
             <div className="space-y-6">
                 {/* Security Warning Banner */}
-                <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50/50 p-4 text-sm text-amber-800 dark:border-amber-900/30 dark:bg-amber-950/20 dark:text-amber-300">
+                <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-500">
                     <ShieldAlert className="h-5 w-5 shrink-0 mt-0.5" />
                     <div className="space-y-0.5">
                         <h4 className="font-bold">Password Security Policy</h4>
@@ -151,9 +165,8 @@ export default function SupplierManagement() {
                             return (
                                 <Card
                                     key={supplier.supplier_id}
-                                    className={`flex flex-col justify-between hover:shadow-md transition-all border ${
-                                        supplier.is_active ? "border-border" : "border-dashed opacity-60"
-                                    }`}
+                                    className={`flex flex-col justify-between hover:shadow-md transition-all border ${supplier.is_active ? "border-border" : "border-dashed opacity-60"
+                                        }`}
                                 >
                                     <CardHeader className="pb-3 border-b bg-muted/5">
                                         <div className="flex justify-between items-start gap-4">
@@ -304,6 +317,23 @@ export default function SupplierManagement() {
                         )}
                     </DialogContent>
                 </Dialog>
+
+                {/* Delete Confirmation Modal */}
+                <ConfirmationModal
+                    isOpen={!!supplierToDelete}
+                    onClose={() => setSupplierToDelete(null)}
+                    onConfirm={() => {
+                        if (supplierToDelete) {
+                            deleteMutation.mutate(supplierToDelete.id);
+                        }
+                    }}
+                    title="Delete Supplier?"
+                    description={`Are you sure you want to permanently delete supplier "${supplierToDelete?.name}"?`}
+                    confirmLabel="Delete"
+                    cancelLabel="Cancel"
+                    variant="danger"
+                    isLoading={deleteMutation.isPending}
+                />
             </div>
         </DashboardLayout>
     );

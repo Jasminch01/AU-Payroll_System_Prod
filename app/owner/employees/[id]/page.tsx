@@ -195,6 +195,16 @@ export default function OwnerEmployeeDetailPage() {
     const handleSave = () => {
         if (!formData || !employee) return;
 
+        // Validation: If adding email to an account without user_id, password is required
+        if (formData.email && !employee.user_id && (!formData.password || formData.password.trim() === '')) {
+            toast.error("A password is required to create a system login account for this employee.");
+            return;
+        }
+        if (formData.email && !employee.user_id && formData.password && formData.password.length < 6) {
+            toast.error("Password must be at least 6 characters.");
+            return;
+        }
+
         // Only send fields that have changed
         const dataToSend: any = {};
         const fieldsToCompare = [
@@ -202,7 +212,7 @@ export default function OwnerEmployeeDetailPage() {
             'emergency_contact_name', 'emergency_contact_phone',
             'bank_account_name', 'bank_bsb', 'bank_account_number',
             'abn', 'tfn', 'role_title', 'role', 'employment_type',
-            'pay_cycle', 'status', 'can_order_liquor'
+            'pay_cycle', 'status', 'can_order_liquor', 'password'
         ];
 
         fieldsToCompare.forEach(field => {
@@ -393,6 +403,16 @@ export default function OwnerEmployeeDetailPage() {
                                                         <Input label="First Name" showAsterisk value={data.first_name || ""} onChange={(e) => updateField("first_name", e.target.value)} />
                                                         <Input label="Last Name" showAsterisk value={data.last_name || ""} onChange={(e) => updateField("last_name", e.target.value)} />
                                                         <Input label="Email Address" showAsterisk type="email" value={data.email || ""} onChange={(e) => updateField("email", e.target.value)} />
+                                                        {!employee.user_id && data.email && (
+                                                            <Input 
+                                                                label="Set Account Password" 
+                                                                showAsterisk 
+                                                                type="password" 
+                                                                placeholder="Min. 6 characters" 
+                                                                value={data.password || ""} 
+                                                                onChange={(e) => updateField("password", e.target.value)} 
+                                                            />
+                                                        )}
                                                         <Input label="Phone Number" value={data.phone || ""} onChange={(e) => updateField("phone", e.target.value)} />
                                                         <Input
                                                             label="Date of Birth"
