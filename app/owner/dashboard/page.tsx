@@ -11,12 +11,14 @@ import { Button } from "@/components/ui/button";
 import { apiGet, apiPut } from "@/lib/api-client";
 import { toast } from "sonner";
 import Link from "next/link";
-import { Users, CalendarDays, FileText, Palmtree, DollarSign, AlertTriangle, ArrowLeftRight, CheckCircle, XCircle, ShieldCheck, TrendingUp, Info } from "lucide-react";
+import { useAuth } from "@/hooks/use-auth";
+import { Users, CalendarDays, FileText, Palmtree, DollarSign, AlertTriangle, ArrowLeftRight, CheckCircle, XCircle, ShieldCheck, TrendingUp, Info, Clock, ClipboardList, ArrowRight } from "lucide-react";
 
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Cell } from 'recharts';
 
 
 export default function OwnerDashboardPage() {
+    const { user: authUser } = useAuth();
     const queryClient = useQueryClient();
     const [xeroStatusParam, setXeroStatusParam] = React.useState<string | null>(null);
     const [xeroErrorMsg, setXeroErrorMsg] = React.useState<string | null>(null);
@@ -47,6 +49,19 @@ export default function OwnerDashboardPage() {
         queryKey: ["compliance-check"],
         queryFn: () => apiGet<any>("/analytics/compliance"),
     });
+
+    const todayStr = new Date().toISOString().split("T")[0];
+    const { data: ordersData, isLoading: isOrdersLoading } = useQuery({
+        queryKey: ["daily-orders", todayStr],
+        queryFn: () => apiGet<any>(`/daily-orders?date=${todayStr}`),
+    });
+
+    const dailyOrders: any[] = ordersData?.tasks || [];
+    const totalItems = dailyOrders.length;
+    const completedItems = dailyOrders.filter(
+        (t: any) => t.order_status !== "pending" && (t.order_status !== "issue" || t.comment_reason)
+    ).length;
+    const completionPercent = totalItems > 0 ? Math.round((completedItems / totalItems) * 100) : 0;
 
 
     const swapMutation = useMutation({
@@ -207,62 +222,109 @@ export default function OwnerDashboardPage() {
                     </div>
                 </div>
 
-                <div className={cn(
-                    "rounded-2xl border p-6 flex flex-col transition-all duration-300 shadow-sm",
-                    compliance?.score === 100
-                        ? "border-[hsl(var(--success))]/20 bg-[hsl(var(--success-light))]/30 shadow-[0_0_20px_-12px_hsl(var(--success))]"
-                        : "border-[hsl(var(--border))] bg-[hsl(var(--card))]"
-                )}>
-                    {compliance?.score === 100 ? (
-                        <div className="flex flex-col items-center text-center justify-center h-full space-y-4 py-4">
-                            <div className="relative">
-                                <div className="h-16 w-16 rounded-full bg-[hsl(var(--success))] text-white flex items-center justify-center shadow-lg shadow-[hsl(var(--success))]/20 animate-in zoom-in-50 duration-500">
-                                    <ShieldCheck size={32} />
-                                </div>
-                                <div className="absolute -right-1 -bottom-1 h-6 w-6 rounded-full bg-white border-2 border-[hsl(var(--success))] text-[hsl(var(--success))] flex items-center justify-center">
-                                    <CheckCircle size={14} />
-                                </div>
-                            </div>
-                            <div>
-                                <h3 className="text-xl font-bold text-[hsl(var(--success))]">Fully Compliant</h3>
-                                <p className="text-sm text-[hsl(var(--success))]/70 font-medium max-w-[200px] mt-1 leading-relaxed">
-                                    Your business is 100% ready for Australian payroll.
-                                </p>
-                            </div>
-                            <div className="w-full h-1.5 bg-[hsl(var(--success))]/10 rounded-full overflow-hidden mt-2">
-                                <div className="h-full bg-[hsl(var(--success))] w-full rounded-full" />
-                            </div>
-                        </div>
-                    ) : (
-                        <>
-                            <div className="flex items-center gap-4 mb-4">
-                                <div className="flex h-12 w-12 items-center justify-center rounded-full shrink-0 bg-[hsl(var(--muted))]/20 text-[hsl(var(--muted-foreground))]">
-                                    <ShieldCheck size={28} />
+                <div className="flex flex-col gap-6 lg:col-span-1">
+                    <div className={cn(
+                        "rounded-2xl border p-6 flex flex-col transition-all duration-300 shadow-sm flex-1",
+                        compliance?.score === 100
+                            ? "border-[hsl(var(--success))]/20 bg-[hsl(var(--success-light))]/30 shadow-[0_0_20px_-12px_hsl(var(--success))]"
+                            : "border-[hsl(var(--border))] bg-[hsl(var(--card))]"
+                    )}>
+                        {compliance?.score === 100 ? (
+                            <div className="flex flex-col items-center text-center justify-center h-full space-y-4 py-4">
+                                <div className="relative">
+                                    <div className="h-16 w-16 rounded-full bg-[hsl(var(--success))] text-white flex items-center justify-center shadow-lg shadow-[hsl(var(--success))]/20 animate-in zoom-in-50 duration-500">
+                                        <ShieldCheck size={32} />
+                                    </div>
+                                    <div className="absolute -right-1 -bottom-1 h-6 w-6 rounded-full bg-white border-2 border-[hsl(var(--success))] text-[hsl(var(--success))] flex items-center justify-center">
+                                        <CheckCircle size={14} />
+                                    </div>
                                 </div>
                                 <div>
-                                    <h3 className="text-lg font-bold">Setup Checklist</h3>
-                                    <p className="text-sm font-medium text-[hsl(var(--muted-foreground))]">
-                                        {isComplianceLoading ? "Checking status..." : `${compliance?.score}% Complete`}
+                                    <h3 className="text-xl font-bold text-[hsl(var(--success))]">Fully Compliant</h3>
+                                    <p className="text-sm text-[hsl(var(--success))]/70 font-medium max-w-[200px] mt-1 leading-relaxed">
+                                        Your business is 100% ready for Australian payroll.
+                                    </p>
+                                </div>
+                                <div className="w-full h-1.5 bg-[hsl(var(--success))]/10 rounded-full overflow-hidden mt-2">
+                                    <div className="h-full bg-[hsl(var(--success))] w-full rounded-full" />
+                                </div>
+                            </div>
+                        ) : (
+                            <>
+                                <div className="flex items-center gap-4 mb-4">
+                                    <div className="flex h-12 w-12 items-center justify-center rounded-full shrink-0 bg-[hsl(var(--muted))]/20 text-[hsl(var(--muted-foreground))]">
+                                        <ShieldCheck size={28} />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-lg font-bold">Setup Checklist</h3>
+                                        <p className="text-sm font-medium text-[hsl(var(--muted-foreground))]">
+                                            {isComplianceLoading ? "Checking status..." : `${compliance?.score}% Complete`}
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div className="flex-1 max-h-[120px] overflow-y-auto pr-2 custom-scrollbar">
+                                    {compliance?.alerts?.length > 0 ? (
+                                        <ul className="space-y-3">
+                                            {compliance.alerts.map((alert: string, idx: number) => (
+                                                <li key={idx} className="flex items-start gap-3 p-2.5 rounded-lg bg-[hsl(var(--muted))]/10 border border-[hsl(var(--border))]/30">
+                                                    <div className="h-1.5 w-1.5 rounded-full bg-[hsl(var(--muted-foreground))]/40 mt-1.5 shrink-0" />
+                                                    <span className="text-xs text-[hsl(var(--muted-foreground))] font-medium leading-tight">{alert}</span>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    ) : (
+                                        <p className="text-sm text-[hsl(var(--muted-foreground))]">Settings audit required.</p>
+                                    )}
+                                </div>
+                            </>
+                        )}
+                    </div>
+
+                    <div className="rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-6 flex flex-col justify-between shadow-sm flex-1">
+                        <div>
+                            <div className="flex items-center gap-4 mb-4">
+                                <div className="flex h-12 w-12 items-center justify-center rounded-full shrink-0 bg-[hsl(var(--brand-light))] text-[hsl(var(--brand))]">
+                                    <Clock size={28} />
+                                </div>
+                                <div>
+                                    <h3 className="text-lg font-bold">Today's Ordering Status</h3>
+                                    <p className="text-xs text-[hsl(var(--muted-foreground))]">
+                                        {isOrdersLoading ? "Loading tasks..." : `${completionPercent}% Complete`}
                                     </p>
                                 </div>
                             </div>
 
-                            <div className="flex-1 max-h-[120px] overflow-y-auto pr-2 custom-scrollbar">
-                                {compliance?.alerts?.length > 0 ? (
-                                    <ul className="space-y-3">
-                                        {compliance.alerts.map((alert: string, idx: number) => (
-                                            <li key={idx} className="flex items-start gap-3 p-2.5 rounded-lg bg-[hsl(var(--muted))]/10 border border-[hsl(var(--border))]/30">
-                                                <div className="h-1.5 w-1.5 rounded-full bg-[hsl(var(--muted-foreground))]/40 mt-1.5 shrink-0" />
-                                                <span className="text-xs text-[hsl(var(--muted-foreground))] font-medium leading-tight">{alert}</span>
-                                            </li>
-                                        ))}
-                                    </ul>
-                                ) : (
-                                    <p className="text-sm text-[hsl(var(--muted-foreground))]">Settings audit required.</p>
-                                )}
-                            </div>
-                        </>
-                    )}
+                            {totalItems === 0 ? (
+                                <div className="flex flex-col items-center justify-center py-6 text-center space-y-2">
+                                    <ClipboardList className="h-8 w-8 text-muted-foreground animate-pulse" />
+                                    <p className="text-xs text-muted-foreground font-semibold">No active ordering tasks for today</p>
+                                </div>
+                            ) : (
+                                <div className="space-y-4">
+                                    <div className="space-y-1.5">
+                                        <div className="flex justify-between items-center text-xs font-semibold">
+                                            <span className="text-muted-foreground">Checklist Progress</span>
+                                            <span className="text-foreground">{completedItems} / {totalItems} items</span>
+                                        </div>
+                                        <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
+                                            <div
+                                                className="h-full bg-brand rounded-full transition-all duration-300"
+                                                style={{ width: `${completionPercent}%` }}
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        <Button asChild size="sm" variant="ghost" className="text-brand hover:text-brand-hover hover:bg-brand/5 text-xs font-bold w-full mt-4 justify-between border border-dashed border-brand/20 rounded-xl py-5">
+                            <Link href={authUser?.role === "owner" ? "/owner/orders" : "/manager/orders"} className="flex items-center justify-between w-full">
+                                <span>Open Today's Checklist</span>
+                                <ArrowRight size={16} />
+                            </Link>
+                        </Button>
+                    </div>
                 </div>
 
             </div>

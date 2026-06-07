@@ -17,6 +17,7 @@ interface ProductOrderCardProps {
     onUpdateTask: (updates: Partial<DailyOrderTask>) => Promise<void>;
     onShowInstructions: () => void;
     isUpdating: boolean;
+    disabled?: boolean;
 }
 
 export function ProductOrderCard({
@@ -24,7 +25,8 @@ export function ProductOrderCard({
     task,
     onUpdateTask,
     onShowInstructions,
-    isUpdating
+    isUpdating,
+    disabled = false
 }: ProductOrderCardProps) {
     const [currentStock, setCurrentStock] = useState<string>(
         task.current_stock_qty !== null && task.current_stock_qty !== undefined
@@ -144,7 +146,7 @@ export function ProductOrderCard({
                                 onBlur={handleStockBlur}
                                 placeholder="Enter count..."
                                 className="pr-12"
-                                disabled={isUpdating}
+                                disabled={isUpdating || disabled}
                             />
                             <span className="absolute right-3 top-2.5 text-xs text-muted-foreground font-medium">
                                 {item.unit}
@@ -177,7 +179,7 @@ export function ProductOrderCard({
                                 onBlur={handleFinalBlur}
                                 placeholder="Adjust qty..."
                                 className="pr-12"
-                                disabled={isUpdating}
+                                disabled={isUpdating || disabled}
                             />
                             <span className="absolute right-3 top-2.5 text-xs text-muted-foreground font-medium">
                                 {item.unit}
@@ -200,7 +202,7 @@ export function ProductOrderCard({
                             placeholder="e.g. Supplier out of stock, delivery delayed, price too high..."
                             rows={2}
                             className="flex w-full rounded-lg border border-red-200 bg-transparent px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
-                            disabled={isUpdating}
+                            disabled={isUpdating || disabled}
                         />
                         {isIssueInvalid && (
                             <p className="text-[11px] text-red-600 font-semibold flex items-center gap-1">
@@ -221,7 +223,7 @@ export function ProductOrderCard({
                             onChange={(e) => setRefNumber(e.target.value)}
                             onBlur={() => handleSave("ordered")}
                             placeholder="e.g. PO-883921"
-                            disabled={isUpdating}
+                            disabled={isUpdating || disabled}
                         />
                     </div>
                 )}
@@ -245,7 +247,7 @@ export function ProductOrderCard({
                             variant={status === "not_required" ? "secondary" : "ghost"}
                             size="sm"
                             onClick={() => handleSave("not_required")}
-                            disabled={isUpdating || currentStock === ""}
+                            disabled={isUpdating || disabled || currentStock === ""}
                             className="h-8 text-xs font-semibold"
                         >
                             Not Required
@@ -254,7 +256,7 @@ export function ProductOrderCard({
                             variant={status === "issue" ? "danger" : "ghost"}
                             size="sm"
                             onClick={() => handleSave("issue")}
-                            disabled={isUpdating || currentStock === ""}
+                            disabled={isUpdating || disabled || currentStock === ""}
                             className="h-8 text-xs font-semibold"
                         >
                             Flag Issue
@@ -263,7 +265,7 @@ export function ProductOrderCard({
                             variant={status === "ordered" ? "success" : "default"}
                             size="sm"
                             onClick={() => handleSave("ordered")}
-                            disabled={isUpdating || currentStock === ""}
+                            disabled={isUpdating || disabled || currentStock === ""}
                             className="h-8 text-xs font-semibold gap-1"
                         >
                             {isUpdating ? (

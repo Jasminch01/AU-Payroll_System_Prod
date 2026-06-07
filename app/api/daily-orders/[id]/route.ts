@@ -24,6 +24,51 @@ export async function PATCH(
         const body = await request.json();
         const supabase = await createClient();
 
+        // Check if employee is clocked in and assigned to ordering tasks
+        if (authUser.role === 'employee') {
+            if (!authUser.employee_id) {
+                return errorResponse('Valid employee profile required.', 401);
+            }
+            const { data: lastLog } = await supabase
+                .from('AttendanceLog')
+                .select('event_type')
+                .eq('employee_id', authUser.employee_id)
+                .order('timestamp', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+
+            const isClockedIn = lastLog && (lastLog.event_type === 'CLOCK_IN' || lastLog.event_type === 'BREAK_END');
+            if (!isClockedIn) {
+                return errorResponse('Access Denied: You must clock in for your shift before you can update stock counts or complete tasks.', 403);
+            }
+
+            // Check roster assignment and ordering responsibilities
+            const { getBusinessTimezone } = await import('@/lib/auth');
+            const { getDateInTimezone } = await import('@/lib/timezone-utils');
+            const { detectShiftHasOrdering } = await import('@/lib/order-guide-engine');
+
+            const timezone = await getBusinessTimezone(authUser.business_id);
+            const today = getDateInTimezone(new Date().toISOString(), timezone);
+
+            const { data: shift } = await supabase
+                .from('Shift')
+                .select('shift_id')
+                .eq('employee_id', authUser.employee_id)
+                .eq('shift_date', today)
+                .eq('shift_status', 'published')
+                .limit(1)
+                .maybeSingle();
+
+            if (!shift) {
+                return errorResponse('Access Denied: You do not have a published rostered shift today.', 403);
+            }
+
+            const hasOrdering = await detectShiftHasOrdering(shift.shift_id, supabase);
+            if (!hasOrdering) {
+                return errorResponse('Access Denied: You are not assigned to ordering tasks for today.', 403);
+            }
+        }
+
         // Load existing task + item for suggested qty recalculation
         const { data: task, error: fetchError } = await supabase
             .from('DailyOrderTask')
@@ -68,7 +113,7 @@ export async function PATCH(
                 order_status:      body.order_status       ?? task.order_status,
                 comment_reason:    body.comment_reason     ?? task.comment_reason,
                 order_reference:   body.order_reference    ?? task.order_reference,
-                ordered_by:        isBeingActioned ? authUser.user_id : task.ordered_by,
+                ordered_by:        isBeingActioned && authUser.role !== 'employee' ? authUser.user_id : task.ordered_by,
                 ordered_at:        isBeingActioned ? new Date().toISOString() : task.ordered_at,
             })
             .eq('order_task_id', id)

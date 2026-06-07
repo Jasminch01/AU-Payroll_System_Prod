@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
             .from('Shift')
             .select(`
                 *,
-                Roster!inner (
+                Roster (
                     roster_id,
                     status,
                     start_date,
@@ -50,7 +50,7 @@ export async function GET(request: NextRequest) {
             `)
             .eq('employee_id', authUser.employee_id)
             .eq('business_id', authUser.business_id)
-            .not('Roster.published_at', 'is', null) // Must have been published at least once
+            .eq('shift_status', 'published')
             .order('shift_date', { ascending: true });
 
         if (from) query = query.gte('shift_date', from);

@@ -6,6 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { OrderCategory, OrderSupplier, OrderingMethod } from "@/types/database";
+import { cn } from "@/lib/utils";
+import { Clock } from "lucide-react";
 
 interface CategoryFormProps {
     initialData?: Partial<OrderCategory>;
@@ -26,15 +28,45 @@ const ORDERING_METHODS: { value: OrderingMethod; label: string }[] = [
     { value: "metcash", label: "Metcash Portal" },
 ];
 
+const TIME_OPTIONS = [
+    "00:00", "00:15", "00:30", "00:45",
+    "01:00", "01:15", "01:30", "01:45",
+    "02:00", "02:15", "02:30", "02:45",
+    "03:00", "03:15", "03:30", "03:45",
+    "04:00", "04:15", "04:30", "04:45",
+    "05:00", "05:15", "05:30", "05:45",
+    "06:00", "06:15", "06:30", "06:45",
+    "07:00", "07:15", "07:30", "07:45",
+    "08:00", "08:15", "08:30", "08:45",
+    "09:00", "09:15", "09:30", "09:45",
+    "10:00", "10:15", "10:30", "10:45",
+    "11:00", "11:15", "11:30", "11:45",
+    "12:00", "12:15", "12:30", "12:45",
+    "13:00", "13:15", "13:30", "13:45",
+    "14:00", "14:15", "14:30", "14:45",
+    "15:00", "15:15", "15:30", "15:45",
+    "16:00", "16:15", "16:30", "16:45",
+    "17:00", "17:15", "17:30", "17:45",
+    "18:00", "18:15", "18:30", "18:45",
+    "19:00", "19:15", "19:30", "19:45",
+    "20:00", "20:15", "20:30", "20:45",
+    "21:00", "21:15", "21:30", "21:45",
+    "22:00", "22:15", "22:30", "22:45",
+    "23:00", "23:15", "23:30", "23:45"
+];
+
 export function CategoryForm({ initialData = {}, suppliers, onSubmit, onCancel, isLoading }: CategoryFormProps) {
     const [name, setName] = useState(initialData.category_name || "");
     const [supplierId, setSupplierId] = useState(initialData.default_supplier_id || "");
     const [method, setMethod] = useState<OrderingMethod | "">(initialData.default_ordering_method || "");
     const [orderDays, setOrderDays] = useState<string[]>(initialData.order_days || []);
+    const [hasCutoff, setHasCutoff] = useState(() => !!initialData.cutoff_time);
     const [cutoffTime, setCutoffTime] = useState(() => {
-        if (!initialData.cutoff_time) return "";
-        return initialData.cutoff_time.substring(0, 5); // "14:00:00" -> "14:00"
+        if (!initialData.cutoff_time) return "17:00"; // default 5 PM (17:00)
+        return initialData.cutoff_time.substring(0, 5);
     });
+    const [isTimeDropdownOpen, setIsTimeDropdownOpen] = useState(false);
+    const [timeSearch, setTimeSearch] = useState("");
     const [role, setRole] = useState(initialData.responsible_role || "manager");
     const [isActive, setIsActive] = useState(initialData.is_active !== false);
     const [sortOrder, setSortOrder] = useState(initialData.sort_order || 0);
@@ -65,7 +97,7 @@ export function CategoryForm({ initialData = {}, suppliers, onSubmit, onCancel, 
             default_supplier_id: supplierId || null,
             default_ordering_method: method || null,
             order_days: orderDays.length > 0 ? orderDays : null,
-            cutoff_time: cutoffTime ? `${cutoffTime}:00` : null,
+            cutoff_time: hasCutoff ? `${cutoffTime}:00` : null,
             responsible_role: role,
             is_active: isActive,
             sort_order: Number(sortOrder) || 0,
@@ -153,17 +185,93 @@ export function CategoryForm({ initialData = {}, suppliers, onSubmit, onCancel, 
                 </div>
 
                 {/* Cut-off Time */}
-                <div className="space-y-2">
-                    <Label htmlFor="cutoff_time" className="text-sm font-semibold">
-                        Ordering Cut-off Time
-                    </Label>
-                    <Input
-                        id="cutoff_time"
-                        type="time"
-                        value={cutoffTime}
-                        onChange={(e) => setCutoffTime(e.target.value)}
-                        disabled={isLoading}
-                    />
+                <div className="space-y-3 p-3 rounded-lg border bg-muted/20">
+                    <div className="flex items-center justify-between">
+                        <div className="space-y-0.5">
+                            <Label htmlFor="has_cutoff" className="text-sm font-semibold cursor-pointer">
+                                Enable Ordering Cut-off Time
+                            </Label>
+                            <p className="text-xs text-muted-foreground">
+                                Set a daily cut-off time for this category.
+                            </p>
+                        </div>
+                        <Switch
+                            id="has_cutoff"
+                            checked={hasCutoff}
+                            onCheckedChange={setHasCutoff}
+                            disabled={isLoading}
+                        />
+                    </div>
+                    {hasCutoff && (
+                        <div className="space-y-1.5 relative pt-2 border-t border-border/50">
+                            <button
+                                type="button"
+                                onClick={() => !isLoading && setIsTimeDropdownOpen(!isTimeDropdownOpen)}
+                                disabled={isLoading}
+                                className={cn(
+                                    "flex h-10 w-full md:w-48 rounded-lg border border-[hsl(var(--input))] bg-[hsl(var(--background))] px-3 py-2 text-sm items-center justify-between focus:outline-none focus:ring-2 focus:ring-[hsl(var(--brand))]/20 focus:border-[hsl(var(--brand))]",
+                                    isLoading && "opacity-50 cursor-not-allowed"
+                                )}
+                            >
+                                <span>{cutoffTime}</span>
+                                <Clock size={14} className="text-[hsl(var(--muted-foreground))]" />
+                            </button>
+
+                            {isTimeDropdownOpen && (
+                                <>
+                                    <div className="fixed inset-0 z-40" onClick={() => setIsTimeDropdownOpen(false)} />
+                                    <div className="absolute top-full mt-1 left-0 w-full md:w-48 bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-xl shadow-2xl z-50 overflow-hidden flex flex-col animate-in slide-in-from-bottom-2 duration-200">
+                                        <div className="p-2 border-b bg-[hsl(var(--muted))]/30 sticky top-0">
+                                            <input
+                                                autoFocus
+                                                type="text"
+                                                placeholder="Search time..."
+                                                value={timeSearch}
+                                                onChange={e => setTimeSearch(e.target.value)}
+                                                className="w-full h-8 px-2 text-xs rounded-md border bg-[hsl(var(--background))] text-[hsl(var(--foreground))]"
+                                            />
+                                        </div>
+                                        <div className="max-h-48 overflow-y-auto p-1" ref={el => {
+                                            if (el && !el.dataset.scrolled) {
+                                                const selected = el.querySelector('[data-selected="true"]');
+                                                if (selected) {
+                                                    selected.scrollIntoView({ block: "center" });
+                                                    el.dataset.scrolled = "true";
+                                                }
+                                            }
+                                        }}>
+                                            {(() => {
+                                                const filtered = TIME_OPTIONS.filter(t => t.includes(timeSearch));
+                                                if (filtered.length === 0) {
+                                                    return <div className="text-center py-2 text-xs text-muted-foreground">No matches</div>;
+                                                }
+                                                return filtered.map(time => (
+                                                    <button
+                                                        key={time}
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setCutoffTime(time);
+                                                            setIsTimeDropdownOpen(false);
+                                                            setTimeSearch("");
+                                                        }}
+                                                        data-selected={cutoffTime === time}
+                                                        className={cn(
+                                                            "w-full text-left px-3 py-2 text-xs rounded-lg transition-colors font-semibold",
+                                                            cutoffTime === time
+                                                                ? "bg-[hsl(var(--brand))] text-white"
+                                                                : "hover:bg-[hsl(var(--muted))] text-[hsl(var(--foreground))]"
+                                                        )}
+                                                    >
+                                                        {time}
+                                                    </button>
+                                                ));
+                                            })()}
+                                        </div>
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                    )}
                 </div>
 
                 {/* Order Days */}

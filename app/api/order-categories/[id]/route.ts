@@ -124,9 +124,24 @@ export async function DELETE(
         const { id } = await params;
         const supabase = await createClient();
 
+        // 1. Delete dependent DailyOrderTask records
+        await supabase
+            .from('DailyOrderTask')
+            .delete()
+            .eq('category_id', id)
+            .eq('business_id', authUser.business_id);
+
+        // 2. Delete dependent OrderGuideItem records
+        await supabase
+            .from('OrderGuideItem')
+            .delete()
+            .eq('category_id', id)
+            .eq('business_id', authUser.business_id);
+
+        // 3. Delete the category itself
         const { data, error } = await supabase
             .from('OrderCategory')
-            .update({ is_active: false })
+            .delete()
             .eq('category_id', id)
             .eq('business_id', authUser.business_id)
             .select()
@@ -135,7 +150,7 @@ export async function DELETE(
         if (error) return errorResponse(error.message, 400);
         if (!data)  return errorResponse('Category not found', 404);
 
-        return successResponse(null, 'Category deactivated successfully');
+        return successResponse(null, 'Category deleted successfully');
     } catch (err) {
         console.error('[order-categories/:id DELETE]', err);
         return errorResponse('Internal server error', 500);

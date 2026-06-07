@@ -55,10 +55,31 @@ export async function GET(request: NextRequest) {
         // Also get the most recent log to determine current status
         const currentStatus = logs && logs.length > 0 ? logs[0].event_type : null;
 
+        // Check if employee has a published shift today with ordering responsibilities
+        let hasOrderingResponsibility = false;
+        try {
+            const today = getDateInTimezone(new Date().toISOString(), timezone);
+            const { data: shift } = await supabase
+                .from('Shift')
+                .select('shift_id')
+                .eq('employee_id', authUser.employee_id)
+                .eq('shift_date', today)
+                .eq('shift_status', 'published')
+                .limit(1)
+                .maybeSingle();
+
+            if (shift) {
+                hasOrderingResponsibility = await detectShiftHasOrdering(shift.shift_id, supabase);
+            }
+        } catch (err) {
+            console.error('[My Attendance GET] Error checking ordering responsibility:', err);
+        }
+
         return successResponse({
             logs,
             sessions: allSessions,
             current_status: currentStatus,
+            has_ordering_responsibility: hasOrderingResponsibility,
         });
     } catch (err) {
         console.error('My attendance error:', err);
