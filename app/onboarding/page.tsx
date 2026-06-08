@@ -92,10 +92,11 @@ export default function OnboardingPage() {
                 const token_hash = params.get('token_hash');
                 const type = params.get('type') as any;
                 const bCode = params.get('business');
+                const code = params.get('code');
                 const hasHash = window.location.hash.includes('access_token') || window.location.hash.includes('error=');
 
                 // Access Control Check: If no entry point is found, redirect immediately
-                if (!token_hash && !hasHash && !bCode) {
+                if (!token_hash && !hasHash && !bCode && !code) {
                     // One last check for an existing session before denying
                     const { data: { session } } = await supabase.auth.getSession();
                     if (!session) {
@@ -119,6 +120,25 @@ export default function OnboardingPage() {
                     toast.error(errorDesc.replace(/\+/g, ' '));
                     setCheckingStatus(false);
                     setTimeout(() => router.push('/login'), 3000);
+                    return;
+                }
+
+                // 0.5 Check for PKCE code flow redirect
+                if (code) {
+                    const { error } = await supabase.auth.exchangeCodeForSession(code);
+                    if (error) {
+                        const { data: { session } } = await supabase.auth.getSession();
+                        if (session) {
+                            window.history.replaceState({}, document.title, window.location.pathname);
+                            await checkStatus();
+                            return;
+                        }
+                        toast.error(error.message || 'Invalid or expired invitation link.');
+                        router.push('/login');
+                        return;
+                    }
+                    window.history.replaceState({}, document.title, window.location.pathname);
+                    await checkStatus();
                     return;
                 }
 

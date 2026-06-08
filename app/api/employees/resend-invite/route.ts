@@ -69,45 +69,37 @@ export async function POST(request: NextRequest) {
         // If user already exists or invite failed, generate a manual link as fallback
         if (isAlreadyRegistered || inviteError) {
             // 1. AUTOMATION: Send the magic link email automatically to the user
-            await supabase.auth.signInWithOtp({
+            const { error: otpError } = await supabase.auth.signInWithOtp({
                 email: employee.email,
                 options: {
                     emailRedirectTo: `${getSiteUrl(request)}/onboarding`,
                 }
             });
 
-            // 2. Also generate a link for the dashboard as backup
-            const { data: linkData, error: linkError } = await adminClient.auth.admin.generateLink({
-                type: 'magiclink',
-                email: employee.email,
-                options: {
-                    redirectTo: `${getSiteUrl(request)}/onboarding`,
+            if (otpError) {
+                // If OTP email fails, fallback to generating a manual link so the owner has a way to share access
+                const { data: linkData, error: linkError } = await adminClient.auth.admin.generateLink({
+                    type: 'magiclink',
+                    email: employee.email,
+                    options: {
+                        redirectTo: `${getSiteUrl(request)}/onboarding`,
+                    }
+                });
+                
+                if (linkError) {
+                    return errorResponse(`Failed to generate fallback invitation link: ${linkError.message}`, 500);
                 }
-            });
-            
-            if (linkError) {
-                return errorResponse(`Failed to generate invitation link: ${linkError.message}`, 500);
-            }
 
-            if (linkData?.properties?.action_link) {
-                actionLink = linkData.properties.action_link;
-                inviteSent = true; // Mark as sent because signInWithOtp above sends the email
+                if (linkData?.properties?.action_link) {
+                    actionLink = linkData.properties.action_link;
+                } else {
+                    return errorResponse(`Failed to generate action link.`, 500);
+                }
             } else {
-                return errorResponse(`Failed to generate action link.`, 500);
+                inviteSent = true;
             }
         } else {
             inviteSent = true;
-            // Also get a manual link just in case the owner wants to copy it
-            const { data: linkData } = await adminClient.auth.admin.generateLink({
-                type: 'magiclink',
-                email: employee.email,
-                options: {
-                    redirectTo: `${getSiteUrl(request)}/onboarding`,
-                }
-            });
-            if (linkData?.properties?.action_link) {
-                actionLink = linkData.properties.action_link;
-            }
         }
 
         return successResponse({
