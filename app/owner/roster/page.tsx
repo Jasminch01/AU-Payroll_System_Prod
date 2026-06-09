@@ -138,6 +138,9 @@ export default function OwnerRosterPage() {
     const [addShiftOpen, setAddShiftOpen] = useState(false);
     const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
     const [isAttachOpen, setIsAttachOpen] = useState(false);
+    const [isTemplatesPanelOpen, setIsTemplatesPanelOpen] = useState(false);
+    const [templateSearchQuery, setTemplateSearchQuery] = useState("");
+    const [isDraggingOverChecklist, setIsDraggingOverChecklist] = useState(false);
     const [isAddTaskOpen, setIsAddTaskOpen] = useState(false);
     const [adHocTaskText, setAdHocTaskText] = useState("");
     const [adHocTaskInstructions, setAdHocTaskInstructions] = useState("");
@@ -352,6 +355,36 @@ export default function OwnerRosterPage() {
         enabled: addShiftOpen,
     });
 
+    const CATEGORY_ORDER = ['morning', 'afternoon', 'closing', 'delivery', 'ordering', 'manager', 'daily'];
+
+    const sortedTemplates = useMemo(() => {
+        if (!templates) return [];
+        return [...templates].sort((a: any, b: any) => {
+            const catA = a.category?.toLowerCase() || "";
+            const catB = b.category?.toLowerCase() || "";
+            
+            let indexA = CATEGORY_ORDER.indexOf(catA);
+            let indexB = CATEGORY_ORDER.indexOf(catB);
+            
+            if (indexA === -1) indexA = 999;
+            if (indexB === -1) indexB = 999;
+            
+            if (indexA !== indexB) {
+                return indexA - indexB;
+            }
+            
+            return (a.sort_order ?? 0) - (b.sort_order ?? 0);
+        });
+    }, [templates]);
+
+    const filteredTemplates = useMemo(() => {
+        if (!sortedTemplates) return [];
+        return sortedTemplates.filter((t: any) =>
+            t.name.toLowerCase().includes(templateSearchQuery.toLowerCase()) ||
+            (t.description && t.description.toLowerCase().includes(templateSearchQuery.toLowerCase()))
+        );
+    }, [sortedTemplates, templateSearchQuery]);
+
     const groupedChecklist = useMemo(() => {
         const groups: { [key: string]: { name: string, items: any[] } } = {};
 
@@ -360,7 +393,7 @@ export default function OwnerRosterPage() {
             if (!groups[tempId]) {
                 let name = '🔧 Custom Tasks';
                 if (tempId !== 'custom') {
-                    const matchedTemplate = templates.find((t: any) => t.template_id === tempId);
+                    const matchedTemplate = sortedTemplates.find((t: any) => t.template_id === tempId);
                     name = matchedTemplate ? `📋 ${matchedTemplate.name}` : '📋 Attached Template Tasks';
                 }
                 groups[tempId] = { name, items: [] };
@@ -368,17 +401,30 @@ export default function OwnerRosterPage() {
             groups[tempId].items.push(item);
         });
 
-        // Convert to array and sort: templates first, then custom tasks at the end
-        return Object.keys(groups).map(key => ({
+        // Convert to array and sort groups: templates first (according to template list sequence), then custom tasks at the end
+        const finalGroups = Object.keys(groups).map(key => ({
             id: key,
             name: groups[key].name,
-            items: groups[key].items.sort((a: any, b: any) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
-        })).sort((a, b) => {
+            items: groups[key].items
+        }));
+
+        finalGroups.sort((a, b) => {
             if (a.id === 'custom') return 1;
             if (b.id === 'custom') return -1;
-            return a.name.localeCompare(b.name);
+            const indexA = sortedTemplates.findIndex((t: any) => t.template_id === a.id);
+            const indexB = sortedTemplates.findIndex((t: any) => t.template_id === b.id);
+            if (indexA === -1) return 1;
+            if (indexB === -1) return -1;
+            return indexA - indexB;
         });
-    }, [shiftChecklist, templates]);
+
+        // Sort items inside groups by sort_order
+        finalGroups.forEach(g => {
+            g.items.sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+        });
+
+        return finalGroups;
+    }, [shiftChecklist, sortedTemplates]);
 
     const toggleGroup = useCallback((groupId: string) => {
         setCollapsedGroups(prev => ({ ...prev, [groupId]: !prev[groupId] }));
@@ -710,6 +756,21 @@ export default function OwnerRosterPage() {
         },
         onError: (err: any) => {
             console.error('[RosterPage] attachTemplateMutation onError called:', err);
+            toast.error(err.message);
+        },
+    });
+
+    const removeTemplateTasksMutation = useMutation({
+        mutationFn: (templateId: string) => {
+            console.log('[RosterPage] removeTemplateTasksMutation executing with templateId:', templateId, 'and editingShiftId:', editingShiftId);
+            return apiDelete(`/shift/${editingShiftId}/checklist/template/${templateId}`);
+        },
+        onSuccess: () => {
+            toast.success("Template tasks removed");
+            queryClient.invalidateQueries({ queryKey: ["shift-checklist", editingShiftId] });
+        },
+        onError: (err: any) => {
+            console.error('[RosterPage] removeTemplateTasksMutation onError called:', err);
             toast.error(err.message);
         },
     });
@@ -2241,48 +2302,23 @@ export default function OwnerRosterPage() {
                                 </DialogFooter>
                             </TabsContent>
 
-                            <TabsContent value="checklist" className="p-6 m-0 flex flex-col h-[450px]">
-                                <div className="flex items-center justify-between mb-4">
+                            <TabsContent value="checklist" className="p-6 m-0 flex flex-col h-[480px]">
+                                <div className="flex items-center justify-between mb-4 shrink-0">
                                     <h3 className="font-bold text-sm">Tasks Snapshot</h3>
                                     <div className="flex items-center gap-2">
-                                        <div className="relative">
-                                            <Button
-                                                variant="outline"
-                                                size="sm"
-                                                className="h-8 rounded-lg text-[10px] font-black uppercase"
-                                                onClick={() => {
-                                                    console.log('[RosterPage] Attach Template button clicked. Toggling custom dropdown to:', !isAttachOpen);
-                                                    setIsAttachOpen(!isAttachOpen);
-                                                }}
-                                            >
-                                                Attach Template
-                                            </Button>
-                                            {isAttachOpen && (
-                                                <>
-                                                    <div className="fixed inset-0 z-40" onClick={() => setIsAttachOpen(false)} />
-                                                    <div className="absolute right-0 mt-1 w-56 bg-white border border-slate-100 rounded-xl shadow-lg py-1 z-50 animate-in fade-in slide-in-from-top-1 duration-100">
-                                                        {templates.length === 0 ? (
-                                                            <div className="p-3 text-center text-xs text-slate-400">No active templates</div>
-                                                        ) : (
-                                                            templates.map(t => (
-                                                                <button
-                                                                    type="button"
-                                                                    key={t.template_id}
-                                                                    onClick={() => {
-                                                                        console.log('[RosterPage] Dropdown item clicked for template:', t.name, 'id:', t.template_id);
-                                                                        attachTemplateMutation.mutate([t.template_id]);
-                                                                        setIsAttachOpen(false);
-                                                                    }}
-                                                                    className="w-full text-left px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors"
-                                                                >
-                                                                    {t.name}
-                                                                </button>
-                                                            ))
-                                                        )}
-                                                    </div>
-                                                </>
+                                        <Button
+                                            variant={isTemplatesPanelOpen ? "secondary" : "outline"}
+                                            size="sm"
+                                            className={cn(
+                                                "h-8 rounded-lg text-[10px] font-black uppercase transition-all duration-150",
+                                                isTemplatesPanelOpen && "bg-slate-100 text-slate-900 border-slate-200"
                                             )}
-                                        </div>
+                                            onClick={() => {
+                                                setIsTemplatesPanelOpen(!isTemplatesPanelOpen);
+                                            }}
+                                        >
+                                            {isTemplatesPanelOpen ? "Hide Templates" : "Attach Template"}
+                                        </Button>
                                         <Button
                                             size="sm"
                                             className="h-8 rounded-lg text-[10px] font-black uppercase"
@@ -2293,110 +2329,236 @@ export default function OwnerRosterPage() {
                                     </div>
                                 </div>
 
-                                <div className="flex-1 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
-                                    {isLoadingChecklist ? (
-                                        <div className="space-y-2 py-4">
-                                            {[1, 2, 3].map(i => <div key={i} className="h-12 bg-slate-50 rounded-xl animate-pulse" />)}
-                                        </div>
-                                    ) : shiftChecklist.length === 0 ? (
-                                        <div className="flex flex-col items-center justify-center py-12 text-center bg-slate-50 rounded-2xl border-2 border-dashed border-slate-100">
-                                            <ClipboardList size={32} className="text-slate-300 mb-2" />
-                                            <p className="text-xs font-bold text-slate-400">No tasks for this shift yet.</p>
-                                            <p className="text-[10px] text-slate-400 max-w-[180px] mt-1">Add tasks manually or attach a template above.</p>
-                                        </div>
-                                    ) : (
-                                        groupedChecklist.map((group) => {
-                                            const isCollapsed = collapsedGroups[group.id] === true;
-                                            return (
-                                                <div key={group.id} className="border border-slate-100 rounded-2xl overflow-hidden shadow-sm bg-white mb-3">
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => toggleGroup(group.id)}
-                                                        className="w-full flex items-center justify-between px-4 py-3 bg-slate-50/50 hover:bg-slate-50 transition-colors border-b border-slate-100/50"
-                                                    >
-                                                        <div className="flex items-center gap-2">
-                                                            <span className="text-xs font-black uppercase text-slate-700 tracking-wider">
-                                                                {group.name}
-                                                            </span>
-                                                            <Badge variant="secondary" className="bg-slate-200/50 text-slate-600 text-[9px] font-black tracking-tight px-1.5 py-0.5 rounded-full">
-                                                                {group.items.length} {group.items.length === 1 ? 'task' : 'tasks'}
-                                                            </Badge>
-                                                        </div>
-                                                        <ChevronDown
-                                                            size={16}
-                                                            className={cn("text-slate-400 transition-transform duration-200", isCollapsed ? "" : "rotate-180")}
-                                                        />
-                                                    </button>
-
-                                                    {!isCollapsed && (
-                                                        <div className="p-3 space-y-2 bg-white divide-y divide-slate-50">
-                                                            {group.items.map((item) => (
-                                                                <div key={item.checklist_item_id} className="group flex items-center gap-3 py-2.5 bg-white border border-transparent rounded-xl hover:border-[hsl(var(--brand))]/10 px-2 transition-all">
-                                                                    <div className={cn(
-                                                                        "w-5 h-5 rounded-full flex items-center justify-center shrink-0 border-2 transition-all",
-                                                                        item.status === 'done' ? "bg-emerald-500 border-emerald-500 text-white" : "border-slate-200 text-slate-100"
-                                                                    )}>
-                                                                        {item.status === 'done' ? <Check size={12} strokeWidth={4} /> : <div className="w-1.5 h-1.5 rounded-full bg-slate-200" />}
-                                                                    </div>
-
-                                                                    <div className="flex-1 min-w-0">
-                                                                        <input
-                                                                            className="w-full bg-transparent border-none font-bold text-xs p-0 focus:ring-0 text-slate-700 placeholder-slate-400"
-                                                                            defaultValue={item.task_text}
-                                                                            onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
-                                                                            onBlur={(e) => {
-                                                                                if (e.target.value !== item.task_text) {
-                                                                                    updateTaskMutation.mutate({
-                                                                                        itemId: item.checklist_item_id,
-                                                                                        data: { task_text: e.target.value }
-                                                                                    });
-                                                                                }
-                                                                            }}
-                                                                        />
-                                                                        {item.instructions && (
-                                                                            <p className="text-[9px] text-slate-400 mt-0.5 leading-none font-medium">{item.instructions}</p>
-                                                                        )}
-                                                                    </div>
-
-                                                                    <div className="flex items-center gap-3 shrink-0">
-                                                                        <div className="flex flex-col items-center">
-                                                                            <span className="text-[8px] font-black uppercase text-slate-400 mb-0.5 tracking-wider">Req</span>
-                                                                            <Switch
-                                                                                checked={item.is_required}
-                                                                                onCheckedChange={(val) => {
-                                                                                    updateTaskMutation.mutate({
-                                                                                        itemId: item.checklist_item_id,
-                                                                                        data: { is_required: val }
-                                                                                    });
-                                                                                }}
-                                                                                className="scale-[0.55] data-[state=checked]:bg-[hsl(var(--brand))]"
-                                                                            />
-                                                                        </div>
-                                                                        <Button
-                                                                            variant="ghost"
-                                                                            size="icon"
-                                                                            className="h-7 w-7 rounded-full text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
-                                                                            onClick={() => deleteTaskMutation.mutate(item.checklist_item_id)}
-                                                                        >
-                                                                            <Trash2 size={14} />
-                                                                        </Button>
-                                                                    </div>
-                                                                </div>
-                                                            ))}
-                                                        </div>
-                                                    )}
+                                <div className="flex-1 min-h-0 flex gap-4 overflow-hidden">
+                                    {/* Left pane: Checklist dropzone & tasks list */}
+                                    <div
+                                        className={cn(
+                                            "flex-1 flex flex-col min-w-0 transition-all duration-200 rounded-2xl p-1 relative",
+                                            isDraggingOverChecklist ? "bg-slate-50/80 border-2 border-dashed border-[hsl(var(--brand))]/30 scale-[0.99]" : "border-2 border-transparent"
+                                        )}
+                                        onDragOver={(e) => {
+                                            e.preventDefault();
+                                            setIsDraggingOverChecklist(true);
+                                        }}
+                                        onDragLeave={() => {
+                                            setIsDraggingOverChecklist(false);
+                                        }}
+                                        onDrop={(e) => {
+                                            e.preventDefault();
+                                            setIsDraggingOverChecklist(false);
+                                            const templateId = e.dataTransfer.getData("text/plain");
+                                            if (templateId) {
+                                                console.log('[RosterPage] Template dropped:', templateId);
+                                                attachTemplateMutation.mutate([templateId]);
+                                            }
+                                        }}
+                                    >
+                                        {isDraggingOverChecklist && (
+                                            <div className="absolute inset-0 bg-[hsl(var(--brand))]/5 pointer-events-none rounded-xl flex flex-col items-center justify-center gap-2 z-10 animate-fade-in">
+                                                <div className="w-10 h-10 rounded-full bg-[hsl(var(--brand))]/10 flex items-center justify-center text-[hsl(var(--brand))]">
+                                                    <ClipboardList size={20} />
                                                 </div>
-                                            );
-                                        })
+                                                <span className="text-xs font-bold text-[hsl(var(--brand))]">Drop template to attach</span>
+                                            </div>
+                                        )}
+
+                                        <div className="flex-1 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
+                                            {isLoadingChecklist ? (
+                                                <div className="space-y-2 py-4">
+                                                    {[1, 2, 3].map(i => <div key={i} className="h-12 bg-slate-50 rounded-xl animate-pulse" />)}
+                                                </div>
+                                            ) : shiftChecklist.length === 0 ? (
+                                                <div className="flex flex-col items-center justify-center py-12 text-center bg-slate-50 rounded-2xl border-2 border-dashed border-slate-100 h-full min-h-[220px]">
+                                                    <ClipboardList size={32} className="text-slate-300 mb-2" />
+                                                    <p className="text-xs font-bold text-slate-400">No tasks for this shift yet.</p>
+                                                    <p className="text-[10px] text-slate-400 max-w-[180px] mt-1">Add tasks manually or attach a template.</p>
+                                                </div>
+                                            ) : (
+                                                groupedChecklist.map((group) => {
+                                                    const isCollapsed = collapsedGroups[group.id] === true;
+                                                    return (
+                                                        <div key={group.id} className="border border-slate-100 rounded-2xl overflow-hidden shadow-sm bg-white mb-3">
+                                                            <div className="w-full flex items-center justify-between px-4 py-2 bg-slate-50/50 hover:bg-slate-50 transition-colors border-b border-slate-100/50">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => toggleGroup(group.id)}
+                                                                    className="flex-1 flex items-center justify-between text-left focus:outline-none pr-4 py-1.5"
+                                                                 >
+                                                                     <div className="flex items-center gap-2">
+                                                                         <span className="text-xs font-black uppercase text-slate-700 tracking-wider">
+                                                                             {group.name}
+                                                                         </span>
+                                                                         <Badge variant="secondary" className="bg-slate-200/50 text-slate-600 text-[9px] font-black tracking-tight px-1.5 py-0.5 rounded-full">
+                                                                             {group.items.length} {group.items.length === 1 ? 'task' : 'tasks'}
+                                                                         </Badge>
+                                                                     </div>
+                                                                 </button>
+                                                                 <div className="flex items-center gap-1 shrink-0">
+                                                                     {group.id !== 'custom' && (
+                                                                         <Button
+                                                                             variant="ghost"
+                                                                             size="icon"
+                                                                             className="h-7 w-7 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                                                                             onClick={(e) => {
+                                                                                 e.stopPropagation();
+                                                                                 removeTemplateTasksMutation.mutate(group.id);
+                                                                             }}
+                                                                         >
+                                                                             <Trash2 size={14} />
+                                                                         </Button>
+                                                                     )}
+                                                                     <button
+                                                                         type="button"
+                                                                         onClick={() => toggleGroup(group.id)}
+                                                                         className="h-7 w-7 flex items-center justify-center text-slate-400 hover:bg-slate-100 rounded-lg transition-colors focus:outline-none"
+                                                                     >
+                                                                         <ChevronDown
+                                                                             size={16}
+                                                                             className={cn("transition-transform duration-200", isCollapsed ? "" : "rotate-180")}
+                                                                         />
+                                                                     </button>
+                                                                 </div>
+                                                             </div>
+
+                                                            {!isCollapsed && (
+                                                                <div className="p-3 space-y-2 bg-white divide-y divide-slate-50">
+                                                                    {group.items.map((item) => (
+                                                                        <div key={item.checklist_item_id} className="group flex items-center gap-3 py-2.5 bg-white border border-transparent rounded-xl hover:border-[hsl(var(--brand))]/10 px-2 transition-all">
+                                                                            <div className={cn(
+                                                                                "w-5 h-5 rounded-full flex items-center justify-center shrink-0 border-2 transition-all",
+                                                                                item.status === 'done' ? "bg-emerald-500 border-emerald-500 text-white" : "border-slate-200 text-slate-100"
+                                                                            )}>
+                                                                                {item.status === 'done' ? <Check size={12} strokeWidth={4} /> : <div className="w-1.5 h-1.5 rounded-full bg-slate-200" />}
+                                                                            </div>
+
+                                                                            <div className="flex-1 min-w-0">
+                                                                                <input
+                                                                                    className="w-full bg-transparent border-none font-bold text-xs p-0 focus:ring-0 text-slate-700 placeholder-slate-400"
+                                                                                    defaultValue={item.task_text}
+                                                                                    onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                                                                                    onBlur={(e) => {
+                                                                                        if (e.target.value !== item.task_text) {
+                                                                                            updateTaskMutation.mutate({
+                                                                                                itemId: item.checklist_item_id,
+                                                                                                data: { task_text: e.target.value }
+                                                                                            });
+                                                                                        }
+                                                                                    }}
+                                                                                />
+                                                                                {item.instructions && (
+                                                                                    <p className="text-[9px] text-slate-400 mt-0.5 leading-none font-medium">{item.instructions}</p>
+                                                                                )}
+                                                                            </div>
+
+                                                                            <div className="flex items-center gap-3 shrink-0">
+                                                                                <div className="flex flex-col items-center">
+                                                                                    <span className="text-[8px] font-black uppercase text-slate-400 mb-0.5 tracking-wider">Req</span>
+                                                                                    <Switch
+                                                                                        checked={item.is_required}
+                                                                                        onCheckedChange={(val) => {
+                                                                                            updateTaskMutation.mutate({
+                                                                                                itemId: item.checklist_item_id,
+                                                                                                data: { is_required: val }
+                                                                                            });
+                                                                                        }}
+                                                                                        className="scale-[0.55] data-[state=checked]:bg-[hsl(var(--brand))]"
+                                                                                    />
+                                                                                </div>
+                                                                                <Button
+                                                                                    variant="ghost"
+                                                                                    size="icon"
+                                                                                    className="h-7 w-7 rounded-full text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                                                    onClick={() => deleteTaskMutation.mutate(item.checklist_item_id)}
+                                                                                >
+                                                                                    <Trash2 size={14} />
+                                                                                </Button>
+                                                                            </div>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {/* Right pane: Scrollable and searchable templates sidebar */}
+                                    {isTemplatesPanelOpen && (
+                                        <div className="w-[210px] shrink-0 border-l border-slate-100 pl-4 flex flex-col h-full overflow-hidden animate-in slide-in-from-right-3 duration-200">
+                                            <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest block mb-2 shrink-0">Templates List</span>
+                                            <div className="relative mb-2 shrink-0">
+                                                <input
+                                                    type="text"
+                                                    placeholder="Search templates..."
+                                                    value={templateSearchQuery}
+                                                    onChange={(e) => setTemplateSearchQuery(e.target.value)}
+                                                    className="w-full h-8 px-2.5 text-xs rounded-lg border border-slate-200 bg-white focus:outline-none focus:ring-1 focus:ring-[hsl(var(--brand))] focus:border-[hsl(var(--brand))]"
+                                                />
+                                            </div>
+                                            <div className="flex-1 overflow-y-auto space-y-1.5 pr-1 custom-scrollbar">
+                                                {filteredTemplates.length === 0 ? (
+                                                    <div className="p-3 text-center text-xs text-slate-400">No templates found</div>
+                                                ) : (
+                                                    filteredTemplates.map(t => (
+                                                        <div
+                                                            key={t.template_id}
+                                                            draggable="true"
+                                                            onDragStart={(e) => {
+                                                                e.dataTransfer.setData("text/plain", t.template_id);
+                                                                e.dataTransfer.effectAllowed = "copy";
+                                                            }}
+                                                            onClick={() => {
+                                                                console.log('[RosterPage] Template clicked:', t.name);
+                                                                attachTemplateMutation.mutate([t.template_id]);
+                                                            }}
+                                                            className="group flex items-center justify-between px-2.5 py-2 text-xs font-bold text-slate-700 bg-slate-50 hover:bg-[hsl(var(--brand-light))]/60 border border-slate-100 hover:border-[hsl(var(--brand))]/20 rounded-xl cursor-grab active:cursor-grabbing transition-all select-none"
+                                                        >
+                                                            <div className="flex items-center gap-1.5 min-w-0">
+                                                                <div className="text-slate-300 group-hover:text-[hsl(var(--brand))]/40 shrink-0">
+                                                                    <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor">
+                                                                        <circle cx="2" cy="2" r="1"/>
+                                                                        <circle cx="2" cy="5" r="1"/>
+                                                                        <circle cx="2" cy="8" r="1"/>
+                                                                        <circle cx="5" cy="2" r="1"/>
+                                                                        <circle cx="5" cy="5" r="1"/>
+                                                                        <circle cx="5" cy="8" r="1"/>
+                                                                    </svg>
+                                                                </div>
+                                                                <span className="truncate pr-1">{t.name}</span>
+                                                            </div>
+                                                            <Button
+                                                                type="button"
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                className="h-5 w-5 rounded-md text-slate-400 hover:text-[hsl(var(--brand))] hover:bg-white shrink-0"
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    attachTemplateMutation.mutate([t.template_id]);
+                                                                }}
+                                                            >
+                                                                <Plus size={12} strokeWidth={3} />
+                                                            </Button>
+                                                        </div>
+                                                    ))
+                                                )}
+                                            </div>
+                                            <div className="mt-2 text-[9px] text-slate-400 leading-tight shrink-0 bg-slate-50 p-2 rounded-lg border border-slate-100/50">
+                                                💡 Drag a template and drop on the left, or click it to attach.
+                                            </div>
+                                        </div>
                                     )}
                                 </div>
-                                <div className="mt-4 pt-4 border-t border-slate-100">
+
+                                <div className="mt-4 pt-4 border-t border-slate-100 shrink-0">
                                     <p className="text-[10px] text-slate-400 leading-tight">
                                         <Info size={10} className="inline mr-1" />
                                         This is a shift-specific snapshot. Changes here will not affect the original template, and updating the template later will not affect this shift.
                                     </p>
                                 </div>
                             </TabsContent>
+
                         </Tabs>
                     </DialogContent>
                 </Dialog>
@@ -2986,7 +3148,7 @@ export default function OwnerRosterPage() {
                                     </div>
                                     <div className="flex justify-between text-slate-500">
                                         <span>Type:</span>
-                                        <span className="font-medium text-slate-800 capitalize font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-100 text-xs">
+                                        <span className="capitalize font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-100 text-xs">
                                             {conflictData.shift_type || "Standard"}
                                         </span>
                                     </div>

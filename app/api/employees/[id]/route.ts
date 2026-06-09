@@ -420,7 +420,52 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
         }
 
         if (hardDelete) {
-            // Hard delete: remove Employee record + auth account
+            const adminClient = createAdminClient();
+
+            // 1. Delete/nullify dependent records first to avoid foreign key violations
+            // ShiftSwapRequest (requester or target)
+            await supabase.from('ShiftSwapRequest').delete().eq('requester_id', id);
+            await supabase.from('ShiftSwapRequest').delete().eq('target_employee_id', id);
+
+            // LeaveRequest
+            await supabase.from('LeaveRequest').delete().eq('employee_id', id);
+
+            // LeaveBalance
+            await supabase.from('LeaveBalance').delete().eq('employee_id', id);
+
+            // EmployeeAvailability
+            await supabase.from('employee_availability').delete().eq('employee_id', id);
+
+            // AttendanceEditRequest
+            await supabase.from('AttendanceEditRequest').delete().eq('employee_id', id);
+
+            // Certificate
+            await supabase.from('Certificate').delete().eq('employee_id', id);
+
+            // EmployeeRateHistory
+            await supabase.from('EmployeeRateHistory').delete().eq('employee_id', id);
+
+            // TimeSheet
+            await supabase.from('TimeSheet').delete().eq('employee_id', id);
+
+            // Shift (nullable, set to null)
+            await supabase.from('Shift').update({ employee_id: null }).eq('employee_id', id);
+
+            // AttendanceLog (nullable, set to null)
+            await supabase.from('AttendanceLog').update({ employee_id: null }).eq('employee_id', id);
+
+            // PayrollLine (nullable, set to null)
+            await supabase.from('PayrollLine').update({ employee_id: null }).eq('employee_id', id);
+
+            // User record (if exists) and its dependencies
+            if (employee.user_id) {
+                // Set ordered_by to null in DailyOrderTask if it references this user
+                await supabase.from('DailyOrderTask').update({ ordered_by: null }).eq('ordered_by', employee.user_id);
+                // Delete User record
+                await supabase.from('User').delete().eq('user_id', employee.user_id);
+            }
+
+            // 2. Delete the main Employee record
             const { error: deleteError } = await supabase
                 .from('Employee')
                 .delete()
@@ -430,9 +475,10 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
                 return errorResponse(`Failed to delete employee: ${deleteError.message}`, 400);
             }
 
-            // Delete auth account
-            const adminClient = createAdminClient();
-            await adminClient.auth.admin.deleteUser(employee.user_id);
+            // 3. Delete auth account (if exists)
+            if (employee.user_id) {
+                await adminClient.auth.admin.deleteUser(employee.user_id);
+            }
 
             await logAudit({
                 businessId: authUser.business_id,

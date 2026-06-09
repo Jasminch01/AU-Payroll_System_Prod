@@ -172,25 +172,28 @@ export async function DELETE(
             return errorResponse(mappingError.message, 400);
         }
 
-        // 3. Delete all items associated with this template to avoid foreign key violations
+        // 3. Set source_template_id and source_item_id to null in ShiftChecklistItem if they exist
+        // (Prevents foreign key issues on ShiftChecklistItem when deleting ChecklistTemplateItem and ChecklistTemplate)
+        const { error: shiftItemsError } = await supabase
+            .from('ShiftChecklistItem')
+            .update({ 
+                source_template_id: null,
+                source_item_id: null
+            })
+            .eq('source_template_id', id);
+
+        if (shiftItemsError) {
+            console.error('Failed to reset ShiftChecklistItem references:', shiftItemsError);
+            return errorResponse(shiftItemsError.message, 400);
+        }
+
+        // 4. Delete all items associated with this template
         const { error: itemsError } = await supabase
             .from('ChecklistTemplateItem')
             .delete()
             .eq('template_id', id);
 
         if (itemsError) return errorResponse(itemsError.message, 400);
-
-        // 4. Set source_template_id to null in ShiftChecklistItem if it exists
-        // (Prevents foreign key issues on ShiftChecklistItem if it doesn't have ON DELETE SET NULL)
-        const { error: shiftItemsError } = await supabase
-            .from('ShiftChecklistItem')
-            .update({ source_template_id: null })
-            .eq('source_template_id', id);
-
-        if (shiftItemsError) {
-            console.warn('Could not reset ShiftChecklistItem source_template_id:', shiftItemsError.message);
-            // Proceed anyway, as it might not be constrained
-        }
 
         // 5. Delete the template itself
         const { error: deleteError } = await supabase
