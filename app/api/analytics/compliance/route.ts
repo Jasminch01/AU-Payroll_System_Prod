@@ -21,20 +21,27 @@ export async function GET(request: NextRequest) {
         const alerts: string[] = [];
         let score = 100;
 
-        // 1. Check Business Profile (ABN)
-        const { data: business } = await supabase
-            .from('Business')
-            .select('abn')
-            .eq('business_id', businessId)
-            .single();
+        const sevenDaysAgo = new Date();
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
-        // 2. Check Xero Integration
-        const { data: xeroConfig } = await supabase
-            .from('XeroConfig')
-            .select('tenant_id')
-            .eq('business_id', businessId)
-            .single();
+        // Run all queries in parallel to minimize roundtrip database latencies
+        const [
+            businessRes,
+            xeroConfigRes,
+            employeesRes,
+            overdueTimesheetsRes
+        ] = await Promise.all([
+            supabase.from('Business').select('abn').eq('business_id', businessId).maybeSingle(),
+            supabase.from('XeroConfig').select('tenant_id').eq('business_id', businessId).maybeSingle(),
+            supabase.from('Employee').select('employee_id, first_name, last_name').eq('business_id', businessId).eq('status', 'active'),
+            supabase.from('TimeSheet').select('*', { count: 'exact', head: true }).eq('business_id', businessId).eq('status', 'pending').lt('created_at', sevenDaysAgo.toISOString())
+        ]);
 
+        const business = businessRes.data;
+        const xeroConfig = xeroConfigRes.data;
+        const employees = employeesRes.data;
+        const empError = employeesRes.error;
+        const overdueTimesheets = overdueTimesheetsRes.count;
 
         if (!business?.abn) {
             score -= 30;
@@ -46,15 +53,7 @@ export async function GET(request: NextRequest) {
             alerts.push('Xero integration not connected.');
         }
 
-
-
         // 2. Check Employee Data
-        const { data: employees, error: empError } = await supabase
-            .from('Employee')
-            .select('employee_id, first_name, last_name')
-            .eq('business_id', businessId)
-            .eq('status', 'active');
-
         if (empError) {
             console.error('Compliance employee check error:', empError.message);
         }
@@ -80,16 +79,6 @@ export async function GET(request: NextRequest) {
         }
 
         // 3. Check Operational Health (e.g., stale timesheets)
-        const sevenDaysAgo = new Date();
-        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-
-        const { count: overdueTimesheets } = await supabase
-            .from('TimeSheet')
-            .select('*', { count: 'exact', head: true })
-            .eq('business_id', businessId)
-            .eq('status', 'pending')
-            .lt('created_at', sevenDaysAgo.toISOString());
-
         if (overdueTimesheets && overdueTimesheets > 0) {
             score -= 10;
             alerts.push(`${overdueTimesheets} timesheets are pending approval for more than 7 days.`);
