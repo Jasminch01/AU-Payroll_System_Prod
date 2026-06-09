@@ -263,7 +263,25 @@ export default function ManagerRosterPage() {
 
     useEffect(() => {
         if (employees.length > 0 && orderedEmployeeIds.length === 0) {
-            setOrderedEmployeeIds(employees.filter((e: any) => e.status === "active").map((e: any) => e.employee_id));
+            const activeEmpIds = employees.filter((e: any) => e.status === "active").map((e: any) => e.employee_id);
+            try {
+                const savedOrderStr = localStorage.getItem("roster_employee_order");
+                if (savedOrderStr) {
+                    const savedOrder = JSON.parse(savedOrderStr);
+                    if (Array.isArray(savedOrder)) {
+                        // Filter to keep only existing active employee IDs
+                        const filteredSaved = savedOrder.filter(id => activeEmpIds.includes(id));
+                        // Find any new active employees that weren't in the saved order and append them
+                        const newActive = activeEmpIds.filter(id => !savedOrder.includes(id));
+                        const finalOrder = [...filteredSaved, ...newActive];
+                        setOrderedEmployeeIds(finalOrder);
+                        return;
+                    }
+                }
+            } catch (e) {
+                console.error("Failed to load employee order from localStorage:", e);
+            }
+            setOrderedEmployeeIds(activeEmpIds);
         }
     }, [employees, orderedEmployeeIds.length]);
 
@@ -1553,6 +1571,11 @@ export default function ManagerRosterPage() {
                                     if (firstIndex !== -1) {
                                         updated.splice(firstIndex, pageIds.length, ...newOrder);
                                         setOrderedEmployeeIds(updated);
+                                        try {
+                                            localStorage.setItem("roster_employee_order", JSON.stringify(updated));
+                                        } catch (e) {
+                                            console.error("Failed to save employee order to localStorage:", e);
+                                        }
                                     }
                                 }}
                                 className="relative"
