@@ -135,6 +135,12 @@ export async function POST(request: NextRequest) {
                 email,
                 password,
                 email_confirm: true,
+                user_metadata: {
+                    role: 'manager',
+                    first_name,
+                    last_name,
+                    business_id: authUser.business_id
+                }
             });
 
         if (authError) {

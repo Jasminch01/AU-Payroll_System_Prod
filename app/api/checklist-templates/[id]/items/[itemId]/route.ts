@@ -62,6 +62,17 @@ export async function DELETE(
         const { itemId } = await params;
         const supabase = await createClient();
 
+        // Set source_item_id to null in ShiftChecklistItem for this specific item to prevent foreign key violation
+        const { error: resetError } = await supabase
+            .from('ShiftChecklistItem')
+            .update({ source_item_id: null })
+            .eq('source_item_id', itemId);
+
+        if (resetError) {
+            console.error('Failed to reset ShiftChecklistItem references:', resetError);
+            return errorResponse(resetError.message, 400);
+        }
+
         const { error } = await supabase
             .from('ChecklistTemplateItem')
             .delete()

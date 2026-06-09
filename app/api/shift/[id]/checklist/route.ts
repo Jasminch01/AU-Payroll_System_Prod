@@ -141,6 +141,18 @@ export async function PUT(
 
         if (itemsError) return errorResponse(itemsError.message, 400);
 
+        // Sort templateItems by their template's position in template_ids, and then by their own sort_order
+        if (templateItems) {
+            templateItems.sort((a, b) => {
+                const indexA = template_ids.indexOf(a.template_id);
+                const indexB = template_ids.indexOf(b.template_id);
+                if (indexA !== indexB) {
+                    return indexA - indexB;
+                }
+                return (a.sort_order ?? 0) - (b.sort_order ?? 0);
+            });
+        }
+
         // Get current max sort_order
         const { data: lastItem } = await supabase
             .from('ShiftChecklistItem')
