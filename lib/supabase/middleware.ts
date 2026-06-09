@@ -43,37 +43,66 @@ export async function updateSession(request: NextRequest) {
         }
 
         let role = user.user_metadata?.role;
+        let businessId = user.user_metadata?.business_id;
 
-        if (!role) {
-            // Fetch user role
-            // Check User table first (Owner/Manager)
-            const { data: userRecord } = await supabase
-                .from('User')
-                .select('role')
+        if (!role || !businessId) {
+            // Fetch employee and user records safely (cache miss)
+            const empPromise = supabase
+                .from('Employee')
+                .select('employee_id, business_id, first_name, last_name')
                 .eq('user_id', user.id)
-                .single();
+                .maybeSingle();
 
-            role = userRecord?.role || null;
+            let userRes = await supabase
+                .from('User')
+                .select('role, business_id, first_name, last_name, can_order_liquor')
+                .eq('user_id', user.id)
+                .maybeSingle();
 
-            if (!role) {
-                // Check Employee table
-                const { data: employeeRecord } = await supabase
-                    .from('Employee')
-                    .select('employee_id')
+            // Fallback if can_order_liquor column is missing in database
+            if (userRes.error && userRes.error.message.includes('can_order_liquor')) {
+                userRes = await supabase
+                    .from('User')
+                    .select('role, business_id, first_name, last_name')
                     .eq('user_id', user.id)
-                    .single();
-
-                if (employeeRecord) {
-                    role = 'employee';
-                }
+                    .maybeSingle();
             }
 
-            // Sync/cache role metadata in background for future fast checks
-            if (role) {
+            const userRecord = userRes.data;
+            const { data: employeeRecord } = await empPromise;
+
+            let metadataToSet: any = null;
+
+            if (userRecord) {
+                role = userRecord.role;
+                businessId = userRecord.business_id;
+                metadataToSet = {
+                    role: userRecord.role,
+                    business_id: userRecord.business_id,
+                    first_name: userRecord.first_name,
+                    last_name: userRecord.last_name,
+                    employee_id: employeeRecord?.employee_id,
+                    can_order_liquor: userRecord.can_order_liquor ?? false,
+                };
+            } else if (employeeRecord) {
+                role = 'employee';
+                businessId = employeeRecord.business_id;
+                metadataToSet = {
+                    role: 'employee',
+                    business_id: employeeRecord.business_id,
+                    first_name: employeeRecord.first_name ?? '',
+                    last_name: employeeRecord.last_name ?? '',
+                    employee_id: employeeRecord.employee_id,
+                    can_order_liquor: false,
+                };
+            }
+
+            // Sync/cache metadata in background for future fast checks
+            if (metadataToSet) {
                 supabase.auth.updateUser({
-                    data: { role }
+                    data: metadataToSet
                 }).catch(err => {
-                    console.error('[Middleware] Background role metadata update failed:', err);
+                    console.error('[Middleware] Background metadata update failed:', err);
                 });
             }
         }
