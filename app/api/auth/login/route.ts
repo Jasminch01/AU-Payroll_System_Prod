@@ -54,6 +54,15 @@ export async function POST(request: NextRequest) {
             .single();
 
         if (userRecord && !userError) {
+            // Update metadata to include role if not present or incorrect
+            if (authData.user.user_metadata?.role !== userRecord.role) {
+                const { createAdminClient } = await import('@/lib/supabase/admin');
+                const adminClient = createAdminClient();
+                await adminClient.auth.admin.updateUserById(userId, {
+                    user_metadata: { ...authData.user.user_metadata, role: userRecord.role }
+                }).catch(err => console.error('Failed to update metadata role on login:', err));
+            }
+
             return successResponse({
                 user: {
                     user_id: userId,
@@ -79,6 +88,15 @@ export async function POST(request: NextRequest) {
         if (employeeRecord && !employeeError) {
             if (employeeRecord.status === 'inactive') {
                 return errorResponse('Your account is currently inactive. Please contact your manager.', 403);
+            }
+
+            // Update metadata to include role if not present or incorrect
+            if (authData.user.user_metadata?.role !== 'employee') {
+                const { createAdminClient } = await import('@/lib/supabase/admin');
+                const adminClient = createAdminClient();
+                await adminClient.auth.admin.updateUserById(userId, {
+                    user_metadata: { ...authData.user.user_metadata, role: 'employee' }
+                }).catch(err => console.error('Failed to update metadata role on login:', err));
             }
 
             return successResponse({

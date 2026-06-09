@@ -42,26 +42,39 @@ export async function updateSession(request: NextRequest) {
             return NextResponse.redirect(new URL('/login', request.url));
         }
 
-        // Fetch user role
-        // Check User table first (Owner/Manager)
-        const { data: userRecord } = await supabase
-            .from('User')
-            .select('role')
-            .eq('user_id', user.id)
-            .single();
-
-        let role: string | null = userRecord?.role || null;
+        let role = user.user_metadata?.role;
 
         if (!role) {
-            // Check Employee table
-            const { data: employeeRecord } = await supabase
-                .from('Employee')
-                .select('employee_id')
+            // Fetch user role
+            // Check User table first (Owner/Manager)
+            const { data: userRecord } = await supabase
+                .from('User')
+                .select('role')
                 .eq('user_id', user.id)
                 .single();
 
-            if (employeeRecord) {
-                role = 'employee';
+            role = userRecord?.role || null;
+
+            if (!role) {
+                // Check Employee table
+                const { data: employeeRecord } = await supabase
+                    .from('Employee')
+                    .select('employee_id')
+                    .eq('user_id', user.id)
+                    .single();
+
+                if (employeeRecord) {
+                    role = 'employee';
+                }
+            }
+
+            // Sync/cache role metadata in background for future fast checks
+            if (role) {
+                supabase.auth.updateUser({
+                    data: { role }
+                }).catch(err => {
+                    console.error('[Middleware] Background role metadata update failed:', err);
+                });
             }
         }
 

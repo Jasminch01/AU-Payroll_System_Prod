@@ -46,7 +46,8 @@ export async function POST(request: NextRequest) {
                 first_name,
                 last_name,
                 business_id: business.business_id,
-                invite_as: 'employee'
+                invite_as: 'employee',
+                role: 'employee'
             }
         });
 

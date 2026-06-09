@@ -320,6 +320,12 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
                     email: updateData.email as string,
                     password,
                     email_confirm: true,
+                    user_metadata: {
+                        role: 'employee',
+                        first_name: beforeValue.first_name,
+                        last_name: beforeValue.last_name,
+                        business_id: beforeValue.business_id
+                    }
                 });
 
                 if (authError) {

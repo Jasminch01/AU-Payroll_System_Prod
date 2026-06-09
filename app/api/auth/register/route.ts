@@ -77,6 +77,11 @@ export async function POST(request: NextRequest) {
             password,
             options: {
                 emailRedirectTo: `${siteUrl}/login?confirmed=true`,
+                data: {
+                    role: 'owner',
+                    first_name,
+                    last_name,
+                }
             },
         });
 
