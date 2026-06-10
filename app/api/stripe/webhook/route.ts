@@ -1,6 +1,6 @@
-import { NextResponse } from 'next/server';
 import { stripe } from '@/lib/stripe/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
 
 export async function POST(request: Request) {
@@ -120,9 +120,9 @@ async function upsertSubscription(
 
     console.log(`[Stripe Webhook] Upserting:`, JSON.stringify(subscriptionData));
 
-    const { error } = await supabaseAdmin
+ const { error } = await supabaseAdmin
         .from('Subscriptions')
-        .upsert(subscriptionData, { onConflict: 'stripe_subscription_id' });
+        .upsert(subscriptionData, { onConflict: 'business_id' });
 
     if (error) {
         console.error('[Stripe Webhook] Upsert error:', JSON.stringify(error));
