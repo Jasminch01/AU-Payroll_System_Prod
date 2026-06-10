@@ -156,31 +156,49 @@ export async function POST(request: NextRequest) {
                 const isActiveRaw = String(row['is_active'] ?? row['Active'] ?? 'true').trim().toLowerCase();
                 const isActive    = isActiveRaw !== 'false' && isActiveRaw !== 'no' && isActiveRaw !== '0';
 
-                const { error: insertError } = await supabase
+                // Check if the item already exists to avoid using onConflict which requires a unique constraint
+                const { data: existingItem } = await supabase
                     .from('OrderGuideItem')
-                    .upsert(
-                        {
-                            business_id:          authUser.business_id,
-                            category_id:          categoryId,
-                            supplier_id:          supplierId,
-                            product_name:         productName,
-                            min_stock_qty:        minQty!,
-                            max_stock_qty:        maxQty!,
-                            default_order_qty:    parseNumeric(row['default_order_qty'] ?? row['Default Order Qty']),
-                            unit,
-                            order_frequency:      (String(row['order_frequency'] ?? row['Order Frequency'] ?? 'daily').trim().toLowerCase() as any) || 'daily',
-                            order_days:           orderDays,
-                            ordering_method:      String(row['ordering_method'] ?? row['Ordering Method'] ?? '').trim() || null,
-                            ordering_instruction: String(row['ordering_instruction'] ?? row['Ordering Instruction'] ?? '').trim() || null,
-                            comment:              String(row['comment'] ?? row['Comment'] ?? '').trim() || null,
-                            is_active:            isActive,
-                            sort_order:           i,
-                        },
-                        { onConflict: 'business_id,category_id,product_name' as any, ignoreDuplicates: false }
-                    );
+                    .select('item_id')
+                    .eq('business_id', authUser.business_id)
+                    .eq('category_id', categoryId)
+                    .eq('product_name', productName)
+                    .maybeSingle();
 
-                if (insertError) {
-                    errors.push(`Row ${rowNum} (${productName}): ${insertError.message}`);
+                let dbOp;
+                const payload = {
+                    business_id:          authUser.business_id,
+                    category_id:          categoryId,
+                    supplier_id:          supplierId,
+                    product_name:         productName,
+                    min_stock_qty:        minQty!,
+                    max_stock_qty:        maxQty!,
+                    default_order_qty:    parseNumeric(row['default_order_qty'] ?? row['Default Order Qty']),
+                    unit,
+                    order_frequency:      (String(row['order_frequency'] ?? row['Order Frequency'] ?? 'daily').trim().toLowerCase() as any) || 'daily',
+                    order_days:           orderDays,
+                    ordering_method:      String(row['ordering_method'] ?? row['Ordering Method'] ?? '').trim() || null,
+                    ordering_instruction: String(row['ordering_instruction'] ?? row['Ordering Instruction'] ?? '').trim() || null,
+                    comment:              String(row['comment'] ?? row['Comment'] ?? '').trim() || null,
+                    is_active:            isActive,
+                    sort_order:           i,
+                };
+
+                if (existingItem) {
+                    dbOp = supabase
+                        .from('OrderGuideItem')
+                        .update(payload)
+                        .eq('item_id', existingItem.item_id);
+                } else {
+                    dbOp = supabase
+                        .from('OrderGuideItem')
+                        .insert(payload);
+                }
+
+                const { error: dbError } = await dbOp;
+
+                if (dbError) {
+                    errors.push(`Row ${rowNum} (${productName}): ${dbError.message}`);
                     skipped++;
                 } else {
                     created++;

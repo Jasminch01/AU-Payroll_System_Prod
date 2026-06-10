@@ -29,7 +29,22 @@ export async function getAuthUser(): Promise<AuthUser | null> {
 
     if (authError || !user) return null;
 
-    // Fetch employee and user records safely
+    // 1. Check metadata cache first
+    const meta = user.user_metadata;
+    if (meta && meta.role && meta.business_id) {
+        return {
+            user_id: user.id,
+            email: user.email!,
+            role: meta.role as UserRole,
+            business_id: meta.business_id,
+            first_name: meta.first_name || '',
+            last_name: meta.last_name || '',
+            employee_id: meta.employee_id,
+            can_order_liquor: meta.can_order_liquor ?? false,
+        };
+    }
+
+    // 2. Fetch employee and user records safely (cache miss)
     const empPromise = supabase
         .from('Employee')
         .select('employee_id, business_id, first_name, last_name')
@@ -54,8 +69,10 @@ export async function getAuthUser(): Promise<AuthUser | null> {
     const userRecord = userRes.data;
     const { data: employeeRecord } = await empPromise;
 
+    let authUser: AuthUser | null = null;
+
     if (userRecord) {
-        return {
+        authUser = {
             user_id: user.id,
             email: user.email!,
             role: userRecord.role as UserRole,
@@ -65,10 +82,8 @@ export async function getAuthUser(): Promise<AuthUser | null> {
             employee_id: employeeRecord?.employee_id,
             can_order_liquor: userRecord.can_order_liquor ?? false,
         };
-    }
-
-    if (employeeRecord) {
-        return {
+    } else if (employeeRecord) {
+        authUser = {
             user_id: user.id,
             email: user.email!,
             role: 'employee',
@@ -76,11 +91,27 @@ export async function getAuthUser(): Promise<AuthUser | null> {
             first_name: employeeRecord.first_name ?? '',
             last_name: employeeRecord.last_name ?? '',
             employee_id: employeeRecord.employee_id,
-            can_order_liquor: false, // Employees never have liquor ordering access
+            can_order_liquor: false,
         };
     }
 
-    return null;
+    // 3. Background sync metadata to bypass DB lookups next time
+    if (authUser) {
+        supabase.auth.updateUser({
+            data: {
+                role: authUser.role,
+                business_id: authUser.business_id,
+                first_name: authUser.first_name,
+                last_name: authUser.last_name,
+                employee_id: authUser.employee_id,
+                can_order_liquor: authUser.can_order_liquor
+            }
+        }).catch(err => {
+            console.error('[Auth] Background metadata update failed:', err);
+        });
+    }
+
+    return authUser;
 }
 
 /**

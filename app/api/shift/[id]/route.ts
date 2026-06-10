@@ -105,22 +105,33 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
         const newStart = updateData.start_time || existing.start_time;
         const newEnd = updateData.end_time || existing.end_time;
         const newEmployee = updateData.employee_id || existing.employee_id;
+        const force = body.force === true;
 
-        if (newEmployee) {
+        if (newEmployee && !force) {
             // 1. Check for overlapping shifts
             const { data: overlapping } = await supabase
                 .from('Shift')
-                .select('shift_id')
+                .select('shift_id, shift_date, start_time, end_time, shift_type')
                 .eq('employee_id', newEmployee)
                 .eq('business_id', authUser.business_id)
                 .neq('shift_id', id)
                 .lte('start_time', newEnd)
                 .gte('end_time', newStart)
                 .limit(1)
-                .single();
+                .maybeSingle();
 
             if (overlapping) {
-                return errorResponse('This update creates an overlapping shift for the employee.', 409);
+                return successResponse({
+                    status: 'conflict',
+                    message: 'This update creates an overlapping shift for the employee.',
+                    conflict: {
+                        shift_id: overlapping.shift_id,
+                        shift_date: overlapping.shift_date,
+                        start_time: overlapping.start_time,
+                        end_time: overlapping.end_time,
+                        shift_type: overlapping.shift_type
+                    }
+                }, 'Conflict detected');
             }
 
             // 2. Check for approved leave

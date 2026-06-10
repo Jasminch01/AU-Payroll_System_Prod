@@ -57,12 +57,11 @@ export async function GET(request: NextRequest) {
                 end_time,
                 shift_type,
                 shift_status,
-                Roster!inner(roster_id, status, published_at)
+                Roster(roster_id, status, published_at)
             `)
             .eq('employee_id', employee_id)
             .eq('business_id', authUser.business_id)
             .eq('shift_status', 'published')
-            .not('Roster.published_at', 'is', null)
             .gte('shift_date', from)
             .order('shift_date', { ascending: true });
 

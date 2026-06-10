@@ -292,17 +292,84 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
             }
         }
 
-        // --- EMAIL SYNCHRONIZATION ---
-        // If the email was changed, update it in Supabase Auth as well
+        // --- EMAIL SYNCHRONIZATION / AUTH CREATION ---
+        // If the email was changed, update/create it in Supabase Auth as well
         if (updateData.email && beforeValue && beforeValue.email !== updateData.email) {
-            const { error: authUpdateError } = await adminClient.auth.admin.updateUserById(beforeValue.user_id, {
-                email: updateData.email as string,
-                email_confirm: true // Force confirm since this is a manager correction
-            });
+            if (beforeValue.user_id) {
+                const { error: authUpdateError } = await adminClient.auth.admin.updateUserById(beforeValue.user_id, {
+                    email: updateData.email as string,
+                    email_confirm: true // Force confirm since this is a manager correction
+                });
 
-            if (authUpdateError) {
-                console.error('Auth email synchronization failed:', authUpdateError.message);
-                // We don't fail the whole request but we should log it
+                if (authUpdateError) {
+                    console.error('Auth email synchronization failed:', authUpdateError.message);
+                    // We don't fail the whole request but we should log it
+                }
+            } else {
+                // No existing auth user: password must be set!
+                const password = body.password as string;
+                if (!password || password.trim() === '') {
+                    return errorResponse('A password is required to create a login account for this employee.', 400);
+                }
+                if (password.length < 6) {
+                    return errorResponse('Password must be at least 6 characters', 400);
+                }
+
+                // Create the user in Auth
+                const { data: authData, error: authError } = await adminClient.auth.admin.createUser({
+                    email: updateData.email as string,
+                    password,
+                    email_confirm: true,
+                    user_metadata: {
+                        role: 'employee',
+                        first_name: beforeValue.first_name,
+                        last_name: beforeValue.last_name,
+                        business_id: beforeValue.business_id
+                    }
+                });
+
+                if (authError) {
+                    return errorResponse(`Failed to create auth account: ${authError.message}`, 400);
+                }
+
+                if (!authData.user) {
+                    return errorResponse('Failed to create user account', 500);
+                }
+
+                const newUserId = authData.user.id;
+
+                // Update Employee record with user_id and set status to active
+                const { error: linkError, data: linkedEmp } = await adminClient
+                    .from('Employee')
+                    .update({ 
+                        user_id: newUserId,
+                        status: 'active'
+                    })
+                    .eq('employee_id', id)
+                    .select()
+                    .single();
+
+                if (linkError) {
+                    // Cleanup user if linking fails
+                    await adminClient.auth.admin.deleteUser(newUserId);
+                    return errorResponse(`Failed to link employee account: ${linkError.message}`, 400);
+                }
+
+                // Also if they are promoted to a manager role, create the User record
+                const currentRole = body.role || 'employee';
+                if (currentRole === 'manager') {
+                    const { error: userError } = await adminClient.from('User').insert({
+                        user_id: newUserId,
+                        business_id: beforeValue.business_id,
+                        role: 'manager',
+                        first_name: beforeValue.first_name,
+                        last_name: beforeValue.last_name,
+                        can_order_liquor: body.can_order_liquor !== undefined ? body.can_order_liquor : false,
+                    });
+                    if (userError) console.error('Manager User record creation failed:', userError.message);
+                }
+
+                updatedEmployee = linkedEmp || updatedEmployee;
             }
         }
 
@@ -359,7 +426,52 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
         }
 
         if (hardDelete) {
-            // Hard delete: remove Employee record + auth account
+            const adminClient = createAdminClient();
+
+            // 1. Delete/nullify dependent records first to avoid foreign key violations
+            // ShiftSwapRequest (requester or target)
+            await supabase.from('ShiftSwapRequest').delete().eq('requester_id', id);
+            await supabase.from('ShiftSwapRequest').delete().eq('target_employee_id', id);
+
+            // LeaveRequest
+            await supabase.from('LeaveRequest').delete().eq('employee_id', id);
+
+            // LeaveBalance
+            await supabase.from('LeaveBalance').delete().eq('employee_id', id);
+
+            // EmployeeAvailability
+            await supabase.from('employee_availability').delete().eq('employee_id', id);
+
+            // AttendanceEditRequest
+            await supabase.from('AttendanceEditRequest').delete().eq('employee_id', id);
+
+            // Certificate
+            await supabase.from('Certificate').delete().eq('employee_id', id);
+
+            // EmployeeRateHistory
+            await supabase.from('EmployeeRateHistory').delete().eq('employee_id', id);
+
+            // TimeSheet
+            await supabase.from('TimeSheet').delete().eq('employee_id', id);
+
+            // Shift (nullable, set to null)
+            await supabase.from('Shift').update({ employee_id: null }).eq('employee_id', id);
+
+            // AttendanceLog (nullable, set to null)
+            await supabase.from('AttendanceLog').update({ employee_id: null }).eq('employee_id', id);
+
+            // PayrollLine (nullable, set to null)
+            await supabase.from('PayrollLine').update({ employee_id: null }).eq('employee_id', id);
+
+            // User record (if exists) and its dependencies
+            if (employee.user_id) {
+                // Set ordered_by to null in DailyOrderTask if it references this user
+                await supabase.from('DailyOrderTask').update({ ordered_by: null }).eq('ordered_by', employee.user_id);
+                // Delete User record
+                await supabase.from('User').delete().eq('user_id', employee.user_id);
+            }
+
+            // 2. Delete the main Employee record
             const { error: deleteError } = await supabase
                 .from('Employee')
                 .delete()
@@ -369,9 +481,10 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
                 return errorResponse(`Failed to delete employee: ${deleteError.message}`, 400);
             }
 
-            // Delete auth account
-            const adminClient = createAdminClient();
-            await adminClient.auth.admin.deleteUser(employee.user_id);
+            // 3. Delete auth account (if exists)
+            if (employee.user_id) {
+                await adminClient.auth.admin.deleteUser(employee.user_id);
+            }
 
             await logAudit({
                 businessId: authUser.business_id,

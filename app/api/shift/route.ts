@@ -78,7 +78,7 @@ export async function POST(request: NextRequest) {
         ]);
         if (validationError) return errorResponse(validationError, 400);
 
-        const { employee_id, roster_id, shift_date, start_time, end_time, shift_type, notify } = body;
+        const { employee_id, roster_id, shift_date, start_time, end_time, shift_type, notify, force } = body;
 
         // Validate time order and prevent past shifts
         const start = new Date(start_time);
@@ -110,20 +110,30 @@ export async function POST(request: NextRequest) {
         const supabase = await createClient();
 
         // If an employee is assigned, check for overlapping shifts for that employee
-        if (employee_id) {
+        if (employee_id && !force) {
             // 1. Check for overlapping shifts
             const { data: overlapping } = await supabase
                 .from('Shift')
-                .select('shift_id')
+                .select('shift_id, shift_date, start_time, end_time, shift_type')
                 .eq('employee_id', employee_id)
                 .eq('business_id', authUser.business_id)
                 .lte('start_time', end_time)
                 .gte('end_time', start_time)
                 .limit(1)
-                .single();
+                .maybeSingle();
 
             if (overlapping) {
-                return errorResponse('This employee already has an overlapping shift.', 409);
+                return successResponse({
+                    status: 'conflict',
+                    message: 'This employee already has an overlapping shift.',
+                    conflict: {
+                        shift_id: overlapping.shift_id,
+                        shift_date: overlapping.shift_date,
+                        start_time: overlapping.start_time,
+                        end_time: overlapping.end_time,
+                        shift_type: overlapping.shift_type
+                    }
+                }, 'Conflict detected');
             }
 
             // 2. Check for approved leave

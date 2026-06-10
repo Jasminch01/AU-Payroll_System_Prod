@@ -463,6 +463,7 @@ export default function OwnerEmployeesPage() {
                                 <DropdownMenuItem
                                     onClick={() => {
                                         setSelectedEmployee(row);
+                                        setInviteExistingEmail(row.email || "");
                                         setInviteExistingOpen(true);
                                     }}
                                     className="cursor-pointer text-[hsl(var(--brand))]"
@@ -1148,14 +1149,23 @@ export default function OwnerEmployeesPage() {
                     </DialogHeader>
 
                     <div className="py-4">
-                        <Input
-                            label="Email Address"
-                            type="email"
-                            showAsterisk
-                            placeholder="jane@company.com"
-                            value={inviteExistingEmail}
-                            onChange={(e) => setInviteExistingEmail(e.target.value)}
-                        />
+                        {selectedEmployee?.email ? (
+                            <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                                <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block mb-1">Invitation will be sent to</span>
+                                <p className="text-sm font-semibold text-slate-700 leading-snug wrap-break-word">
+                                    {selectedEmployee.email}
+                                </p>
+                            </div>
+                        ) : (
+                            <Input
+                                label="Email Address"
+                                type="email"
+                                showAsterisk
+                                placeholder="jane@company.com"
+                                value={inviteExistingEmail}
+                                onChange={(e) => setInviteExistingEmail(e.target.value)}
+                            />
+                        )}
                     </div>
 
                     <DialogFooter>

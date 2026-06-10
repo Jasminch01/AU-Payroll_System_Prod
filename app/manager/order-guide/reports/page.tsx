@@ -20,14 +20,17 @@ import {
     FileDown,
     Layers,
     ClipboardList,
+    MoveLeft,
 } from "lucide-react";
 import { StockStatusBadge } from "@/components/order-guide/StockStatusBadge";
 import { OrderStatusBadge } from "@/components/order-guide/OrderStatusBadge";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/use-auth";
+import Link from "next/link";
 
 export default function OrderReports() {
     const { user } = useAuth();
+    const basePath = user?.role === "owner" ? "/owner/order-guide" : "/manager/order-guide";
     const todayStr = new Date().toISOString().split("T")[0];
     const [selectedDate, setSelectedDate] = useState(todayStr);
     const [statusFilter, setStatusFilter] = useState("all");
@@ -84,7 +87,7 @@ export default function OrderReports() {
             t.stock_status || "N/A",
             t.order_status || "N/A",
             t.ordered_by_user ? `${t.ordered_by_user.first_name} ${t.ordered_by_user.last_name}` : "N/A",
-            t.ordered_at ? new Date(t.ordered_at).toLocaleTimeString() : "N/A",
+            t.ordered_at ? new Date(t.ordered_at).toLocaleTimeString("en-AU", { hour: '2-digit', minute: '2-digit', hour12: false }) : "N/A",
             t.order_status === "issue" ? t.comment_reason : t.order_reference || "N/A",
         ]);
 
@@ -104,7 +107,17 @@ export default function OrderReports() {
     return (
         <DashboardLayout
             role={user?.role === "owner" ? "owner" : "manager"}
-            pageTitle="Order Audit Reports"
+            pageTitle={
+                <span className="flex items-center gap-3">
+                    <Link
+                        href={basePath}
+                        className="inline-flex items-center text-[hsl(var(--muted-foreground))] p-1.5 -ml-1.5 transition-transform duration-200 ease-in-out hover:-translate-x-1"
+                    >
+                        <MoveLeft size={20} strokeWidth={2.5} />
+                    </Link>
+                    <span>Order Audit Reports</span>
+                </span>
+            }
             pageDescription="Review past stock counts, ordering checklist operations, and flagged order issues."
         >
             <div className="space-y-6">
@@ -257,7 +270,7 @@ export default function OrderReports() {
                                             ) : (
                                                 filteredTasks.map((task) => {
                                                     const formattedTime = task.ordered_at
-                                                        ? new Date(task.ordered_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                                                        ? new Date(task.ordered_at).toLocaleTimeString("en-AU", { hour: '2-digit', minute: '2-digit', hour12: false })
                                                         : "";
 
                                                     return (

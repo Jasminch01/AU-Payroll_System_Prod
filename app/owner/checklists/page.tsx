@@ -68,7 +68,7 @@ export default function ChecklistsPage() {
 
     const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
     const [isDeleteTaskDialogOpen, setIsDeleteTaskDialogOpen] = useState(false);
-    const [taskToDelete, setTaskToDelete] = useState<{ id: string; itemId: string } | null>(null);
+    const [taskToDelete, setTaskToDelete] = useState<{ id: string; itemId: string; text?: string } | null>(null);
 
     const [isAddTaskDialogOpen, setIsAddTaskDialogOpen] = useState(false);
     const [newTaskText, setNewTaskText] = useState("");
@@ -177,6 +177,7 @@ export default function ChecklistsPage() {
         mutationFn: ({ id, itemId }: { id: string, itemId: string }) =>
             apiDelete(`/checklist-templates/${id}/items/${itemId}`),
         onSuccess: () => {
+            toast.success("Task removed successfully");
             queryClient.invalidateQueries({ queryKey: ["checklist-template", selectedTemplateId] });
             queryClient.invalidateQueries({ queryKey: ["checklist-templates"] });
         },
@@ -699,7 +700,8 @@ export default function ChecklistsPage() {
                                                                                     onClick={() => {
                                                                                         setTaskToDelete({
                                                                                             id: selectedTemplate.template_id,
-                                                                                            itemId: item.item_id
+                                                                                            itemId: item.item_id,
+                                                                                            text: item.task_text
                                                                                         });
                                                                                         setIsDeleteTaskDialogOpen(true);
                                                                                     }}
@@ -914,27 +916,50 @@ export default function ChecklistsPage() {
 
             {/* Delete Task Confirmation Dialog */}
             <Dialog open={isDeleteTaskDialogOpen} onOpenChange={setIsDeleteTaskDialogOpen}>
-                <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle className="flex items-center gap-2 text-[hsl(var(--danger))]">
-                            <Trash2 size={20} />
-                            Delete Task
-                        </DialogTitle>
-                        <DialogDescription>
-                            Are you sure you want to delete this task from the template?
-                        </DialogDescription>
-                    </DialogHeader>
-                    <DialogFooter className="gap-2 sm:gap-0">
-                        <Button variant="outline" onClick={() => setIsDeleteTaskDialogOpen(false)} className="rounded-xl">Cancel</Button>
+                <DialogContent className="max-w-md rounded-2xl p-6 border border-slate-100 shadow-2xl">
+                    <div className="flex flex-col items-center text-center space-y-4">
+                        {/* Red Warning/Trash Icon */}
+                        <div className="h-12 w-12 rounded-full bg-red-50 flex items-center justify-center text-red-500 animate-pulse shrink-0">
+                            <Trash2 size={24} />
+                        </div>
+
+                        <div className="space-y-2">
+                            <DialogTitle className="text-xl font-black text-slate-900">
+                                Delete Task?
+                            </DialogTitle>
+                            <DialogDescription className="text-sm text-slate-500 max-w-sm">
+                                Are you sure you want to permanently delete this task from the template? This action cannot be undone.
+                            </DialogDescription>
+                        </div>
+
+                        {/* Task Quote Box */}
+                        {taskToDelete?.text && (
+                            <div className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-left">
+                                <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block mb-1">Task Content</span>
+                                <p className="text-sm font-semibold text-slate-700 leading-snug wrap-break-word">
+                                    "{taskToDelete.text}"
+                                </p>
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="mt-6 flex items-center justify-center gap-3 w-full">
+                        <Button
+                            variant="outline"
+                            onClick={() => setIsDeleteTaskDialogOpen(false)}
+                            className="rounded-xl border-slate-200 text-slate-600 font-bold hover:bg-slate-50 px-6"
+                        >
+                            Cancel
+                        </Button>
                         <Button
                             variant="danger"
                             onClick={handleDeleteTaskConfirm}
                             loading={removeItemMutation.isPending}
-                            className="rounded-xl px-6 bg-[hsl(var(--danger))] hover:bg-[hsl(var(--danger))]/90 text-white border-transparent"
+                            className="rounded-xl px-6 font-bold bg-red-600 hover:bg-red-700 text-white border-transparent shadow-lg shadow-red-500/10"
                         >
-                            Delete
+                            Confirm Delete
                         </Button>
-                    </DialogFooter>
+                    </div>
                 </DialogContent>
             </Dialog>
 

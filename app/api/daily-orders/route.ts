@@ -32,13 +32,16 @@ export async function GET(request: NextRequest) {
             .from('DailyOrderTask')
             .select(`
                 *,
-                category:OrderCategory(category_id, category_name, cutoff_time, sort_order),
+                category:OrderCategory(
+                    category_id, category_name, cutoff_time, sort_order,
+                    supplier:OrderSupplier(supplier_id, supplier_name, phone, portal_url, ordering_method)
+                ),
                 item:OrderGuideItem(
                     item_id, product_name, unit,
                     min_stock_qty, max_stock_qty, default_order_qty,
-                    ordering_method, ordering_instruction, comment
+                    ordering_method, ordering_instruction, comment,
+                    supplier:OrderSupplier(supplier_id, supplier_name, phone, portal_url, ordering_method)
                 ),
-                supplier:OrderSupplier(supplier_id, supplier_name, phone, portal_url, ordering_method),
                 ordered_by_user:ordered_by(user_id, first_name, last_name)
             `)
             .eq('business_id', authUser.business_id)
@@ -51,8 +54,19 @@ export async function GET(request: NextRequest) {
         const { data: tasks, error } = await query;
         if (error) return errorResponse(error.message, 400);
 
-        // Filter Liquor tasks for managers without permission
-        const filteredTasks = (tasks ?? []).filter(t => {
+        // Resolve supplier info dynamically from item or category default,
+        // and filter Liquor tasks for managers without permission
+        const resolvedTasks = (tasks ?? []).map(t => {
+            const itemSupplier = (t.item as any)?.supplier;
+            const categorySupplier = (t.category as any)?.supplier;
+            const supplier = itemSupplier || categorySupplier || null;
+            return {
+                ...t,
+                supplier
+            };
+        });
+
+        const filteredTasks = resolvedTasks.filter(t => {
             const catName = (t.category as any)?.category_name ?? '';
             if (!catName.toLowerCase().includes('liquor')) return true;
             return authUser.role === 'owner' || authUser.can_order_liquor;

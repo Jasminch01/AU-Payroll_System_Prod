@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { apiGet, apiPost } from "@/lib/api-client";
 import { toast } from "sonner";
-import { Link2, CheckCircle, XCircle, MonitorSmartphone, Calendar, Bell } from "lucide-react";
+import { Link2, CheckCircle, XCircle, MonitorSmartphone, Calendar, Bell, CreditCard } from "lucide-react";
 import Link from "next/link";
 import { NotificationSettings } from "@/components/settings/notification-settings";
 import { PushPermissionCard } from "@/components/settings/push-permission-card";
@@ -109,6 +109,30 @@ export default function OwnerSettingsPage() {
                                 <Link2 size={16} /> Connect Xero
                             </Button>
                         )}
+                    </div>
+                </CardContent>
+            </Card>
+
+            {/* Billing & Subscription */}
+            <Card className="mb-6">
+                <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                        <CreditCard size={20} className="text-indigo-600" /> Billing & Subscription
+                    </CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <div className="text-[hsl(var(--muted-foreground))]">
+                                <p className="font-medium text-[hsl(var(--foreground))]">Plan & Payments</p>
+                                <p className="text-sm">Manage your subscription plan, view invoices, and update payment methods.</p>
+                            </div>
+                        </div>
+                        <Link href="/owner/settings/billing">
+                            <Button variant="outline">
+                                <CreditCard size={16} /> Manage Billing
+                            </Button>
+                        </Link>
                     </div>
                 </CardContent>
             </Card>

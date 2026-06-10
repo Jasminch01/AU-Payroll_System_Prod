@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import { DashboardLayout } from "@/components/layout";
+import { ConfirmationModal } from "@/components/ui/confirmation-modal";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
@@ -22,6 +23,7 @@ import {
     SlidersHorizontal,
     ListFilter,
     ShieldAlert,
+    MoveLeft,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 
@@ -34,6 +36,7 @@ export default function CategoryManagement() {
     const [isCreateOpen, setIsCreateOpen] = useState(false);
     const [editingCategory, setEditingCategory] = useState<any | null>(null);
     const [isDeletingId, setIsDeletingId] = useState<string | null>(null);
+    const [categoryToDelete, setCategoryToDelete] = useState<{ id: string; name: string } | null>(null);
 
     // Fetch categories and suppliers
     const { data: categories = [], isLoading: catsLoading } = useQuery({
@@ -74,9 +77,10 @@ export default function CategoryManagement() {
     const deleteMutation = useMutation({
         mutationFn: (id: string) => apiDelete(`/order-categories/${id}`),
         onSuccess: () => {
-            toast.success("Category deleted/deactivated successfully");
+            toast.success("Category deleted successfully");
             queryClient.invalidateQueries({ queryKey: ["order-categories"] });
             setIsDeletingId(null);
+            setCategoryToDelete(null);
         },
         onError: (err: any) => {
             toast.error(err.message || "Failed to delete category");
@@ -108,9 +112,8 @@ export default function CategoryManagement() {
             toast.error("Only owners can delete categories.");
             return;
         }
-        if (confirm(`Are you sure you want to soft-delete the category "${name}"? Historical logs will be preserved but active checklist runs will skip this category.`)) {
-            deleteMutation.mutate(id);
-        }
+        setIsDeletingId(id);
+        setCategoryToDelete({ id, name });
     };
 
     const isLoading = catsLoading || supsLoading;
@@ -124,7 +127,17 @@ export default function CategoryManagement() {
     return (
         <DashboardLayout
             role={authUser?.role === "owner" ? "owner" : "manager"}
-            pageTitle="Category Setup"
+            pageTitle={
+                <span className="flex items-center gap-3">
+                    <Link
+                        href={basePath}
+                        className="inline-flex items-center text-[hsl(var(--muted-foreground))] p-1.5 -ml-1.5 transition-transform duration-200 ease-in-out hover:-translate-x-1"
+                    >
+                        <MoveLeft size={20} strokeWidth={2.5} />
+                    </Link>
+                    <span>Category Setup</span>
+                </span>
+            }
             pageDescription="Group products into checklists (e.g. Fruit & Veg, Liquor, Dairy) to allocate stocktakes to daily shifts."
         >
             <div className="space-y-6">
@@ -300,6 +313,26 @@ export default function CategoryManagement() {
                         )}
                     </DialogContent>
                 </Dialog>
+
+                {/* Delete Confirmation Modal */}
+                <ConfirmationModal
+                    isOpen={!!categoryToDelete}
+                    onClose={() => {
+                        setCategoryToDelete(null);
+                        setIsDeletingId(null);
+                    }}
+                    onConfirm={() => {
+                        if (categoryToDelete) {
+                            deleteMutation.mutate(categoryToDelete.id);
+                        }
+                    }}
+                    title="Delete Category?"
+                    description={`Are you sure you want to permanently delete the category "${categoryToDelete?.name}"?`}
+                    confirmLabel="Delete"
+                    cancelLabel="Cancel"
+                    variant="danger"
+                    isLoading={deleteMutation.isPending}
+                />
             </div>
         </DashboardLayout>
     );

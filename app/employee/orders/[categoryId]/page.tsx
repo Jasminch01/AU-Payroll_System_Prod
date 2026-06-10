@@ -24,6 +24,12 @@ export default function EmployeeCategoryOrdering({ params }: { params: Promise<{
 
     const todayStr = new Date().toISOString().split("T")[0];
 
+    const backHref = authUser?.role === "owner"
+        ? "/owner/orders"
+        : authUser?.role === "manager"
+        ? "/manager/orders"
+        : "/employee/orders";
+
     // Instruction modal state
     const [selectedInstruction, setSelectedInstruction] = useState<{
         item: OrderGuideItem;
@@ -36,6 +42,20 @@ export default function EmployeeCategoryOrdering({ params }: { params: Promise<{
         queryKey: ["daily-orders-category", categoryId, todayStr],
         queryFn: () => apiGet(`/daily-orders?date=${todayStr}&category_id=${categoryId}`),
     });
+
+    // Fetch employee clock status
+    const { data: attendanceData } = useQuery<any>({
+        queryKey: ["my-attendance"],
+        queryFn: () => apiGet("/attendance/me"),
+        enabled: authUser?.role === "employee",
+    });
+
+    const isClockedIn = authUser?.role !== "employee" ||
+        attendanceData?.current_status === "CLOCK_IN" ||
+        attendanceData?.current_status === "BREAK_END";
+
+    const hasOrderingResponsibility = authUser?.role !== "employee" ||
+        attendanceData?.has_ordering_responsibility === true;
 
     // Mutation to update a single order task
     const updateTaskMutation = useMutation({
@@ -106,10 +126,40 @@ export default function EmployeeCategoryOrdering({ params }: { params: Promise<{
     const isLiquor = catName.toLowerCase().includes("liquor");
     const hasLiquorPermission = authUser?.role === "owner" || authUser?.can_order_liquor;
 
+    if (!isLoading && authUser?.role === "employee" && !hasOrderingResponsibility) {
+        return (
+            <DashboardLayout
+                role="employee"
+                pageTitle="Access Restricted"
+                pageDescription="Assignment verification failed."
+            >
+                <Card className="max-w-md mx-auto border-amber-200 bg-amber-50/20 dark:border-amber-950 dark:bg-amber-950/10">
+                    <CardHeader className="text-center pb-4 flex flex-col items-center">
+                        <Lock className="h-10 w-10 text-amber-500 mb-2" />
+                        <CardTitle className="text-amber-800 dark:text-amber-400">Ordering Tasks Locked</CardTitle>
+                        <CardDescription>
+                            You are not assigned to ordering tasks today.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent className="text-center space-y-4">
+                        <p className="text-xs text-muted-foreground leading-relaxed">
+                            Only employees with a rostered shift that has ordering responsibilities are allowed to complete today's orders checklist.
+                        </p>
+                        <Button asChild variant="outline" className="w-full font-semibold">
+                            <Link href={backHref}>
+                                <ArrowLeft className="mr-1.5 h-4 w-4" /> Go Back
+                            </Link>
+                        </Button>
+                    </CardContent>
+                </Card>
+            </DashboardLayout>
+        );
+    }
+
     if (!isLoading && isLiquor && !hasLiquorPermission) {
         return (
             <DashboardLayout
-                role={authUser?.role === "employee" ? "employee" : "manager"}
+                role={(authUser?.role as any) || "employee"}
                 pageTitle="Access Restricted"
                 pageDescription="Compliance verification failed."
             >
@@ -126,7 +176,7 @@ export default function EmployeeCategoryOrdering({ params }: { params: Promise<{
                             Only store owners or managers specifically granted permission by the owner are allowed to order liquor. Contact your store owner to request permissions.
                         </p>
                         <Button asChild variant="outline" className="w-full font-semibold">
-                            <Link href="/employee/orders">
+                            <Link href={backHref}>
                                 <ArrowLeft className="mr-1.5 h-4 w-4" /> Go Back
                             </Link>
                         </Button>
@@ -138,15 +188,23 @@ export default function EmployeeCategoryOrdering({ params }: { params: Promise<{
 
     return (
         <DashboardLayout
-            role={authUser?.role === "employee" ? "employee" : "manager"}
+            role={(authUser?.role as any) || "employee"}
             pageTitle={`Order Checklist: ${catName}`}
             pageDescription={`Perform inventory stock checks and log order placements for today.`}
         >
             <div className="space-y-6 max-w-4xl">
+                {authUser?.role === "employee" && hasOrderingResponsibility && !isClockedIn && (
+                    <div className="flex items-center gap-3 rounded-xl border border-[hsl(var(--danger))]/20 bg-[hsl(var(--danger-light))]/10 p-4 text-[hsl(var(--danger))]">
+                        <AlertTriangle className="shrink-0" size={18} />
+                        <p className="text-xs font-semibold">
+                            Checklist Locked: You must clock in to edit stock counts or mark items as ordered.
+                        </p>
+                    </div>
+                )}
                 {/* Navigation and Bulk actions */}
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                     <Button asChild variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground">
-                        <Link href="/employee/orders" className="flex items-center gap-1">
+                        <Link href={backHref} className="flex items-center gap-1">
                             <ArrowLeft className="h-4 w-4" /> Back to Dashboard
                         </Link>
                     </Button>
@@ -154,7 +212,7 @@ export default function EmployeeCategoryOrdering({ params }: { params: Promise<{
                     {!isLoading && categoryTasks.length > 0 && (
                         <Button
                             onClick={handleBulkMarkOrdered}
-                            disabled={bulkUpdateMutation.isPending}
+                            disabled={bulkUpdateMutation.isPending || !isClockedIn}
                             className="w-full sm:w-auto font-semibold gap-1.5"
                         >
                             <ClipboardCheck className="h-4.5 w-4.5" />
@@ -189,6 +247,7 @@ export default function EmployeeCategoryOrdering({ params }: { params: Promise<{
                                     })
                                 }
                                 isUpdating={updateTaskMutation.isPending && updateTaskMutation.variables?.taskId === task.order_task_id}
+                                disabled={!isClockedIn}
                             />
                         ))}
                     </div>

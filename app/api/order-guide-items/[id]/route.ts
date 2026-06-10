@@ -98,9 +98,17 @@ export async function DELETE(
         const { id } = await params;
         const supabase = await createClient();
 
+        // 1. Delete associated DailyOrderTask records
+        await supabase
+            .from('DailyOrderTask')
+            .delete()
+            .eq('item_id', id)
+            .eq('business_id', authUser.business_id);
+
+        // 2. Delete the item itself
         const { data, error } = await supabase
             .from('OrderGuideItem')
-            .update({ is_active: false })
+            .delete()
             .eq('item_id', id)
             .eq('business_id', authUser.business_id)
             .select()
@@ -109,7 +117,7 @@ export async function DELETE(
         if (error) return errorResponse(error.message, 400);
         if (!data)  return errorResponse('Item not found', 404);
 
-        return successResponse(null, 'Item deactivated successfully');
+        return successResponse(null, 'Item deleted successfully');
     } catch (err) {
         console.error('[order-guide-items/:id DELETE]', err);
         return errorResponse('Internal server error', 500);

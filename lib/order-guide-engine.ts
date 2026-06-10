@@ -123,14 +123,15 @@ export async function generateDailyOrderTasks(
                 if (!item.is_active) continue;
                 if (!shouldOrderToday(item, cat, dayName)) continue;
 
-                const supplierId = item.supplier_id ?? cat.default_supplier_id ?? null;
-
+                // We set supplier_id to null because the database constraint DailyOrderTask_supplier_id_fkey
+                // references the empty/unused Supplier table instead of OrderSupplier.
+                // The API route resolves the supplier dynamically from the item or category.
                 tasksToInsert.push({
                     business_id:       businessId,
                     order_date:        date,
                     category_id:       cat.category_id,
                     item_id:           item.item_id,
-                    supplier_id:       supplierId,
+                    supplier_id:       null,
                     suggested_qty:     null,   // Calculated when manager enters stock qty
                     current_stock_qty: null,
                     final_qty:         null,
@@ -149,19 +150,32 @@ export async function generateDailyOrderTasks(
             return { created: 0, skipped: 0 };
         }
 
-        // Insert with ON CONFLICT DO NOTHING — idempotent
-        const { data: inserted, error: insertError } = await supabase
+        // Check which tasks already exist for this business and date
+        const { data: existingTasks, error: existError } = await supabase
             .from('DailyOrderTask')
-            .upsert(tasksToInsert, {
-                onConflict: 'business_id,item_id,order_date',
-                ignoreDuplicates: true,
-            })
-            .select('order_task_id');
+            .select('item_id')
+            .eq('business_id', businessId)
+            .eq('order_date', date);
 
-        if (insertError) throw insertError;
+        if (existError) throw existError;
 
-        const created = inserted?.length ?? 0;
-        const skipped = tasksToInsert.length - created;
+        const existingItemIds = new Set((existingTasks || []).map(t => t.item_id));
+
+        // Filter out items that already have a task
+        const newTasks = tasksToInsert.filter(task => !existingItemIds.has(task.item_id));
+
+        let created = 0;
+        if (newTasks.length > 0) {
+            const { data: inserted, error: insertError } = await supabase
+                .from('DailyOrderTask')
+                .insert(newTasks)
+                .select('order_task_id');
+
+            if (insertError) throw insertError;
+            created = inserted?.length ?? 0;
+        }
+
+        const skipped = tasksToInsert.length - newTasks.length;
 
         console.log(`[OrderGuideEngine] Generated ${created} tasks for ${date} (${skipped} already existed)`);
         return { created, skipped };
@@ -297,7 +311,7 @@ export async function notifyOrderStatus(
 
 /** Returns 3-letter day abbreviation: Mon, Tue, Wed, Thu, Fri, Sat, Sun */
 function getDayAbbreviation(date: Date): string {
-    return ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][date.getDay()];
+    return ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][date.getUTCDay()];
 }
 
 /**
