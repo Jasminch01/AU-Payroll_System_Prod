@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { usePathname, useRouter } from 'next/navigation';
 
-const TRIAL_DAYS = 10;
+// const TRIAL_DAYS = 10;
 
 export function SubscriptionGuard({ children }: { children: React.ReactNode }) {
     const [status, setStatus] = useState<'loading' | 'active' | 'trial' | 'subscription_expired' | 'trial_expired' | 'unauthorized'>('loading');
@@ -53,6 +53,13 @@ export function SubscriptionGuard({ children }: { children: React.ReactNode }) {
                     return;
                 }
 
+                // --- SUBSCRIPTION CHECK FUNCTIONALITIES DISABLED INDEFINITELY ---
+                // We bypass checking the Subscriptions table and trial expiration checks.
+                // Any authenticated user with a valid role (owner/manager) and business_id gets full active access.
+                if (isMounted) setStatus('active');
+                return;
+
+                /*
                 // 3. Check for active subscription (Fixed duplicate rows issue here)
                 const { data: subData, error: subError } = await supabase
                     .from('Subscriptions')
@@ -106,6 +113,7 @@ export function SubscriptionGuard({ children }: { children: React.ReactNode }) {
 
                 if (isMounted) setStatus('trial_expired');
                 return;
+                */
 
             } catch (err) {
                 console.error('[SubscriptionGuard] Check failed:', err);
@@ -208,7 +216,7 @@ export function SubscriptionGuard({ children }: { children: React.ReactNode }) {
     if (status === 'trial') {
         return (
             <>
-                <div className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-4 py-2.5 text-center text-sm font-medium">
+                <div className="bg-linear-to-r from-indigo-600 to-purple-600 text-white px-4 py-2.5 text-center text-sm font-medium">
                     🚀 Free trial: <strong>{trialDaysLeft} day{trialDaysLeft !== 1 ? 's' : ''}</strong> remaining.{' '}
                     <a href="/pricing" className="underline font-semibold hover:text-indigo-200 transition-colors">
                         Upgrade now

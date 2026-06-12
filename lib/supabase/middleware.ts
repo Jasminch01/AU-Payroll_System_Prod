@@ -33,94 +33,126 @@ export async function updateSession(request: NextRequest) {
     const { data: { user } } = await supabase.auth.getUser();
 
     const pathname = request.nextUrl.pathname;
+    const isRootRoute = pathname === '/';
     const isOwnerRoute = pathname.startsWith('/owner');
     const isManagerRoute = pathname.startsWith('/manager');
     const isEmployeeRoute = pathname.startsWith('/employee');
 
-    if (isOwnerRoute || isManagerRoute || isEmployeeRoute) {
-        if (!user) {
-            return NextResponse.redirect(new URL('/login', request.url));
+    // Helper to perform redirects while ensuring updated session cookies are preserved
+    const redirectWithCookies = (destination: string) => {
+        const redirectResponse = NextResponse.redirect(new URL(destination, request.url));
+        supabaseResponse.cookies.getAll().forEach((cookie) => {
+            redirectResponse.cookies.set(cookie.name, cookie.value, {
+                path: cookie.path,
+                domain: cookie.domain,
+                maxAge: cookie.maxAge,
+                expires: cookie.expires,
+                secure: cookie.secure,
+                httpOnly: cookie.httpOnly,
+                sameSite: cookie.sameSite,
+            });
+        });
+        return redirectResponse;
+    };
+
+    let resolvedRole = user?.user_metadata?.role;
+    let businessId = user?.user_metadata?.business_id;
+
+    if (user && (!resolvedRole || !businessId)) {
+        // Fetch employee and user records safely (cache miss)
+        const empPromise = supabase
+            .from('Employee')
+            .select('employee_id, business_id, first_name, last_name')
+            .eq('user_id', user.id)
+            .maybeSingle();
+
+        let userRes = await supabase
+            .from('User')
+            .select('role, business_id, first_name, last_name, can_order_liquor')
+            .eq('user_id', user.id)
+            .maybeSingle();
+
+        // Fallback if can_order_liquor column is missing in database
+        if (userRes.error && userRes.error.message.includes('can_order_liquor')) {
+            userRes = await supabase
+                .from('User')
+                .select('role, business_id, first_name, last_name')
+                .eq('user_id', user.id)
+                .maybeSingle();
         }
 
-        let role = user.user_metadata?.role;
-        let businessId = user.user_metadata?.business_id;
+        const userRecord = userRes.data;
+        const { data: employeeRecord } = await empPromise;
 
-        if (!role || !businessId) {
-            // Fetch employee and user records safely (cache miss)
-            const empPromise = supabase
-                .from('Employee')
-                .select('employee_id, business_id, first_name, last_name')
-                .eq('user_id', user.id)
-                .maybeSingle();
+        let metadataToSet: any = null;
 
-            let userRes = await supabase
-                .from('User')
-                .select('role, business_id, first_name, last_name, can_order_liquor')
-                .eq('user_id', user.id)
-                .maybeSingle();
+        if (userRecord) {
+            resolvedRole = userRecord.role;
+            businessId = userRecord.business_id;
+            metadataToSet = {
+                role: userRecord.role,
+                business_id: userRecord.business_id,
+                first_name: userRecord.first_name,
+                last_name: userRecord.last_name,
+                employee_id: employeeRecord?.employee_id,
+                can_order_liquor: userRecord.can_order_liquor ?? false,
+            };
+        } else if (employeeRecord) {
+            resolvedRole = 'employee';
+            businessId = employeeRecord.business_id;
+            metadataToSet = {
+                role: 'employee',
+                business_id: employeeRecord.business_id,
+                first_name: employeeRecord.first_name ?? '',
+                last_name: employeeRecord.last_name ?? '',
+                employee_id: employeeRecord.employee_id,
+                can_order_liquor: false,
+            };
+        }
 
-            // Fallback if can_order_liquor column is missing in database
-            if (userRes.error && userRes.error.message.includes('can_order_liquor')) {
-                userRes = await supabase
-                    .from('User')
-                    .select('role, business_id, first_name, last_name')
-                    .eq('user_id', user.id)
-                    .maybeSingle();
-            }
+        // Sync/cache metadata in background for future fast checks
+        if (metadataToSet) {
+            supabase.auth.updateUser({
+                data: metadataToSet
+            }).catch(err => {
+                console.error('[Middleware] Background metadata update failed:', err);
+            });
+        }
+    }
 
-            const userRecord = userRes.data;
-            const { data: employeeRecord } = await empPromise;
+    // Intercept logged in users visiting the root/landing page
+    if (isRootRoute) {
+        if (user) {
+            const dashboard = resolvedRole === 'owner'
+                ? '/owner/dashboard'
+                : resolvedRole === 'manager'
+                    ? '/manager/dashboard'
+                    : '/employee/dashboard';
+            return redirectWithCookies(dashboard);
+        }
+        return supabaseResponse;
+    }
 
-            let metadataToSet: any = null;
-
-            if (userRecord) {
-                role = userRecord.role;
-                businessId = userRecord.business_id;
-                metadataToSet = {
-                    role: userRecord.role,
-                    business_id: userRecord.business_id,
-                    first_name: userRecord.first_name,
-                    last_name: userRecord.last_name,
-                    employee_id: employeeRecord?.employee_id,
-                    can_order_liquor: userRecord.can_order_liquor ?? false,
-                };
-            } else if (employeeRecord) {
-                role = 'employee';
-                businessId = employeeRecord.business_id;
-                metadataToSet = {
-                    role: 'employee',
-                    business_id: employeeRecord.business_id,
-                    first_name: employeeRecord.first_name ?? '',
-                    last_name: employeeRecord.last_name ?? '',
-                    employee_id: employeeRecord.employee_id,
-                    can_order_liquor: false,
-                };
-            }
-
-            // Sync/cache metadata in background for future fast checks
-            if (metadataToSet) {
-                supabase.auth.updateUser({
-                    data: metadataToSet
-                }).catch(err => {
-                    console.error('[Middleware] Background metadata update failed:', err);
-                });
-            }
+    // Protect dashboard routes and enforce role-based access
+    if (isOwnerRoute || isManagerRoute || isEmployeeRoute) {
+        if (!user) {
+            return redirectWithCookies('/login');
         }
 
         // Enforce role-based access
-        if (isOwnerRoute && role !== 'owner') {
-            const fallback = role === 'manager' ? '/manager/dashboard' : '/employee/dashboard';
-            return NextResponse.redirect(new URL(role ? fallback : '/login', request.url));
+        if (isOwnerRoute && resolvedRole !== 'owner') {
+            const fallback = resolvedRole === 'manager' ? '/manager/dashboard' : '/employee/dashboard';
+            return redirectWithCookies(resolvedRole ? fallback : '/login');
         }
 
-        if (isManagerRoute && role !== 'manager' && role !== 'owner') {
-            const fallback = role === 'owner' ? '/owner/dashboard' : '/employee/dashboard';
-            return NextResponse.redirect(new URL(role ? fallback : '/login', request.url));
+        if (isManagerRoute && resolvedRole !== 'manager' && resolvedRole !== 'owner') {
+            const fallback = resolvedRole === 'owner' ? '/owner/dashboard' : '/employee/dashboard';
+            return redirectWithCookies(resolvedRole ? fallback : '/login');
         }
 
-        if (isEmployeeRoute && role !== 'employee') {
-            const fallback = role === 'owner' ? '/owner/dashboard' : '/manager/dashboard';
-            return NextResponse.redirect(new URL(role ? fallback : '/login', request.url));
+        if (isEmployeeRoute && resolvedRole !== 'employee') {
+            const fallback = resolvedRole === 'owner' ? '/owner/dashboard' : '/manager/dashboard';
+            return redirectWithCookies(resolvedRole ? fallback : '/login');
         }
     }
 
