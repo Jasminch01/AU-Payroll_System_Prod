@@ -82,7 +82,15 @@ export default function EmployeeShiftsPage() {
         } else if (tab === "pool" && poolRef.current) {
             poolRef.current.scrollIntoView({ behavior: 'smooth' });
         }
-    }, [searchParams]);
+
+        const shiftId = searchParams.get("shiftId") || searchParams.get("shift_id");
+        if (shiftId && shifts.length > 0) {
+            const found = shifts.find((s: any) => String(s.shift_id) === String(shiftId));
+            if (found) {
+                setSelectedShiftDetails(found);
+            }
+        }
+    }, [searchParams, shifts]);
 
     // Detect default roster period based on data
     useEffect(() => {

@@ -7,8 +7,10 @@ import { MetricCard } from "@/components/ui/card";
 import { Card, CardContent } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/badge";
 import { apiGet } from "@/lib/api-client";
+import { useBusinessTimezone } from "@/lib/timezone-context";
+import { createBusinessTimestamp } from "@/lib/timezone-utils";
 import { CalendarDays, Clock, Palmtree, DollarSign, ClipboardList } from "lucide-react";
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
@@ -17,6 +19,7 @@ import { formatDecimalHours } from "@/lib/utils";
 export default function EmployeeDashboardPage() {
     const queryClient = useQueryClient();
     const { user } = useAuth();
+    const { businessTimezone } = useBusinessTimezone();
 
     const { data: shifts = [] } = useQuery({
         queryKey: ["my-shifts"],
@@ -109,11 +112,26 @@ export default function EmployeeDashboardPage() {
         queryFn: () => apiGet<any[]>("/shifts/swaps"),
     });
 
+    const parseShiftTime = useMemo(() => {
+        return (isoStr: string): Date => {
+            if (!isoStr) return new Date(0);
+            if (isoStr.endsWith('Z') || /[+-]\d{2}:\d{2}$/.test(isoStr)) {
+                return new Date(isoStr);
+            }
+            const [datePart, timePart] = isoStr.split('T');
+            const hhmm = (timePart || '00:00').substring(0, 5);
+            const utcIso = createBusinessTimestamp(datePart, hhmm, businessTimezone);
+            return new Date(utcIso);
+        };
+    }, [businessTimezone]);
+
     // Find next upcoming shift
     const now = new Date();
-    const upcomingShifts = shifts
-        .filter((s: any) => new Date(s.start_time) > now)
-        .sort((a: any, b: any) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
+    const upcomingShifts = useMemo(() => {
+        return shifts
+            .filter((s: any) => parseShiftTime(s.start_time) > now)
+            .sort((a: any, b: any) => parseShiftTime(a.start_time).getTime() - parseShiftTime(b.start_time).getTime());
+    }, [shifts, parseShiftTime, now]);
 
     const nextShift = upcomingShifts[0];
 
@@ -125,8 +143,8 @@ export default function EmployeeDashboardPage() {
 
     const getShiftStatus = (shift: any) => {
         if (!shift) return "upcoming";
-        const start = new Date(shift.start_time);
-        const end = new Date(shift.end_time);
+        const start = parseShiftTime(shift.start_time);
+        const end = parseShiftTime(shift.end_time);
 
         // Check for active swap/transfer requests for THIS shift
         const activeRequest = (swapRequests || []).find((sr: any) => 

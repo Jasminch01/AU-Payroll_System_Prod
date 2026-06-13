@@ -66,7 +66,7 @@ const moreNav = {
         { label: "Settings", href: "/owner/settings", icon: <Settings size={20} /> },
     ],
     manager: [
-        { label: "Checklists", href: "/owner/checklists", icon: <ClipboardList size={20} /> },
+        { label: "Checklists", href: "/manager/checklists", icon: <ClipboardList size={20} /> },
         { label: "Order Guide", href: "/manager/order-guide", icon: <Package size={20} /> },
         { label: "Attendance", href: "/manager/attendance", icon: <Clock size={20} /> },
         { label: "Timesheets", href: "/manager/timesheets", icon: <FileText size={20} /> },
