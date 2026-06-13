@@ -578,6 +578,7 @@ export default function OwnerEmployeeDetailPage() {
                                                             className="flex h-10 w-full rounded-md border border-[hsl(var(--input))] bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--brand))]/20 appearance-none capitalize cursor-pointer font-medium"
                                                         >
                                                             <option value="employee">Employee</option>
+                                                            <option value="supervisor">Supervisor</option>
                                                             <option value="manager">Manager</option>
                                                         </select>
                                                         <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-[hsl(var(--muted-foreground))]">

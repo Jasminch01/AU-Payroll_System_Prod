@@ -283,7 +283,7 @@ export default function SupplierManagement() {
 
                 {/* Create Modal */}
                 <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-                    <DialogContent className="max-w-lg">
+                    <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto custom-scrollbar">
                         <DialogHeader>
                             <DialogTitle>Add Delivery Supplier</DialogTitle>
                             <DialogDescription>
@@ -300,7 +300,7 @@ export default function SupplierManagement() {
 
                 {/* Edit Modal */}
                 <Dialog open={!!editingSupplier} onOpenChange={(open) => !open && setEditingSupplier(null)}>
-                    <DialogContent className="max-w-lg">
+                    <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto custom-scrollbar">
                         <DialogHeader>
                             <DialogTitle>Edit Supplier Details</DialogTitle>
                             <DialogDescription>

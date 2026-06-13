@@ -31,7 +31,7 @@ export interface NavItem {
 }
 
 interface SidebarProps {
-    role: "owner" | "manager" | "employee";
+    role: "owner" | "manager" | "employee" | "supervisor";
     businessName?: string;
     isCollapsed?: boolean;
     onToggleCollapse?: () => void;
@@ -77,10 +77,22 @@ const employeeNav: NavItem[] = [
     { label: "Leave", href: "/employee/leave", icon: <Palmtree size={20} /> },
 ];
 
+const supervisorNav: NavItem[] = [
+    { label: "Dashboard", href: "/manager/dashboard", icon: <LayoutDashboard size={20} /> },
+    { label: "Roster", href: "/manager/roster", icon: <CalendarDays size={20} /> },
+    { label: "Attendance", href: "/manager/attendance", icon: <Clock size={20} /> },
+    { label: "Today's Orders", href: "/employee/orders", icon: <Package size={20} /> },
+    { label: "My Shifts", href: "/employee/shifts", icon: <CalendarDays size={20} /> },
+    { label: "Availability", href: "/employee/availability", icon: <CalendarDays size={20} /> },
+    { label: "Timesheets", href: "/employee/timesheets", icon: <FileText size={20} /> },
+    { label: "Leave", href: "/employee/leave", icon: <Palmtree size={20} /> },
+];
+
 const navMap = {
     owner: ownerNav,
     manager: managerNav,
     employee: employeeNav,
+    supervisor: supervisorNav,
 };
 
 export function Sidebar({ role, businessName = "AU Payroll", isCollapsed = false, onToggleCollapse }: SidebarProps) {

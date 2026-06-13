@@ -393,9 +393,11 @@ export default function OwnerEmployeesPage() {
                         "text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-tight",
                         row.role === 'manager'
                             ? "bg-[hsl(var(--brand-light))] text-[hsl(var(--brand))]"
-                            : "bg-slate-100 text-slate-500"
+                            : row.role === 'supervisor'
+                                ? "bg-amber-100 text-amber-700"
+                                : "bg-slate-100 text-slate-500"
                     )}>
-                        {row.role === 'manager' ? 'Manager' : 'Staff'}
+                        {row.role === 'manager' ? 'Manager' : row.role === 'supervisor' ? 'Supervisor' : 'Staff'}
                     </span>
                 </div>
             )
@@ -662,6 +664,7 @@ export default function OwnerEmployeesPage() {
                                 className="flex h-10 w-full rounded-lg border border-[hsl(var(--input))] bg-transparent px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[hsl(var(--brand))]/20"
                             >
                                 <option value="employee">Standard Staff</option>
+                                <option value="supervisor">Supervisor</option>
                                 <option value="manager">Business Manager</option>
                             </select>
                         </div>
@@ -889,6 +892,7 @@ export default function OwnerEmployeesPage() {
                                                         className="w-full h-7 bg-transparent border-0 text-[10px] font-medium text-slate-600 outline-none cursor-pointer hover:text-[#3724B3] -ml-0.5 opacity-80"
                                                     >
                                                         <option value="employee">Standard Employee</option>
+                                                        <option value="supervisor">Supervisor</option>
                                                         <option value="manager">Business Manager</option>
                                                     </select>
                                                 </div>
@@ -1018,6 +1022,7 @@ export default function OwnerEmployeesPage() {
                                         className="w-full h-12 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 outline-none transition-all focus:ring-4 focus:ring-[hsl(var(--brand))]/10 focus:border-[hsl(var(--brand))] hover:border-[hsl(var(--brand))]/30 appearance-none cursor-pointer pr-10"
                                     >
                                         <option value="employee">Standard Staff Member</option>
+                                        <option value="supervisor">Supervisor</option>
                                         <option value="manager">Business Manager</option>
                                     </select>
                                     <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 group-hover:text-[hsl(var(--brand))] transition-colors">

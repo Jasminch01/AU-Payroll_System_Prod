@@ -125,7 +125,7 @@ export async function updateSession(request: NextRequest) {
         if (user) {
             const dashboard = resolvedRole === 'owner'
                 ? '/owner/dashboard'
-                : resolvedRole === 'manager'
+                : (resolvedRole === 'manager' || resolvedRole === 'supervisor')
                     ? '/manager/dashboard'
                     : '/employee/dashboard';
             return redirectWithCookies(dashboard);
@@ -145,9 +145,20 @@ export async function updateSession(request: NextRequest) {
             return redirectWithCookies(resolvedRole ? fallback : '/login');
         }
 
-        if (isManagerRoute && resolvedRole !== 'manager' && resolvedRole !== 'owner') {
-            const fallback = resolvedRole === 'owner' ? '/owner/dashboard' : '/employee/dashboard';
-            return redirectWithCookies(resolvedRole ? fallback : '/login');
+        if (isManagerRoute) {
+            const isSupervisor = resolvedRole === 'supervisor';
+            // Allow supervisors to access specific manager routes, including dashboard
+            const allowedSupervisorPaths = ['/manager/roster', '/manager/attendance', '/manager/dashboard'];
+            
+            if (resolvedRole !== 'manager' && resolvedRole !== 'owner' && !isSupervisor) {
+                const fallback = resolvedRole === 'owner' ? '/owner/dashboard' : '/employee/dashboard';
+                return redirectWithCookies(resolvedRole ? fallback : '/login');
+            }
+            
+            // If supervisor tries to access a restricted manager route, send them to manager dashboard
+            if (isSupervisor && !allowedSupervisorPaths.some(p => pathname === p || pathname.startsWith(p + '/'))) {
+                return redirectWithCookies('/manager/dashboard');
+            }
         }
 
         if (isEmployeeRoute && resolvedRole !== 'employee') {

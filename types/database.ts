@@ -28,8 +28,8 @@ export type PaymentStatus = 'pending' | 'paid' | 'failed';
 
 export type AuditAction = 'INSERT' | 'UPDATE' | 'DELETE';
 
-export type UserRole = 'owner' | 'manager';
-export type EmployeeRole = 'employee' | 'manager';
+export type UserRole = 'owner' | 'manager' | 'supervisor';
+export type EmployeeRole = 'employee' | 'manager' | 'supervisor';
 
 // ==================== ORDER GUIDE ENUMS ====================
 

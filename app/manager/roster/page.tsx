@@ -859,7 +859,7 @@ export default function ManagerRosterPage() {
 
     return (
         <DashboardLayout
-            role="manager"
+            role={(user?.role as any) || "manager"}
             pageTitle="Roster Management"
             defaultCollapsed={true}
             pageDescription={`${rosterPeriod.charAt(0).toUpperCase() + rosterPeriod.slice(1)} Roster: ${rosterDates[0].toLocaleDateString("en-AU", { month: "short", day: "numeric" })} – ${rosterDates[rosterDates.length - 1].toLocaleDateString("en-AU", { month: "short", day: "numeric", year: "numeric" })}`}
