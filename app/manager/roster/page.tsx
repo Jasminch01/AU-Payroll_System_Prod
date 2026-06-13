@@ -11,12 +11,14 @@ import {
     Dialog, DialogContent, DialogHeader, DialogDescription, DialogFooter,
     DialogTitle
 } from "@/components/ui/dialog";
-import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/api-client";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Switch } from "@/components/ui/switch";
+import { apiGet, apiPost, apiPut, apiPatch, apiDelete } from "@/lib/api-client";
 import { getShiftTypeFromTime, calculateShiftDuration, formatDurationHours } from "@/lib/shift-utils";
 import { EmployeeSearchPicker } from "@/components/roster/employee-search-picker";
 import { useEffect } from "react";
 import { toast } from "sonner";
-import { Plus, ChevronLeft, ChevronRight, Clock, Trash2, CheckCircle2, FileText, RefreshCcw, Copy, Bell, CalendarDays, Search, Filter, ChevronsLeft, ChevronsRight, GripVertical, MoreHorizontal, Users, ChevronDown, ArrowUpDown, Settings2, ChevronUp, Info, X, ClipboardList } from "lucide-react";
+import { Plus, ChevronLeft, ChevronRight, Clock, Trash2, CheckCircle2, FileText, RefreshCcw, Copy, Bell, CalendarDays, Search, Filter, ChevronsLeft, ChevronsRight, GripVertical, MoreHorizontal, Users, ChevronDown, ArrowUpDown, Settings2, ChevronUp, Info, X, ClipboardList, Check, AlertTriangle } from "lucide-react";
 import { Reorder, AnimatePresence, motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -133,6 +135,26 @@ function getPeriodOptions(period: RosterPeriod, count: number = 12): { label: st
     return options;
 }
 
+const CATEGORIES = [
+    { id: 'morning', label: '☀️ Morning' },
+    { id: 'afternoon', label: '⛅ Afternoon' },
+    { id: 'closing', label: '🔒 Closing' },
+    { id: 'delivery', label: '📦 Delivery' },
+    { id: 'ordering', label: '📝 Ordering' },
+    { id: 'manager', label: '💼 Manager' },
+    { id: 'daily', label: '📅 Daily' },
+    { id: 'other', label: '🔧 Other' },
+];
+
+const getDayName = (dateStr: string) => {
+    if (!dateStr) return "";
+    const parts = dateStr.split('-');
+    if (parts.length !== 3) return "";
+    const date = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+    const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    return days[date.getDay()];
+};
+
 export default function ManagerRosterPage() {
     const queryClient = useQueryClient();
     const [offset, setOffset] = useState(0);
@@ -205,6 +227,16 @@ export default function ManagerRosterPage() {
             setIsStartDropdownOpen(false);
             setIsEndDropdownOpen(false);
             setTimeSearch("");
+            setIsTemplatesPanelOpen(false);
+            setTemplateSearchQuery("");
+            setIsAutoFilterEnabled(true);
+            setCollapsedTemplateCategories({});
+            setIsDraggingOverChecklist(false);
+            setIsAddTaskOpen(false);
+            setAdHocTaskText("");
+            setAdHocTaskInstructions("");
+            setAdHocTaskRequired(false);
+            setCollapsedGroups({});
         }
     }, [addShiftOpen]);
 
@@ -243,6 +275,24 @@ export default function ManagerRosterPage() {
     const [resultModalOpen, setResultModalOpen] = useState(false);
     const [lastNewShiftIds, setLastNewShiftIds] = useState<string[]>([]);
     const [undoConfirmOpen, setUndoConfirmOpen] = useState(false);
+
+    // Checklist States
+    const [isTemplatesPanelOpen, setIsTemplatesPanelOpen] = useState(false);
+    const [templateSearchQuery, setTemplateSearchQuery] = useState("");
+    const [isAutoFilterEnabled, setIsAutoFilterEnabled] = useState(true);
+    const [collapsedTemplateCategories, setCollapsedTemplateCategories] = useState<{ [key: string]: boolean }>({});
+    const [isDraggingOverChecklist, setIsDraggingOverChecklist] = useState(false);
+    const [isAddTaskOpen, setIsAddTaskOpen] = useState(false);
+    const [adHocTaskText, setAdHocTaskText] = useState("");
+    const [adHocTaskInstructions, setAdHocTaskInstructions] = useState("");
+    const [adHocTaskRequired, setAdHocTaskRequired] = useState(false);
+    const [collapsedGroups, setCollapsedGroups] = useState<{ [key: string]: boolean }>({});
+
+    useEffect(() => {
+        setIsAutoFilterEnabled(true);
+        setCollapsedTemplateCategories({});
+        setCollapsedGroups({});
+    }, [editingShiftId]);
 
     const periodOptions = useMemo(() => getPeriodOptions(rosterPeriod), [rosterPeriod]);
 
@@ -348,6 +398,137 @@ export default function ManagerRosterPage() {
         queryKey: ["availability", rangeStart, rangeEnd],
         queryFn: () => apiGet<any[]>("/availability", { from: rangeStart, to: rangeEnd }),
     });
+
+    // Checklist Queries
+    const { data: shiftChecklist = [], isLoading: isLoadingChecklist } = useQuery({
+        queryKey: ["shift-checklist", editingShiftId],
+        queryFn: () => apiGet<any[]>(`/shift/${editingShiftId}/checklist`),
+        enabled: !!editingShiftId && addShiftOpen,
+    });
+
+    const { data: templates = [] } = useQuery({
+        queryKey: ["checklist-templates"],
+        queryFn: () => apiGet<any[]>("/checklist-templates", { is_active: 'true' }),
+        enabled: addShiftOpen,
+    });
+
+    const CATEGORY_ORDER = ['morning', 'afternoon', 'closing', 'delivery', 'ordering', 'manager', 'daily'];
+
+    const sortedTemplates = useMemo(() => {
+        if (!templates) return [];
+        return [...templates].sort((a: any, b: any) => {
+            const catA = a.category?.toLowerCase() || "";
+            const catB = b.category?.toLowerCase() || "";
+            
+            let indexA = CATEGORY_ORDER.indexOf(catA);
+            let indexB = CATEGORY_ORDER.indexOf(catB);
+            
+            if (indexA === -1) indexA = 999;
+            if (indexB === -1) indexB = 999;
+            
+            if (indexA !== indexB) {
+                return indexA - indexB;
+            }
+            
+            return (a.sort_order ?? 0) - (b.sort_order ?? 0);
+        });
+    }, [templates]);
+
+    const filteredTemplates = useMemo(() => {
+        if (!sortedTemplates) return [];
+        let list = sortedTemplates;
+
+        if (isAutoFilterEnabled) {
+            const dayName = getDayName(selectedDate); // e.g. "monday"
+            const dayAbbrev = dayName ? dayName.substring(0, 3) : ""; // e.g. "mon"
+            
+            list = list.filter((t: any) => {
+                const categoryLower = t.category?.toLowerCase() || "";
+                const nameLower = t.name?.toLowerCase() || "";
+                const descLower = t.description?.toLowerCase() || "";
+
+                // Match if category is the shift type
+                const matchesShiftType = shiftType && categoryLower === shiftType.toLowerCase();
+
+                // Match if template mentions the day name (e.g. "monday" or "mon")
+                const dayWordRegex = dayAbbrev ? new RegExp(`\\b${dayAbbrev}\\b`, 'i') : null;
+                const matchesDayName = dayName && (
+                    categoryLower === dayName ||
+                    nameLower.includes(dayName) ||
+                    descLower.includes(dayName) ||
+                    (dayWordRegex && (dayWordRegex.test(nameLower) || dayWordRegex.test(descLower)))
+                );
+
+                return matchesShiftType || matchesDayName;
+            });
+        }
+
+        return list.filter((t: any) =>
+            t.name.toLowerCase().includes(templateSearchQuery.toLowerCase()) ||
+            (t.description && t.description.toLowerCase().includes(templateSearchQuery.toLowerCase()))
+        );
+    }, [sortedTemplates, templateSearchQuery, isAutoFilterEnabled, shiftType, selectedDate]);
+
+    const templatesByCategory = useMemo(() => {
+        const grouped: Record<string, any[]> = {};
+        filteredTemplates.forEach((t: any) => {
+            const cat = t.category?.toLowerCase() || 'other';
+            const standardCategoryIds = ['morning', 'afternoon', 'closing', 'delivery', 'ordering', 'manager', 'daily'];
+            const key = standardCategoryIds.includes(cat) ? cat : 'other';
+            if (!grouped[key]) grouped[key] = [];
+            grouped[key].push(t);
+        });
+        return grouped;
+    }, [filteredTemplates]);
+
+    const groupedChecklist = useMemo(() => {
+        const groups: { [key: string]: { name: string, items: any[] } } = {};
+
+        shiftChecklist.forEach((item: any) => {
+            const tempId = item.source_template_id || 'custom';
+            if (!groups[tempId]) {
+                let name = '🔧 Custom Tasks';
+                if (tempId !== 'custom') {
+                    const matchedTemplate = sortedTemplates.find((t: any) => t.template_id === tempId);
+                    name = matchedTemplate ? `📋 ${matchedTemplate.name}` : '📋 Attached Template Tasks';
+                }
+                groups[tempId] = { name, items: [] };
+            }
+            groups[tempId].items.push(item);
+        });
+
+        // Convert to array and sort groups: templates first (according to template list sequence), then custom tasks at the end
+        const finalGroups = Object.keys(groups).map(key => ({
+            id: key,
+            name: groups[key].name,
+            items: groups[key].items
+        }));
+
+        finalGroups.sort((a, b) => {
+            if (a.id === 'custom') return 1;
+            if (b.id === 'custom') return -1;
+            const indexA = sortedTemplates.findIndex((t: any) => t.template_id === a.id);
+            const indexB = sortedTemplates.findIndex((t: any) => t.template_id === b.id);
+            if (indexA === -1) return 1;
+            if (indexB === -1) return -1;
+            return indexA - indexB;
+        });
+
+        // Sort items inside groups by sort_order
+        finalGroups.forEach(g => {
+            g.items.sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+        });
+
+        return finalGroups;
+    }, [shiftChecklist, sortedTemplates]);
+
+    const toggleGroup = useCallback((groupId: string) => {
+        setCollapsedGroups(prev => ({ ...prev, [groupId]: !prev[groupId] }));
+    }, []);
+
+    const toggleTemplateCategory = useCallback((catId: string) => {
+        setCollapsedTemplateCategories(prev => ({ ...prev, [catId]: prev[catId] === false ? true : false }));
+    }, []);
 
     // Real-time listener
     const { user } = useAuth();
@@ -557,6 +738,74 @@ export default function ManagerRosterPage() {
         onSettled: () => {
             queryClient.invalidateQueries({ queryKey: ["shifts"] });
             queryClient.invalidateQueries({ queryKey: ["rosters"] });
+        },
+    });
+
+    // Checklist Mutations
+    const addTaskMutation = useMutation({
+        mutationFn: (data: any) => apiPost(`/shift/${editingShiftId}/checklist`, data),
+        onSuccess: () => {
+            toast.success("Task added to shift");
+            queryClient.invalidateQueries({ queryKey: ["shift-checklist", editingShiftId] });
+            queryClient.invalidateQueries({ queryKey: ["shifts"] });
+            setIsAddTaskOpen(false);
+            setAdHocTaskText("");
+            setAdHocTaskInstructions("");
+            setAdHocTaskRequired(false);
+        },
+        onError: (err: any) => toast.error(err.message),
+    });
+
+    const updateTaskMutation = useMutation({
+        mutationFn: ({ itemId, data }: { itemId: string, data: any }) =>
+            apiPatch(`/shift/${editingShiftId}/checklist/${itemId}`, data),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["shift-checklist", editingShiftId] });
+            queryClient.invalidateQueries({ queryKey: ["shifts"] });
+        },
+        onError: (err: any) => toast.error(err.message),
+    });
+
+    const deleteTaskMutation = useMutation({
+        mutationFn: (itemId: string) => apiDelete(`/shift/${editingShiftId}/checklist/${itemId}`),
+        onSuccess: () => {
+            toast.success("Task removed");
+            queryClient.invalidateQueries({ queryKey: ["shift-checklist", editingShiftId] });
+            queryClient.invalidateQueries({ queryKey: ["shifts"] });
+        },
+        onError: (err: any) => toast.error(err.message),
+    });
+
+    const attachTemplateMutation = useMutation({
+        mutationFn: (templateIds: string[]) => {
+            console.log('[RosterPage] attachTemplateMutation mutationFn executing with templateIds:', templateIds, 'and editingShiftId:', editingShiftId);
+            return apiPut(`/shift/${editingShiftId}/checklist`, { template_ids: templateIds });
+        },
+        onSuccess: () => {
+            console.log('[RosterPage] attachTemplateMutation onSuccess called');
+            toast.success("Template tasks attached");
+            queryClient.invalidateQueries({ queryKey: ["shift-checklist", editingShiftId] });
+            queryClient.invalidateQueries({ queryKey: ["shifts"] });
+        },
+        onError: (err: any) => {
+            console.error('[RosterPage] attachTemplateMutation onError called:', err);
+            toast.error(err.message);
+        },
+    });
+
+    const removeTemplateTasksMutation = useMutation({
+        mutationFn: (templateId: string) => {
+            console.log('[RosterPage] removeTemplateTasksMutation executing with templateId:', templateId, 'and editingShiftId:', editingShiftId);
+            return apiDelete(`/shift/${editingShiftId}/checklist/template/${templateId}`);
+        },
+        onSuccess: () => {
+            toast.success("Template tasks removed");
+            queryClient.invalidateQueries({ queryKey: ["shift-checklist", editingShiftId] });
+            queryClient.invalidateQueries({ queryKey: ["shifts"] });
+        },
+        onError: (err: any) => {
+            console.error('[RosterPage] removeTemplateTasksMutation onError called:', err);
+            toast.error(err.message);
         },
     });
 
@@ -1458,7 +1707,7 @@ export default function ManagerRosterPage() {
                                                                                     {s.ShiftChecklistItem && s.ShiftChecklistItem.length > 0 && (
                                                                                         <Badge variant="secondary" className="text-[8px] uppercase font-black tracking-widest h-4 w-min whitespace-nowrap bg-emerald-100 text-emerald-955 border border-emerald-200 flex items-center gap-0.5">
                                                                                             <ClipboardList size={8} />
-                                                                                            {s.ShiftChecklistItem.filter((item: any) => item.status === 'done').length}/{s.ShiftChecklistItem.length}
+                                                                                            {s.ShiftChecklistItem.length}
                                                                                         </Badge>
                                                                                     )}
                                                                                 </div>
@@ -1790,7 +2039,7 @@ export default function ManagerRosterPage() {
                                                                                 {s.ShiftChecklistItem && s.ShiftChecklistItem.length > 0 && (
                                                                                     <span className="text-[8px] font-bold bg-emerald-100 text-emerald-800 px-0.5 rounded flex items-center gap-0.5 shrink-0">
                                                                                         <ClipboardList size={7} />
-                                                                                        {s.ShiftChecklistItem.filter((item: any) => item.status === 'done').length}/{s.ShiftChecklistItem.length}
+                                                                                        {s.ShiftChecklistItem.length}
                                                                                     </span>
                                                                                 )}
                                                                             </div>
@@ -1892,254 +2141,596 @@ export default function ManagerRosterPage() {
             </div>
 
             <Dialog open={addShiftOpen} onOpenChange={setAddShiftOpen}>
-                <DialogContent>
-                    <DialogHeader>
-                        <DialogDescription>
-                            {editingShiftId ? (
-                                isEditingShiftLocked
-                                    ? "This shift has already started and cannot be modified."
-                                    : "Modify shift details or remove it"
-                            ) : `Assign a shift for ${selectedDate ? new Date(selectedDate + "T00:00:00").toLocaleDateString("en-AU", { weekday: "long", month: "short", day: "numeric" }) : ""}`}
-                        </DialogDescription>
-                    </DialogHeader>
-
-                    <div className="space-y-4 py-2">
-                        <Input
-                            label="Shift Date"
-                            type="date"
-                            value={selectedDate}
-                            onChange={(e) => setSelectedDate(e.target.value)}
-                            disabled={isEditingShiftLocked}
-                        />
-                        <EmployeeSearchPicker
-                            employees={activeEmployees}
-                            value={shiftEmployee}
-                            onChange={(id) => setShiftEmployee(id)}
-                            disabled={isEditingShiftLocked}
-                        />
-
-                        <div className="grid grid-cols-2 gap-3">
-                            <div className="space-y-1.5 relative">
-                                <label className="text-sm font-medium">Start Time</label>
-                                <button
-                                    type="button"
-                                    onClick={() => !isEditingShiftLocked && setIsStartDropdownOpen(!isStartDropdownOpen)}
-                                    disabled={isEditingShiftLocked}
-                                    className={cn(
-                                        "flex h-10 w-full rounded-lg border border-[hsl(var(--input))] bg-transparent px-3 py-2 text-sm items-center justify-between focus:outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]/20 focus:border-[hsl(var(--brand))]",
-                                        isEditingShiftLocked && "opacity-50 cursor-not-allowed"
+                <DialogContent className="max-w-md sm:max-w-xl p-0 overflow-hidden rounded-2xl border-none shadow-2xl bg-white">
+                    <Tabs defaultValue="details" className="w-full">
+                        <div className="bg-slate-50 border-b border-slate-100 px-6 pt-6 pb-2">
+                            <DialogHeader className="mb-4">
+                                <DialogTitle className="text-2xl font-bold flex items-center justify-between">
+                                    <span>{editingShiftId ? "Edit Shift" : "Add New Shift"}</span>
+                                    {editingShiftId && (
+                                        <Badge variant="secondary" className={cn(
+                                            "ml-2 text-[10px] font-black uppercase tracking-widest px-2 py-0.5",
+                                            shifts.find((s: any) => s.shift_id === editingShiftId)?.shift_status === 'published'
+                                                ? "bg-emerald-100 text-emerald-700"
+                                                : "bg-amber-100 text-amber-700"
+                                        )}>
+                                            {shifts.find((s: any) => s.shift_id === editingShiftId)?.shift_status || 'Draft'}
+                                        </Badge>
                                     )}
-                                >
-                                    <span>{shiftStart}</span>
-                                    <Clock size={14} className="text-[hsl(var(--muted-foreground))]" />
-                                </button>
+                                </DialogTitle>
+                                <DialogDescription>
+                                    {editingShiftId ? "Update shift details or manage its checklist." : "Assign a shift to an employee."}
+                                </DialogDescription>
+                            </DialogHeader>
 
-                                {isStartDropdownOpen && (
-                                    <>
-                                        <div className="fixed inset-0 z-60" onClick={() => setIsStartDropdownOpen(false)} />
-                                        <div className="absolute top-full mb-2 left-0 w-full bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-xl shadow-2xl z-61 overflow-hidden flex flex-col animate-in slide-in-from-bottom-2 duration-200">
-                                            <div className="p-2 border-b bg-[hsl(var(--muted))]/30 sticky top-0">
-                                                <input
-                                                    autoFocus
-                                                    type="text"
-                                                    placeholder="Search..."
-                                                    value={timeSearch}
-                                                    onChange={e => setTimeSearch(e.target.value)}
-                                                    className="w-full h-8 px-2 text-[10px] rounded-md border bg-[hsl(var(--background))]"
-                                                />
-                                            </div>
-                                            <div className="max-h-48 overflow-y-auto p-1" ref={el => {
-                                                if (el && !el.dataset.scrolled) {
-                                                    const selected = el.querySelector('[data-selected="true"]');
-                                                    if (selected) {
-                                                        selected.scrollIntoView({ block: "center" });
-                                                        el.dataset.scrolled = "true";
-                                                    }
-                                                }
-                                            }}>
-                                                {(() => {
-                                                    const filtered = TIME_OPTIONS.filter(t => t.includes(timeSearch));
-
-                                                    return filtered.map(time => (
-                                                        <button
-                                                            key={time}
-                                                            type="button"
-                                                            onClick={() => {
-                                                                setShiftStart(time);
-                                                                setIsStartDropdownOpen(false);
-                                                                setTimeSearch("");
-                                                            }}
-                                                            data-selected={shiftStart === time}
-                                                            className={cn(
-                                                                "w-full text-left px-3 py-2 text-xs rounded-lg transition-colors",
-                                                                shiftStart === time
-                                                                    ? "bg-[hsl(var(--brand))] text-white"
-                                                                    : "hover:bg-[hsl(var(--muted))] text-[hsl(var(--foreground))]"
-                                                            )}
-                                                        >
-                                                            {time}
-                                                        </button>
-                                                    ));
-                                                })()}
-                                            </div>
-                                        </div>
-                                    </>
-                                )}
-                            </div>
-                            <div className="space-y-1.5 relative">
-                                <label className="text-sm font-medium">End Time</label>
-                                <button
-                                    type="button"
-                                    onClick={() => !isEditingShiftLocked && setIsEndDropdownOpen(!isEndDropdownOpen)}
-                                    disabled={isEditingShiftLocked}
-                                    className={cn(
-                                        "flex h-10 w-full rounded-lg border border-[hsl(var(--input))] bg-transparent px-3 py-2 text-sm items-center justify-between focus:outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]/20 focus:border-[hsl(var(--brand))]",
-                                        isEditingShiftLocked && "opacity-50 cursor-not-allowed"
+                            <TabsList className="grid w-full grid-cols-2 h-10 p-1 bg-slate-200/50 rounded-xl">
+                                <TabsTrigger value="details" className="rounded-lg font-bold text-xs data-[state=active]:bg-white data-[state=active]:shadow-sm">
+                                    <Clock size={14} className="mr-2" />
+                                    Details
+                                </TabsTrigger>
+                                <TabsTrigger value="checklist" disabled={!editingShiftId} className="rounded-lg font-bold text-xs data-[state=active]:bg-white data-[state=active]:shadow-sm">
+                                    <ClipboardList size={14} className="mr-2" />
+                                    Checklist
+                                    {shiftChecklist.length > 0 && (
+                                        <span className="ml-1.5 px-1.5 py-0.5 rounded-full bg-[hsl(var(--brand))] text-white text-[9px]">
+                                            {shiftChecklist.length}
+                                        </span>
                                     )}
-                                >
-                                    <span>{shiftEnd}</span>
-                                    <Clock size={14} className="text-[hsl(var(--muted-foreground))]" />
-                                </button>
-
-                                {isEndDropdownOpen && (
-                                    <>
-                                        <div className="fixed inset-0 z-60" onClick={() => setIsEndDropdownOpen(false)} />
-                                        <div className="absolute top-full mb-2 left-0 w-full bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-xl shadow-2xl z-61 overflow-hidden flex flex-col animate-in slide-in-from-bottom-2 duration-200">
-                                            <div className="p-2 border-b bg-[hsl(var(--muted))]/30 sticky top-0">
-                                                <input
-                                                    autoFocus
-                                                    type="text"
-                                                    placeholder="Search..."
-                                                    value={timeSearch}
-                                                    onChange={e => setTimeSearch(e.target.value)}
-                                                    className="w-full h-8 px-2 text-[10px] rounded-md border bg-[hsl(var(--background))]"
-                                                />
-                                            </div>
-                                            <div className="max-h-48 overflow-y-auto p-1" ref={el => {
-                                                if (el && !el.dataset.scrolled) {
-                                                    const selected = el.querySelector('[data-selected="true"]');
-                                                    if (selected) {
-                                                        selected.scrollIntoView({ block: "center" });
-                                                        el.dataset.scrolled = "true";
-                                                    }
-                                                }
-                                            }}>
-                                                {(() => {
-                                                    const filtered = TIME_OPTIONS.filter(t => t.includes(timeSearch));
-
-                                                    return filtered.map(time => (
-                                                        <button
-                                                            key={time}
-                                                            type="button"
-                                                            onClick={() => {
-                                                                setShiftEnd(time);
-                                                                setIsEndDropdownOpen(false);
-                                                                setTimeSearch("");
-                                                            }}
-                                                            data-selected={shiftEnd === time}
-                                                            className={cn(
-                                                                "w-full text-left px-3 py-2 text-xs rounded-lg transition-colors",
-                                                                shiftEnd === time
-                                                                    ? "bg-[hsl(var(--brand))] text-white"
-                                                                    : "hover:bg-[hsl(var(--muted))] text-[hsl(var(--foreground))]"
-                                                            )}
-                                                        >
-                                                            {time}
-                                                        </button>
-                                                    ));
-                                                })()}
-                                            </div>
-                                        </div>
-                                    </>
-                                )}
-                            </div>
+                                </TabsTrigger>
+                            </TabsList>
                         </div>
 
-                        <div className="grid grid-cols-2 gap-3 items-center">
-                            <div className="space-y-1.5 bg-[hsl(var(--brand-light))]/10 p-3 rounded-xl border border-[hsl(var(--brand))]/10">
-                                <label className="text-[10px] font-black uppercase text-[hsl(var(--muted-foreground))] tracking-widest block mb-1">Shift Type</label>
-                                <button
-                                    type="button"
-                                    onClick={() => setIsShiftTypeModalOpen(true)}
-                                    className="w-full flex items-center justify-between text-left focus:outline-none hover:opacity-85 transition-opacity"
-                                >
-                                    <div className="flex items-center gap-2">
-                                        <Clock size={14} className="text-[hsl(var(--brand))]" />
-                                        <span className="text-sm font-bold capitalize text-[hsl(var(--foreground))]">
-                                            {shiftType}
-                                            {isShiftTypeOverridden && <span className="ml-1 text-[9px] font-black text-[hsl(var(--brand))] uppercase tracking-wider bg-[hsl(var(--brand-light))]/40 px-1.5 py-0.5 rounded">Custom</span>}
-                                        </span>
+                        <TabsContent value="details" className="p-6 m-0 flex flex-col h-[480px]">
+                            <div className="space-y-4 py-2 flex-1 overflow-y-auto pr-1">
+                                <Input
+                                    label="Shift Date"
+                                    type="date"
+                                    value={selectedDate}
+                                    onChange={(e) => setSelectedDate(e.target.value)}
+                                    disabled={isEditingShiftLocked}
+                                />
+                                <EmployeeSearchPicker
+                                    employees={activeEmployees}
+                                    value={shiftEmployee}
+                                    onChange={(id) => setShiftEmployee(id)}
+                                    disabled={isEditingShiftLocked}
+                                />
+
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div className="space-y-1.5 relative">
+                                        <label className="text-sm font-medium">Start Time</label>
+                                        <button
+                                            type="button"
+                                            onClick={() => !isEditingShiftLocked && setIsStartDropdownOpen(!isStartDropdownOpen)}
+                                            disabled={isEditingShiftLocked}
+                                            className={cn(
+                                                "flex h-10 w-full rounded-lg border border-[hsl(var(--input))] bg-transparent px-3 py-2 text-sm items-center justify-between focus:outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]/20 focus:border-[hsl(var(--brand))]",
+                                                isEditingShiftLocked && "opacity-50 cursor-not-allowed"
+                                            )}
+                                        >
+                                            <span>{shiftStart}</span>
+                                            <Clock size={14} className="text-[hsl(var(--muted-foreground))]" />
+                                        </button>
+
+                                        {isStartDropdownOpen && (
+                                            <>
+                                                <div className="fixed inset-0 z-60" onClick={() => setIsStartDropdownOpen(false)} />
+                                                <div className="absolute top-full mb-2 left-0 w-full bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-xl shadow-2xl z-61 overflow-hidden flex flex-col animate-in slide-in-from-bottom-2 duration-200">
+                                                    <div className="p-2 border-b bg-[hsl(var(--muted))]/30 sticky top-0">
+                                                        <input
+                                                            autoFocus
+                                                            type="text"
+                                                            placeholder="Search..."
+                                                            value={timeSearch}
+                                                            onChange={e => setTimeSearch(e.target.value)}
+                                                            className="w-full h-8 px-2 text-[10px] rounded-md border bg-[hsl(var(--background))]"
+                                                        />
+                                                    </div>
+                                                    <div className="max-h-48 overflow-y-auto p-1" ref={el => {
+                                                        if (el && !el.dataset.scrolled) {
+                                                            const selected = el.querySelector('[data-selected="true"]');
+                                                            if (selected) {
+                                                                selected.scrollIntoView({ block: "center" });
+                                                                el.dataset.scrolled = "true";
+                                                            }
+                                                        }
+                                                    }}>
+                                                        {(() => {
+                                                            const filtered = TIME_OPTIONS.filter(t => t.includes(timeSearch));
+
+                                                            return filtered.map(time => (
+                                                                <button
+                                                                    key={time}
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        setShiftStart(time);
+                                                                        setIsStartDropdownOpen(false);
+                                                                        setTimeSearch("");
+                                                                    }}
+                                                                    data-selected={shiftStart === time}
+                                                                    className={cn(
+                                                                        "w-full text-left px-3 py-2 text-xs rounded-lg transition-colors",
+                                                                        shiftStart === time
+                                                                            ? "bg-[hsl(var(--brand))] text-white"
+                                                                            : "hover:bg-[hsl(var(--muted))] text-[hsl(var(--foreground))]"
+                                                                    )}
+                                                                >
+                                                                    {time}
+                                                                </button>
+                                                            ));
+                                                        })()}
+                                                    </div>
+                                                </div>
+                                            </>
+                                        )}
                                     </div>
-                                    <ChevronDown size={14} className="text-slate-400" />
-                                </button>
-                            </div>
-                            <div className="space-y-1.5 bg-[hsl(var(--muted))]/30 p-3 rounded-xl border border-[hsl(var(--border))]">
-                                <label className="text-[10px] font-black uppercase text-[hsl(var(--muted-foreground))] tracking-widest block mb-1">Total Hours</label>
-                                <div className="flex items-center gap-2">
-                                    <FileText size={14} className="text-[hsl(var(--muted-foreground))]" />
-                                    <span className="text-sm font-bold text-[hsl(var(--foreground))]">{formatDurationHours(calculateShiftDuration(shiftStart, shiftEnd))}</span>
+                                    <div className="space-y-1.5 relative">
+                                        <label className="text-sm font-medium">End Time</label>
+                                        <button
+                                            type="button"
+                                            onClick={() => !isEditingShiftLocked && setIsEndDropdownOpen(!isEndDropdownOpen)}
+                                            disabled={isEditingShiftLocked}
+                                            className={cn(
+                                                "flex h-10 w-full rounded-lg border border-[hsl(var(--input))] bg-transparent px-3 py-2 text-sm items-center justify-between focus:outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]/20 focus:border-[hsl(var(--brand))]",
+                                                isEditingShiftLocked && "opacity-50 cursor-not-allowed"
+                                            )}
+                                        >
+                                            <span>{shiftEnd}</span>
+                                            <Clock size={14} className="text-[hsl(var(--muted-foreground))]" />
+                                        </button>
+
+                                        {isEndDropdownOpen && (
+                                            <>
+                                                <div className="fixed inset-0 z-60" onClick={() => setIsEndDropdownOpen(false)} />
+                                                <div className="absolute top-full mb-2 left-0 w-full bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-xl shadow-2xl z-61 overflow-hidden flex flex-col animate-in slide-in-from-bottom-2 duration-200">
+                                                    <div className="p-2 border-b bg-[hsl(var(--muted))]/30 sticky top-0">
+                                                        <input
+                                                            autoFocus
+                                                            type="text"
+                                                            placeholder="Search..."
+                                                            value={timeSearch}
+                                                            onChange={e => setTimeSearch(e.target.value)}
+                                                            className="w-full h-8 px-2 text-[10px] rounded-md border bg-[hsl(var(--background))]"
+                                                        />
+                                                    </div>
+                                                    <div className="max-h-48 overflow-y-auto p-1" ref={el => {
+                                                        if (el && !el.dataset.scrolled) {
+                                                            const selected = el.querySelector('[data-selected="true"]');
+                                                            if (selected) {
+                                                                selected.scrollIntoView({ block: "center" });
+                                                                el.dataset.scrolled = "true";
+                                                            }
+                                                        }
+                                                    }}>
+                                                        {(() => {
+                                                            const filtered = TIME_OPTIONS.filter(t => t.includes(timeSearch));
+
+                                                            return filtered.map(time => (
+                                                                <button
+                                                                    key={time}
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        setShiftEnd(time);
+                                                                        setIsEndDropdownOpen(false);
+                                                                        setTimeSearch("");
+                                                                    }}
+                                                                    data-selected={shiftEnd === time}
+                                                                    className={cn(
+                                                                        "w-full text-left px-3 py-2 text-xs rounded-lg transition-colors",
+                                                                        shiftEnd === time
+                                                                            ? "bg-[hsl(var(--brand))] text-white"
+                                                                            : "hover:bg-[hsl(var(--muted))] text-[hsl(var(--foreground))]"
+                                                                    )}
+                                                                >
+                                                                    {time}
+                                                                </button>
+                                                            ));
+                                                        })()}
+                                                    </div>
+                                                </div>
+                                            </>
+                                        )}
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-3 items-center">
+                                    <div className="space-y-1.5 bg-[hsl(var(--brand-light))]/10 p-3 rounded-xl border border-[hsl(var(--brand))]/10">
+                                        <label className="text-[10px] font-black uppercase text-[hsl(var(--muted-foreground))] tracking-widest block mb-1">Shift Type</label>
+                                        <button
+                                            type="button"
+                                            onClick={() => setIsShiftTypeModalOpen(true)}
+                                            className="w-full flex items-center justify-between text-left focus:outline-none hover:opacity-85 transition-opacity"
+                                        >
+                                            <div className="flex items-center gap-2">
+                                                <Clock size={14} className="text-[hsl(var(--brand))]" />
+                                                <span className="text-sm font-bold capitalize text-[hsl(var(--foreground))]">
+                                                    {shiftType}
+                                                    {isShiftTypeOverridden && <span className="ml-1 text-[9px] font-black text-[hsl(var(--brand))] uppercase tracking-wider bg-[hsl(var(--brand-light))]/40 px-1.5 py-0.5 rounded">Custom</span>}
+                                                </span>
+                                            </div>
+                                            <ChevronDown size={14} className="text-slate-400" />
+                                        </button>
+                                    </div>
+                                    <div className="space-y-1.5 bg-[hsl(var(--muted))]/30 p-3 rounded-xl border border-[hsl(var(--border))]">
+                                        <label className="text-[10px] font-black uppercase text-[hsl(var(--muted-foreground))] tracking-widest block mb-1">Total Hours</label>
+                                        <div className="flex items-center gap-2">
+                                            <FileText size={14} className="text-[hsl(var(--muted-foreground))]" />
+                                            <span className="text-sm font-bold text-[hsl(var(--foreground))]">{formatDurationHours(calculateShiftDuration(shiftStart, shiftEnd))}</span>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
-                        </div>
-                    </div>
 
-                    <DialogFooter className="flex items-center justify-between sm:justify-between w-full">
-                        <div className="flex items-center gap-2">
-                            {editingShiftId && (
-                                <Button
-                                    variant="outline"
-                                    disabled={isEditingShiftLocked}
-                                    className="text-[hsl(var(--danger))] border-[hsl(var(--danger))]/20 hover:bg-[hsl(var(--danger))]/10 disabled:opacity-30"
-                                    onClick={() => setDeleteConfirmOpen(true)}
-                                    loading={deleteShiftMutation.isPending}
-                                >
-                                    <Trash2 size={16} className="mr-2" /> Delete
-                                </Button>
-                            )}
-                        </div>
-                        <div className="flex items-center gap-2">
-                            {editingShiftId && shifts.find((s: any) => s.shift_id === editingShiftId)?.shift_status === 'draft' && (
-                                <Button
-                                    variant="outline"
-                                    className="border-[hsl(var(--brand))] text-[hsl(var(--brand))] hover:bg-[hsl(var(--brand))]/10"
-                                    onClick={() => notifyShiftMutation.mutate(editingShiftId)}
-                                    loading={notifyShiftMutation.isPending}
-                                    disabled={notifyShiftMutation.isPending}
-                                >
-                                    Publish Shift
-                                </Button>
-                            )}
-                            <Button variant="outline" onClick={() => setAddShiftOpen(false)}>Cancel</Button>
+                            <DialogFooter className="flex items-center justify-between sm:justify-between w-full pt-4 shrink-0 border-t border-slate-100/50 mt-4">
+                                <div className="flex items-center gap-2">
+                                    {editingShiftId && (
+                                        <Button
+                                            variant="outline"
+                                            disabled={isEditingShiftLocked}
+                                            className="text-[hsl(var(--danger))] border-[hsl(var(--danger))]/20 hover:bg-[hsl(var(--danger))]/10 disabled:opacity-30"
+                                            onClick={() => setDeleteConfirmOpen(true)}
+                                            loading={deleteShiftMutation.isPending}
+                                        >
+                                            <Trash2 size={16} className="mr-2" /> Delete
+                                        </Button>
+                                    )}
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    {editingShiftId && shifts.find((s: any) => s.shift_id === editingShiftId)?.shift_status === 'draft' && (
+                                        <Button
+                                            variant="outline"
+                                            className="border-[hsl(var(--brand))] text-[hsl(var(--brand))] hover:bg-[hsl(var(--brand))]/10"
+                                            onClick={() => notifyShiftMutation.mutate(editingShiftId)}
+                                            loading={notifyShiftMutation.isPending}
+                                            disabled={notifyShiftMutation.isPending}
+                                        >
+                                            Publish Shift
+                                        </Button>
+                                    )}
+                                    <Button variant="outline" onClick={() => setAddShiftOpen(false)}>Cancel</Button>
 
-                            {!editingShiftId ? (
-                                <>
+                                    {!editingShiftId ? (
+                                        <>
+                                            <Button
+                                                variant="outline"
+                                                className="border-[hsl(var(--brand))]/30 text-[hsl(var(--brand))] hover:bg-[hsl(var(--brand))]/10"
+                                                onClick={() => handleAddShift(false)}
+                                                loading={createShiftMutation.isPending}
+                                            >
+                                                Save Draft
+                                            </Button>
+                                            <Button
+                                                onClick={() => handleAddShift(true)}
+                                                loading={createShiftMutation.isPending}
+                                                className="bg-[hsl(var(--brand))] text-white hover:bg-[hsl(var(--brand-hover))]"
+                                            >
+                                                <Bell size={14} className="mr-2" /> Save & Notify
+                                            </Button>
+                                        </>
+                                    ) : (
+                                        <Button
+                                            onClick={() => handleAddShift(false)}
+                                            loading={updateShiftMutation.isPending}
+                                            disabled={!isDirty || isEditingShiftLocked}
+                                        >
+                                            Update Shift
+                                        </Button>
+                                    )}
+                                </div>
+                            </DialogFooter>
+                        </TabsContent>
+
+                        <TabsContent value="checklist" className="p-6 m-0 flex flex-col h-[480px]">
+                            <div className="flex items-center justify-between mb-4 shrink-0">
+                                <h3 className="font-bold text-sm">Tasks Snapshot</h3>
+                                <div className="flex items-center gap-2">
                                     <Button
-                                        variant="outline"
-                                        className="border-[hsl(var(--brand))]/30 text-[hsl(var(--brand))] hover:bg-[hsl(var(--brand))]/10"
-                                        onClick={() => handleAddShift(false)}
-                                        loading={createShiftMutation.isPending}
+                                        variant={isTemplatesPanelOpen ? "secondary" : "outline"}
+                                        size="sm"
+                                        className={cn(
+                                            "h-8 rounded-lg text-[10px] font-black uppercase transition-all duration-150",
+                                            isTemplatesPanelOpen && "bg-slate-100 text-slate-900 border-slate-200"
+                                        )}
+                                        onClick={() => {
+                                            if (!isTemplatesPanelOpen) {
+                                                setCollapsedTemplateCategories({});
+                                            }
+                                            setIsTemplatesPanelOpen(!isTemplatesPanelOpen);
+                                        }}
+                                        disabled={isEditingShiftLocked}
                                     >
-                                        Save Draft
+                                        {isTemplatesPanelOpen ? "Hide Templates" : "Attach Template"}
                                     </Button>
                                     <Button
-                                        onClick={() => handleAddShift(true)}
-                                        loading={createShiftMutation.isPending}
-                                        className="bg-[hsl(var(--brand))] text-white hover:bg-[hsl(var(--brand-hover))]"
+                                        size="sm"
+                                        className="h-8 rounded-lg text-[10px] font-black uppercase"
+                                        onClick={() => setIsAddTaskOpen(true)}
+                                        disabled={isEditingShiftLocked}
                                     >
-                                        <Bell size={14} className="mr-2" /> Save & Notify
+                                        Add Task
                                     </Button>
-                                </>
-                            ) : (
-                                <Button
-                                    onClick={() => handleAddShift(false)}
-                                    loading={updateShiftMutation.isPending}
-                                    disabled={!isDirty || isEditingShiftLocked}
+                                </div>
+                            </div>
+
+                            <div className="flex-1 min-h-0 flex gap-4 overflow-hidden">
+                                {/* Left pane: Checklist dropzone & tasks list */}
+                                <div
+                                    className={cn(
+                                        "flex-1 flex flex-col min-w-0 transition-all duration-200 rounded-2xl p-1 relative",
+                                        isDraggingOverChecklist ? "bg-slate-50/80 border-2 border-dashed border-[hsl(var(--brand))]/30 scale-[0.99]" : "border-2 border-transparent"
+                                    )}
+                                    onDragOver={(e) => {
+                                        if (isEditingShiftLocked) return;
+                                        e.preventDefault();
+                                        setIsDraggingOverChecklist(true);
+                                    }}
+                                    onDragLeave={() => {
+                                        if (isEditingShiftLocked) return;
+                                        setIsDraggingOverChecklist(false);
+                                    }}
+                                    onDrop={(e) => {
+                                        if (isEditingShiftLocked) return;
+                                        e.preventDefault();
+                                        setIsDraggingOverChecklist(false);
+                                        const templateId = e.dataTransfer.getData("text/plain");
+                                        if (templateId) {
+                                            console.log('[RosterPage] Template dropped:', templateId);
+                                            attachTemplateMutation.mutate([templateId]);
+                                        }
+                                    }}
                                 >
-                                    Update Shift
-                                </Button>
-                            )}
-                        </div>
-                    </DialogFooter>
+                                    {isDraggingOverChecklist && !isEditingShiftLocked && (
+                                        <div className="absolute inset-0 bg-[hsl(var(--brand))]/5 pointer-events-none rounded-xl flex flex-col items-center justify-center gap-2 z-10 animate-fade-in">
+                                            <div className="w-10 h-10 rounded-full bg-[hsl(var(--brand))]/10 flex items-center justify-center text-[hsl(var(--brand))]">
+                                                <ClipboardList size={20} />
+                                            </div>
+                                            <span className="text-xs font-bold text-[hsl(var(--brand))]">Drop template to attach</span>
+                                        </div>
+                                    )}
+
+                                    <div className="flex-1 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
+                                        {isLoadingChecklist ? (
+                                            <div className="space-y-2 py-4">
+                                                {[1, 2, 3].map(i => <div key={i} className="h-12 bg-slate-50 rounded-xl animate-pulse" />)}
+                                            </div>
+                                        ) : shiftChecklist.length === 0 ? (
+                                            <div className="flex flex-col items-center justify-center py-12 text-center bg-slate-50 rounded-2xl border-2 border-dashed border-slate-100 h-full min-h-[220px]">
+                                                <ClipboardList size={32} className="text-slate-300 mb-2" />
+                                                <p className="text-xs font-bold text-slate-400">No tasks for this shift yet.</p>
+                                                <p className="text-[10px] text-slate-400 max-w-[180px] mt-1">Add tasks manually or attach a template.</p>
+                                            </div>
+                                        ) : (
+                                            groupedChecklist.map((group) => {
+                                                const isCollapsed = collapsedGroups[group.id] === true;
+                                                return (
+                                                    <div key={group.id} className="border border-slate-100 rounded-2xl overflow-hidden shadow-sm bg-white mb-3">
+                                                        <div className="w-full flex items-center justify-between px-4 py-2 bg-slate-50/50 hover:bg-slate-50 transition-colors border-b border-slate-100/50">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => toggleGroup(group.id)}
+                                                                className="flex-1 flex items-center justify-between text-left focus:outline-none pr-4 py-1.5"
+                                                            >
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className="text-xs font-black uppercase text-slate-700 tracking-wider">
+                                                                        {group.name}
+                                                                    </span>
+                                                                    <Badge variant="secondary" className="bg-slate-200/50 text-slate-600 text-[9px] font-black tracking-tight px-1.5 py-0.5 rounded-full">
+                                                                        {group.items.length}
+                                                                    </Badge>
+                                                                </div>
+                                                            </button>
+                                                            <div className="flex items-center gap-1 shrink-0">
+                                                                {group.id !== 'custom' && (
+                                                                    <Button
+                                                                        variant="ghost"
+                                                                        size="icon"
+                                                                        className="h-7 w-7 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            removeTemplateTasksMutation.mutate(group.id);
+                                                                        }}
+                                                                        disabled={isEditingShiftLocked}
+                                                                    >
+                                                                        <Trash2 size={14} />
+                                                                    </Button>
+                                                                )}
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => toggleGroup(group.id)}
+                                                                    className="h-7 w-7 flex items-center justify-center text-slate-400 hover:bg-slate-100 rounded-lg transition-colors focus:outline-none"
+                                                                >
+                                                                    <ChevronDown
+                                                                        size={16}
+                                                                        className={cn("transition-transform duration-200", isCollapsed ? "" : "rotate-180")}
+                                                                    />
+                                                                </button>
+                                                            </div>
+                                                        </div>
+
+                                                        {!isCollapsed && (
+                                                            <div className="p-3 space-y-2 bg-white divide-y divide-slate-50">
+                                                                {group.items.map((item) => (
+                                                                    <div key={item.checklist_item_id} className="group flex items-center gap-3 py-2.5 bg-white border border-transparent rounded-xl hover:border-[hsl(var(--brand))]/10 px-2 transition-all">
+                                                                        <div className={cn(
+                                                                            "w-5 h-5 rounded-full flex items-center justify-center shrink-0 border-2 transition-all",
+                                                                            item.status === 'done' ? "bg-emerald-500 border-emerald-500 text-white" : "border-slate-200 text-slate-100"
+                                                                        )}>
+                                                                            {item.status === 'done' ? <Check size={12} strokeWidth={4} /> : <div className="w-1.5 h-1.5 rounded-full bg-slate-200" />}
+                                                                        </div>
+
+                                                                        <div className="flex-1 min-w-0">
+                                                                            <input
+                                                                                className="w-full bg-transparent border-none font-bold text-xs p-0 focus:ring-0 text-slate-700 placeholder-slate-400"
+                                                                                defaultValue={item.task_text}
+                                                                                onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                                                                                onBlur={(e) => {
+                                                                                    if (e.target.value !== item.task_text) {
+                                                                                        updateTaskMutation.mutate({
+                                                                                            itemId: item.checklist_item_id,
+                                                                                            data: { task_text: e.target.value }
+                                                                                        });
+                                                                                    }
+                                                                                }}
+                                                                                disabled={isEditingShiftLocked}
+                                                                            />
+                                                                            {item.instructions && (
+                                                                                <p className="text-[9px] text-slate-400 mt-0.5 leading-none font-medium">{item.instructions}</p>
+                                                                            )}
+                                                                        </div>
+
+                                                                        <div className="flex items-center gap-3 shrink-0">
+                                                                            <div className="flex flex-col items-center">
+                                                                                <span className="text-[8px] font-black uppercase text-slate-400 mb-0.5 tracking-wider">Req</span>
+                                                                                <Switch
+                                                                                    checked={item.is_required}
+                                                                                    onCheckedChange={(val) => {
+                                                                                        updateTaskMutation.mutate({
+                                                                                            itemId: item.checklist_item_id,
+                                                                                            data: { is_required: val }
+                                                                                        });
+                                                                                    }}
+                                                                                    className="scale-[0.55] data-[state=checked]:bg-[hsl(var(--brand))]"
+                                                                                    disabled={isEditingShiftLocked}
+                                                                                />
+                                                                            </div>
+                                                                            <Button
+                                                                                variant="ghost"
+                                                                                size="icon"
+                                                                                className="h-7 w-7 rounded-full text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                                                onClick={() => deleteTaskMutation.mutate(item.checklist_item_id)}
+                                                                                disabled={isEditingShiftLocked}
+                                                                            >
+                                                                                <Trash2 size={14} />
+                                                                            </Button>
+                                                                        </div>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Right pane: Scrollable and searchable templates sidebar */}
+                                {isTemplatesPanelOpen && (
+                                    <div className="w-[210px] shrink-0 border-l border-slate-100 pl-4 flex flex-col h-full overflow-hidden animate-in slide-in-from-right-3 duration-200">
+                                        <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest block mb-2 shrink-0">Templates List</span>
+                                        <div className="relative mb-2 shrink-0">
+                                            <input
+                                                type="text"
+                                                placeholder="Search templates..."
+                                                value={templateSearchQuery}
+                                                onChange={(e) => setTemplateSearchQuery(e.target.value)}
+                                                className="w-full h-8 px-2.5 text-xs rounded-lg border border-slate-200 bg-white focus:outline-none focus:ring-1 focus:ring-[hsl(var(--brand))] focus:border-[hsl(var(--brand))]"
+                                            />
+                                        </div>
+
+                                        {/* Auto-filter Toggle checkbox */}
+                                        <div className="flex items-center justify-between mb-2 shrink-0 px-1">
+                                            <label className="flex items-center gap-1.5 cursor-pointer select-none text-[10px] font-bold text-slate-500 hover:text-slate-700">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={isAutoFilterEnabled}
+                                                    onChange={(e) => setIsAutoFilterEnabled(e.target.checked)}
+                                                    className="h-3.5 w-3.5 rounded border-slate-300 text-[hsl(var(--brand))] focus:ring-[hsl(var(--brand))]"
+                                                />
+                                                Filter by shift ({shiftType})
+                                            </label>
+                                        </div>
+
+                                        <div className="flex-1 overflow-y-auto space-y-4 pr-1 custom-scrollbar">
+                                            {filteredTemplates.length === 0 ? (
+                                                <div className="p-3 text-center text-xs text-slate-400">No templates found</div>
+                                            ) : (
+                                                CATEGORIES.map(cat => {
+                                                    const catTemplates = templatesByCategory[cat.id] || [];
+                                                    if (catTemplates.length === 0) return null;
+                                                    const isCollapsed = collapsedTemplateCategories[cat.id] !== false;
+                                                    return (
+                                                        <div key={cat.id} className="space-y-1.5">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => toggleTemplateCategory(cat.id)}
+                                                                className="w-full px-1.5 text-[9px] font-black uppercase tracking-wider text-slate-400 hover:text-slate-600 bg-slate-100/60 hover:bg-slate-200/40 py-1 rounded flex items-center justify-between transition-colors focus:outline-none"
+                                                            >
+                                                                <div className="flex items-center gap-1">
+                                                                    {isCollapsed ? <ChevronRight size={10} strokeWidth={3} /> : <ChevronDown size={10} strokeWidth={3} />}
+                                                                    <span>{cat.label}</span>
+                                                                </div>
+                                                                <span className="text-[8px] bg-slate-200 text-slate-600 px-1 rounded">{catTemplates.length}</span>
+                                                            </button>
+
+                                                            {!isCollapsed && (
+                                                                <div className="space-y-1.5 pl-0.5 animate-in fade-in-5 duration-150">
+                                                                    {catTemplates.map(t => (
+                                                                        <div
+                                                                            key={t.template_id}
+                                                                            draggable={!isEditingShiftLocked}
+                                                                            onDragStart={(e) => {
+                                                                                if (isEditingShiftLocked) return;
+                                                                                e.dataTransfer.setData("text/plain", t.template_id);
+                                                                                e.dataTransfer.effectAllowed = "copy";
+                                                                            }}
+                                                                            onClick={() => {
+                                                                                if (isEditingShiftLocked) return;
+                                                                                console.log('[RosterPage] Template clicked:', t.name);
+                                                                                attachTemplateMutation.mutate([t.template_id]);
+                                                                            }}
+                                                                            className="group flex items-center justify-between px-2.5 py-2 text-xs font-bold text-slate-700 bg-slate-50 hover:bg-[hsl(var(--brand-light))]/60 border border-slate-100 hover:border-[hsl(var(--brand))]/20 rounded-xl cursor-grab active:cursor-grabbing transition-all select-none"
+                                                                        >
+                                                                            <div className="flex items-center gap-1.5 min-w-0">
+                                                                                <div className="text-slate-300 group-hover:text-[hsl(var(--brand))]/40 shrink-0">
+                                                                                    <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor">
+                                                                                        <circle cx="2" cy="2" r="1"/>
+                                                                                        <circle cx="2" cy="5" r="1"/>
+                                                                                        <circle cx="2" cy="8" r="1"/>
+                                                                                        <circle cx="5" cy="2" r="1"/>
+                                                                                        <circle cx="5" cy="5" r="1"/>
+                                                                                        <circle cx="5" cy="8" r="1"/>
+                                                                                    </svg>
+                                                                                </div>
+                                                                                <span className="truncate pr-1">{t.name}</span>
+                                                                            </div>
+                                                                            <Button
+                                                                                type="button"
+                                                                                variant="ghost"
+                                                                                size="icon"
+                                                                                className="h-5 w-5 rounded-md text-slate-400 hover:text-[hsl(var(--brand))] hover:bg-white shrink-0"
+                                                                                onClick={(e) => {
+                                                                                    e.stopPropagation();
+                                                                                    attachTemplateMutation.mutate([t.template_id]);
+                                                                                }}
+                                                                                disabled={isEditingShiftLocked}
+                                                                            >
+                                                                                <Plus size={12} strokeWidth={3} />
+                                                                            </Button>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })
+                                            )}
+                                        </div>
+                                        <div className="mt-2 text-[9px] text-slate-400 leading-tight shrink-0 bg-slate-50 p-2 rounded-lg border border-slate-100/50">
+                                            💡 Drag a template and drop on the left, or click it to attach.
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="mt-4 pt-4 border-t border-slate-100 shrink-0">
+                                <p className="text-[10px] text-slate-400 leading-tight">
+                                    <Info size={10} className="inline mr-1" />
+                                    This is a shift-specific snapshot. Changes here will not affect the original template, and updating the template later will not affect this shift.
+                                </p>
+                            </div>
+                        </TabsContent>
+                    </Tabs>
                 </DialogContent>
             </Dialog>
 
@@ -2614,6 +3205,84 @@ export default function ManagerRosterPage() {
                             </Button>
                         </div>
                     </div>
+                </DialogContent>
+            </Dialog>
+
+            {/* Add Custom Task Modal */}
+            <Dialog open={isAddTaskOpen} onOpenChange={setIsAddTaskOpen}>
+                <DialogContent className="sm:max-w-[425px] bg-white rounded-2xl shadow-2xl border border-slate-100 p-6 z-100">
+                    <DialogHeader>
+                        <DialogTitle className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                            <ClipboardList className="text-[hsl(var(--brand))]" size={20} />
+                            Add Custom Task
+                        </DialogTitle>
+                        <DialogDescription className="text-xs text-slate-400">
+                            Create a custom ad-hoc task specifically for this roster shift snapshot.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="space-y-4 my-4">
+                        <div className="space-y-1.5">
+                            <label className="text-[10px] font-black uppercase tracking-wider text-slate-400">Task Name</label>
+                            <Input
+                                value={adHocTaskText}
+                                onChange={(e) => setAdHocTaskText(e.target.value)}
+                                placeholder="e.g. Clean the espresso machine"
+                                className="h-10 rounded-xl border-slate-100 focus:border-[hsl(var(--brand))] focus:ring-1 focus:ring-[hsl(var(--brand))] text-sm font-semibold"
+                            />
+                        </div>
+
+                        <div className="space-y-1.5">
+                            <label className="text-[10px] font-black uppercase tracking-wider text-slate-400">Instructions (Optional)</label>
+                            <textarea
+                                value={adHocTaskInstructions}
+                                onChange={(e) => setAdHocTaskInstructions(e.target.value)}
+                                placeholder="Describe step-by-step instructions..."
+                                className="w-full min-h-[80px] rounded-xl border border-slate-200 focus:border-[hsl(var(--brand))] focus:ring-1 focus:ring-[hsl(var(--brand))] p-3 text-sm font-semibold outline-none resize-none"
+                            />
+                        </div>
+
+                        <div className="flex items-center justify-between p-3 bg-slate-50 border border-slate-100 rounded-xl">
+                            <div>
+                                <p className="text-xs font-bold text-slate-700">Is Required?</p>
+                                <p className="text-[10px] text-slate-400">Employee must complete this task before clocking out.</p>
+                            </div>
+                            <Switch
+                                checked={adHocTaskRequired}
+                                onCheckedChange={setAdHocTaskRequired}
+                                className="data-[state=checked]:bg-[hsl(var(--brand))]"
+                            />
+                        </div>
+                    </div>
+
+                    <DialogFooter className="gap-2 sm:gap-0 mt-6">
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            onClick={() => setIsAddTaskOpen(false)}
+                            className="h-10 rounded-xl text-xs font-bold uppercase text-slate-400 hover:bg-slate-50 transition-colors"
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            type="button"
+                            onClick={() => {
+                                if (!adHocTaskText.trim()) {
+                                    toast.error("Please enter a task name");
+                                    return;
+                                }
+                                addTaskMutation.mutate({
+                                    task_text: adHocTaskText.trim(),
+                                    instructions: adHocTaskInstructions.trim() || null,
+                                    is_required: adHocTaskRequired
+                                });
+                            }}
+                            disabled={addTaskMutation.isPending}
+                            className="h-10 rounded-xl text-xs font-black uppercase tracking-wider bg-[hsl(var(--brand))] hover:bg-[hsl(var(--brand-hover))] text-white shadow-lg transition-colors px-6"
+                        >
+                            {addTaskMutation.isPending ? "Adding..." : "Add Task"}
+                        </Button>
+                    </DialogFooter>
                 </DialogContent>
             </Dialog>
         </DashboardLayout>
