@@ -459,7 +459,7 @@ export default function ManagerShiftsPage() {
                                                         {s.ShiftChecklistItem && s.ShiftChecklistItem.length > 0 && (
                                                             <span className="flex items-center gap-0.5 bg-white/20 px-1 py-0.5 rounded text-[8px] font-bold shrink-0">
                                                                 <ClipboardList size={8} />
-                                                                {s.ShiftChecklistItem.filter((item: any) => item.status === 'done').length}/{s.ShiftChecklistItem.length}
+                                                                {s.ShiftChecklistItem.length}
                                                             </span>
                                                         )}
                                                     </div>
@@ -524,7 +524,7 @@ export default function ManagerShiftsPage() {
                                                                     {shift.ShiftChecklistItem && shift.ShiftChecklistItem.length > 0 && (
                                                                         <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-600 border border-emerald-100 font-bold text-[9px] uppercase">
                                                                             <ClipboardList size={10} className="shrink-0" />
-                                                                            {shift.ShiftChecklistItem.filter((item: any) => item.status === 'done').length}/{shift.ShiftChecklistItem.length} Tasks
+                                                                            {shift.ShiftChecklistItem.length} Tasks
                                                                         </span>
                                                                     )}
                                                                 </div>

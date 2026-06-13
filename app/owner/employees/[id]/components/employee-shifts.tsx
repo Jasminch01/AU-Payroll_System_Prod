@@ -36,7 +36,7 @@ export function EmployeeShifts({ employeeId }: { employeeId: string }) {
                                         {totalTasks > 0 && (
                                             <div className="flex items-center gap-1.5 text-xs font-bold text-[hsl(var(--brand))] bg-[hsl(var(--brand-light))]/50 px-2 py-0.5 rounded-md mt-1 w-fit">
                                                 <ClipboardList size={12} />
-                                                {completedTasks}/{totalTasks} Tasks
+                                                {totalTasks} Tasks
                                             </div>
                                         )}
                                     </div>

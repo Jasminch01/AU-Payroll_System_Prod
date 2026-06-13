@@ -152,7 +152,7 @@ export default function ManagerDashboardPage() {
                                         <div className="mt-2 flex items-center gap-1.5">
                                             <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-600 border border-emerald-100 font-bold text-[10px] uppercase">
                                                 <ClipboardList size={11} className="shrink-0" />
-                                                {nextShift.ShiftChecklistItem.filter((item: any) => item.status === 'done').length}/{nextShift.ShiftChecklistItem.length} Tasks
+                                                {nextShift.ShiftChecklistItem.length} Tasks
                                             </span>
                                         </div>
                                     )}

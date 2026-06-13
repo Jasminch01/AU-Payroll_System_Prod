@@ -44,6 +44,26 @@ const TIME_OPTIONS = [
     })
 ];
 
+const CATEGORIES = [
+    { id: 'morning', label: '☀️ Morning' },
+    { id: 'afternoon', label: '⛅ Afternoon' },
+    { id: 'closing', label: '🔒 Closing' },
+    { id: 'delivery', label: '📦 Delivery' },
+    { id: 'ordering', label: '📝 Ordering' },
+    { id: 'manager', label: '💼 Manager' },
+    { id: 'daily', label: '📅 Daily' },
+    { id: 'other', label: '🔧 Other' },
+];
+
+const getDayName = (dateStr: string) => {
+    if (!dateStr) return "";
+    const parts = dateStr.split('-');
+    if (parts.length !== 3) return "";
+    const date = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+    const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    return days[date.getDay()];
+};
+
 function getRosterDates(offset: number, period: RosterPeriod): Date[] {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -140,6 +160,8 @@ export default function OwnerRosterPage() {
     const [isAttachOpen, setIsAttachOpen] = useState(false);
     const [isTemplatesPanelOpen, setIsTemplatesPanelOpen] = useState(false);
     const [templateSearchQuery, setTemplateSearchQuery] = useState("");
+    const [isAutoFilterEnabled, setIsAutoFilterEnabled] = useState(true);
+    const [collapsedTemplateCategories, setCollapsedTemplateCategories] = useState<{ [key: string]: boolean }>({});
     const [isDraggingOverChecklist, setIsDraggingOverChecklist] = useState(false);
     const [isAddTaskOpen, setIsAddTaskOpen] = useState(false);
     const [adHocTaskText, setAdHocTaskText] = useState("");
@@ -179,6 +201,11 @@ export default function OwnerRosterPage() {
             }
         }
     }, [isMobile, rosterDates]);
+
+    useEffect(() => {
+        setIsAutoFilterEnabled(true);
+        setCollapsedTemplateCategories({});
+    }, [editingShiftId]);
 
     // Shift form
     const [shiftEmployee, setShiftEmployee] = useState("");
@@ -397,11 +424,50 @@ export default function OwnerRosterPage() {
 
     const filteredTemplates = useMemo(() => {
         if (!sortedTemplates) return [];
-        return sortedTemplates.filter((t: any) =>
+        let list = sortedTemplates;
+
+        if (isAutoFilterEnabled) {
+            const dayName = getDayName(selectedDate); // e.g. "monday"
+            const dayAbbrev = dayName ? dayName.substring(0, 3) : ""; // e.g. "mon"
+            
+            list = list.filter((t: any) => {
+                const categoryLower = t.category?.toLowerCase() || "";
+                const nameLower = t.name?.toLowerCase() || "";
+                const descLower = t.description?.toLowerCase() || "";
+
+                // Match if category is the shift type
+                const matchesShiftType = shiftType && categoryLower === shiftType.toLowerCase();
+
+                // Match if template mentions the day name (e.g. "monday" or "mon")
+                const dayWordRegex = dayAbbrev ? new RegExp(`\\b${dayAbbrev}\\b`, 'i') : null;
+                const matchesDayName = dayName && (
+                    categoryLower === dayName ||
+                    nameLower.includes(dayName) ||
+                    descLower.includes(dayName) ||
+                    (dayWordRegex && (dayWordRegex.test(nameLower) || dayWordRegex.test(descLower)))
+                );
+
+                return matchesShiftType || matchesDayName;
+            });
+        }
+
+        return list.filter((t: any) =>
             t.name.toLowerCase().includes(templateSearchQuery.toLowerCase()) ||
             (t.description && t.description.toLowerCase().includes(templateSearchQuery.toLowerCase()))
         );
-    }, [sortedTemplates, templateSearchQuery]);
+    }, [sortedTemplates, templateSearchQuery, isAutoFilterEnabled, shiftType, selectedDate]);
+
+    const templatesByCategory = useMemo(() => {
+        const grouped: Record<string, any[]> = {};
+        filteredTemplates.forEach((t: any) => {
+            const cat = t.category?.toLowerCase() || 'other';
+            const standardCategoryIds = ['morning', 'afternoon', 'closing', 'delivery', 'ordering', 'manager', 'daily'];
+            const key = standardCategoryIds.includes(cat) ? cat : 'other';
+            if (!grouped[key]) grouped[key] = [];
+            grouped[key].push(t);
+        });
+        return grouped;
+    }, [filteredTemplates]);
 
     const groupedChecklist = useMemo(() => {
         const groups: { [key: string]: { name: string, items: any[] } } = {};
@@ -446,6 +512,10 @@ export default function OwnerRosterPage() {
 
     const toggleGroup = useCallback((groupId: string) => {
         setCollapsedGroups(prev => ({ ...prev, [groupId]: !prev[groupId] }));
+    }, []);
+
+    const toggleTemplateCategory = useCallback((catId: string) => {
+        setCollapsedTemplateCategories(prev => ({ ...prev, [catId]: prev[catId] === false ? true : false }));
     }, []);
 
     const { data: checklistSummary = [] } = useQuery({
@@ -1983,11 +2053,11 @@ export default function OwnerRosterPage() {
                                                                                             </svg>
                                                                                         </div>
                                                                                         <span className={cn(
-                                                                                            "text-[8px] font-black tabular-nums",
-                                                                                            getShiftProgress(s.shift_id)?.allRequiredDone ? "text-emerald-700" : "text-slate-600"
-                                                                                        )}>
-                                                                                            {getShiftProgress(s.shift_id)?.completed}/{getShiftProgress(s.shift_id)?.total}
-                                                                                        </span>
+                                                            "text-[8px] font-black tabular-nums",
+                                                            getShiftProgress(s.shift_id)?.allRequiredDone ? "text-emerald-700" : "text-slate-600"
+                                                        )}>
+                                                            {getShiftProgress(s.shift_id)?.total}
+                                                        </span>
                                                                                     </div>
                                                                                 )}
                                                                             </div>
@@ -2127,8 +2197,8 @@ export default function OwnerRosterPage() {
                                 </TabsList>
                             </div>
 
-                            <TabsContent value="details" className="p-6 m-0 space-y-6">
-                                <div className="space-y-4">
+                            <TabsContent value="details" className="p-6 m-0 flex flex-col h-[480px]">
+                                <div className="space-y-4 py-2 flex-1 overflow-y-auto pr-1">
                                     <Input
                                         label="Shift Date"
                                         type="date"
@@ -2283,7 +2353,7 @@ export default function OwnerRosterPage() {
                                     </div>
                                 </div>
 
-                                <DialogFooter className="flex items-center justify-between sm:justify-between w-full pt-4">
+                                <DialogFooter className="flex items-center justify-between sm:justify-between w-full pt-4 shrink-0 border-t border-slate-100/50 mt-4">
                                     <div className="flex items-center gap-2">
                                         {editingShiftId && (
                                             <Button
@@ -2337,6 +2407,9 @@ export default function OwnerRosterPage() {
                                                 isTemplatesPanelOpen && "bg-slate-100 text-slate-900 border-slate-200"
                                             )}
                                             onClick={() => {
+                                                if (!isTemplatesPanelOpen) {
+                                                    setCollapsedTemplateCategories({});
+                                                }
                                                 setIsTemplatesPanelOpen(!isTemplatesPanelOpen);
                                             }}
                                         >
@@ -2406,42 +2479,43 @@ export default function OwnerRosterPage() {
                                                                     type="button"
                                                                     onClick={() => toggleGroup(group.id)}
                                                                     className="flex-1 flex items-center justify-between text-left focus:outline-none pr-4 py-1.5"
-                                                                 >
-                                                                     <div className="flex items-center gap-2">
-                                                                         <span className="text-xs font-black uppercase text-slate-700 tracking-wider">
-                                                                             {group.name}
-                                                                         </span>
-                                                                         <Badge variant="secondary" className="bg-slate-200/50 text-slate-600 text-[9px] font-black tracking-tight px-1.5 py-0.5 rounded-full">
-                                                                             {group.items.length} {group.items.length === 1 ? 'task' : 'tasks'}
-                                                                         </Badge>
-                                                                     </div>
-                                                                 </button>
-                                                                 <div className="flex items-center gap-1 shrink-0">
-                                                                     {group.id !== 'custom' && (
-                                                                         <Button
-                                                                             variant="ghost"
-                                                                             size="icon"
-                                                                             className="h-7 w-7 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                                                                             onClick={(e) => {
-                                                                                 e.stopPropagation();
-                                                                                 removeTemplateTasksMutation.mutate(group.id);
-                                                                             }}
-                                                                         >
-                                                                             <Trash2 size={14} />
-                                                                         </Button>
-                                                                     )}
-                                                                     <button
-                                                                         type="button"
-                                                                         onClick={() => toggleGroup(group.id)}
-                                                                         className="h-7 w-7 flex items-center justify-center text-slate-400 hover:bg-slate-100 rounded-lg transition-colors focus:outline-none"
-                                                                     >
-                                                                         <ChevronDown
-                                                                             size={16}
-                                                                             className={cn("transition-transform duration-200", isCollapsed ? "" : "rotate-180")}
-                                                                         />
-                                                                     </button>
-                                                                 </div>
-                                                             </div>
+                                                                >
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span className="text-xs font-black uppercase text-slate-700 tracking-wider">
+                                                                            {group.name}
+                                                                        </span>
+                                                                        <Badge variant="secondary" className="bg-slate-200/50 text-slate-600 text-[9px] font-black tracking-tight px-1.5 py-0.5 rounded-full">
+                                                                            {group.items.length}
+                                                                        </Badge>
+                                                                    </div>
+                                                                </button>
+                                                                <div className="flex items-center gap-1 shrink-0">
+                                                                    {group.id !== 'custom' && (
+                                                                        <Button
+                                                                            variant="ghost"
+                                                                            size="icon"
+                                                                            className="h-7 w-7 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                removeTemplateTasksMutation.mutate(group.id);
+                                                                            }}
+                                                                            disabled={isEditingShiftLocked}
+                                                                        >
+                                                                            <Trash2 size={14} />
+                                                                        </Button>
+                                                                    )}
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => toggleGroup(group.id)}
+                                                                        className="h-7 w-7 flex items-center justify-center text-slate-400 hover:bg-slate-100 rounded-lg transition-colors focus:outline-none"
+                                                                    >
+                                                                        <ChevronDown
+                                                                            size={16}
+                                                                            className={cn("transition-transform duration-200", isCollapsed ? "" : "rotate-180")}
+                                                                        />
+                                                                    </button>
+                                                                </div>
+                                                            </div>
 
                                                             {!isCollapsed && (
                                                                 <div className="p-3 space-y-2 bg-white divide-y divide-slate-50">
@@ -2520,51 +2594,90 @@ export default function OwnerRosterPage() {
                                                     className="w-full h-8 px-2.5 text-xs rounded-lg border border-slate-200 bg-white focus:outline-none focus:ring-1 focus:ring-[hsl(var(--brand))] focus:border-[hsl(var(--brand))]"
                                                 />
                                             </div>
-                                            <div className="flex-1 overflow-y-auto space-y-1.5 pr-1 custom-scrollbar">
+
+                                            {/* Auto-filter Toggle checkbox */}
+                                            <div className="flex items-center justify-between mb-2 shrink-0 px-1">
+                                                <label className="flex items-center gap-1.5 cursor-pointer select-none text-[10px] font-bold text-slate-500 hover:text-slate-700">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={isAutoFilterEnabled}
+                                                        onChange={(e) => setIsAutoFilterEnabled(e.target.checked)}
+                                                        className="h-3.5 w-3.5 rounded border-slate-300 text-[hsl(var(--brand))] focus:ring-[hsl(var(--brand))]"
+                                                    />
+                                                    Filter by shift ({shiftType})
+                                                </label>
+                                            </div>
+
+                                            <div className="flex-1 overflow-y-auto space-y-4 pr-1 custom-scrollbar">
                                                 {filteredTemplates.length === 0 ? (
                                                     <div className="p-3 text-center text-xs text-slate-400">No templates found</div>
                                                 ) : (
-                                                    filteredTemplates.map(t => (
-                                                        <div
-                                                            key={t.template_id}
-                                                            draggable="true"
-                                                            onDragStart={(e) => {
-                                                                e.dataTransfer.setData("text/plain", t.template_id);
-                                                                e.dataTransfer.effectAllowed = "copy";
-                                                            }}
-                                                            onClick={() => {
-                                                                console.log('[RosterPage] Template clicked:', t.name);
-                                                                attachTemplateMutation.mutate([t.template_id]);
-                                                            }}
-                                                            className="group flex items-center justify-between px-2.5 py-2 text-xs font-bold text-slate-700 bg-slate-50 hover:bg-[hsl(var(--brand-light))]/60 border border-slate-100 hover:border-[hsl(var(--brand))]/20 rounded-xl cursor-grab active:cursor-grabbing transition-all select-none"
-                                                        >
-                                                            <div className="flex items-center gap-1.5 min-w-0">
-                                                                <div className="text-slate-300 group-hover:text-[hsl(var(--brand))]/40 shrink-0">
-                                                                    <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor">
-                                                                        <circle cx="2" cy="2" r="1"/>
-                                                                        <circle cx="2" cy="5" r="1"/>
-                                                                        <circle cx="2" cy="8" r="1"/>
-                                                                        <circle cx="5" cy="2" r="1"/>
-                                                                        <circle cx="5" cy="5" r="1"/>
-                                                                        <circle cx="5" cy="8" r="1"/>
-                                                                    </svg>
+                                                    CATEGORIES.map(cat => {
+                                                        const catTemplates = templatesByCategory[cat.id] || [];
+                                                        if (catTemplates.length === 0) return null;
+                                                        const isCollapsed = collapsedTemplateCategories[cat.id] !== false;
+                                                        return (
+                                                            <div key={cat.id} className="space-y-1.5">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => toggleTemplateCategory(cat.id)}
+                                                                    className="w-full px-1.5 text-[9px] font-black uppercase tracking-wider text-slate-400 hover:text-slate-600 bg-slate-100/60 hover:bg-slate-200/40 py-1 rounded flex items-center justify-between transition-colors focus:outline-none"
+                                                                >
+                                                                    <div className="flex items-center gap-1">
+                                                                        {isCollapsed ? <ChevronRight size={10} strokeWidth={3} /> : <ChevronDown size={10} strokeWidth={3} />}
+                                                                        <span>{cat.label}</span>
+                                                                    </div>
+                                                                    <span className="text-[8px] bg-slate-200 text-slate-600 px-1 rounded">{catTemplates.length}</span>
+                                                                </button>
+                                                                
+                                                                {!isCollapsed && (
+                                                                    <div className="space-y-1.5 pl-0.5 animate-in fade-in-5 duration-150">
+                                                                    {catTemplates.map(t => (
+                                                                        <div
+                                                                            key={t.template_id}
+                                                                            draggable="true"
+                                                                            onDragStart={(e) => {
+                                                                                e.dataTransfer.setData("text/plain", t.template_id);
+                                                                                e.dataTransfer.effectAllowed = "copy";
+                                                                            }}
+                                                                            onClick={() => {
+                                                                                console.log('[RosterPage] Template clicked:', t.name);
+                                                                                attachTemplateMutation.mutate([t.template_id]);
+                                                                            }}
+                                                                            className="group flex items-center justify-between px-2.5 py-2 text-xs font-bold text-slate-700 bg-slate-50 hover:bg-[hsl(var(--brand-light))]/60 border border-slate-100 hover:border-[hsl(var(--brand))]/20 rounded-xl cursor-grab active:cursor-grabbing transition-all select-none"
+                                                                        >
+                                                                            <div className="flex items-center gap-1.5 min-w-0">
+                                                                                <div className="text-slate-300 group-hover:text-[hsl(var(--brand))]/40 shrink-0">
+                                                                                    <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor">
+                                                                                        <circle cx="2" cy="2" r="1"/>
+                                                                                        <circle cx="2" cy="5" r="1"/>
+                                                                                        <circle cx="2" cy="8" r="1"/>
+                                                                                        <circle cx="5" cy="2" r="1"/>
+                                                                                        <circle cx="5" cy="5" r="1"/>
+                                                                                        <circle cx="5" cy="8" r="1"/>
+                                                                                    </svg>
+                                                                                </div>
+                                                                                <span className="truncate pr-1">{t.name}</span>
+                                                                            </div>
+                                                                            <Button
+                                                                                type="button"
+                                                                                variant="ghost"
+                                                                                size="icon"
+                                                                                className="h-5 w-5 rounded-md text-slate-400 hover:text-[hsl(var(--brand))] hover:bg-white shrink-0"
+                                                                                onClick={(e) => {
+                                                                                    e.stopPropagation();
+                                                                                    attachTemplateMutation.mutate([t.template_id]);
+                                                                                }}
+                                                                            >
+                                                                                <Plus size={12} strokeWidth={3} />
+                                                                            </Button>
+                                                                        </div>
+                                                                    ))}
                                                                 </div>
-                                                                <span className="truncate pr-1">{t.name}</span>
+                                                                )}
                                                             </div>
-                                                            <Button
-                                                                type="button"
-                                                                variant="ghost"
-                                                                size="icon"
-                                                                className="h-5 w-5 rounded-md text-slate-400 hover:text-[hsl(var(--brand))] hover:bg-white shrink-0"
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    attachTemplateMutation.mutate([t.template_id]);
-                                                                }}
-                                                            >
-                                                                <Plus size={12} strokeWidth={3} />
-                                                            </Button>
-                                                        </div>
-                                                    ))
+                                                        );
+                                                    })
                                                 )}
                                             </div>
                                             <div className="mt-2 text-[9px] text-slate-400 leading-tight shrink-0 bg-slate-50 p-2 rounded-lg border border-slate-100/50">
