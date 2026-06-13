@@ -141,7 +141,8 @@ export async function notifyChecklistStatus(
     businessId: string,
     type: 'CLOCK_IN_REMINDER' | 'CLOCK_OUT_BLOCKED',
     shiftType: string,
-    pendingCount: number
+    pendingCount: number,
+    shiftId?: string
 ) {
     const title = type === 'CLOCK_IN_REMINDER' ? '📋 Shift Checklist' : '⚠️ Clock-Out Blocked';
     const message = type === 'CLOCK_IN_REMINDER'
@@ -154,8 +155,9 @@ export async function notifyChecklistStatus(
         type: 'CHECKLIST_REMINDER',
         title,
         message,
-        entity_id: null,
-        entity_type: 'checklist'
+        entity_id: shiftId || null,
+        entity_type: 'shift',
+        link_url: shiftId ? `/shifts?shiftId=${shiftId}` : '/shifts'
     });
 }
 

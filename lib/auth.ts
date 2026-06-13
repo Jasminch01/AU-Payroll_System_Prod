@@ -31,7 +31,7 @@ export async function getAuthUser(): Promise<AuthUser | null> {
 
     // 1. Check metadata cache first
     const meta = user.user_metadata;
-    if (meta && meta.role && meta.business_id) {
+    if (meta && meta.role && meta.business_id && 'employee_id' in meta) {
         return {
             user_id: user.id,
             email: user.email!,
@@ -39,7 +39,7 @@ export async function getAuthUser(): Promise<AuthUser | null> {
             business_id: meta.business_id,
             first_name: meta.first_name || '',
             last_name: meta.last_name || '',
-            employee_id: meta.employee_id,
+            employee_id: meta.employee_id === 'none' ? undefined : meta.employee_id,
             can_order_liquor: meta.can_order_liquor ?? false,
         };
     }
@@ -103,7 +103,7 @@ export async function getAuthUser(): Promise<AuthUser | null> {
                 business_id: authUser.business_id,
                 first_name: authUser.first_name,
                 last_name: authUser.last_name,
-                employee_id: authUser.employee_id,
+                employee_id: authUser.employee_id || 'none',
                 can_order_liquor: authUser.can_order_liquor
             }
         }).catch(err => {

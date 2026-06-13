@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { DashboardLayout } from "@/components/layout";
 import { Card, CardContent } from "@/components/ui/card";
@@ -9,29 +9,53 @@ import { StatusBadge } from "@/components/ui/badge";
 import {
     Tabs, TabsContent, TabsList, TabsTrigger
 } from "@/components/ui/tabs";
-import { apiGet, apiPost, apiPut } from "@/lib/api-client";
+import { apiGet, apiPost, apiPut, apiPatch } from "@/lib/api-client";
+import { useBusinessTimezone } from "@/lib/timezone-context";
+import { createBusinessTimestamp } from "@/lib/timezone-utils";
 import { toast } from "sonner";
-import { CalendarDays, Clock, ArrowLeftRight, Check, X, Users, LayoutGrid, List, ChevronLeft, ChevronRight, ClipboardList } from "lucide-react";
+import { CalendarDays, Clock, ArrowLeftRight, Check, X, Users, LayoutGrid, List, ChevronLeft, ChevronRight, ClipboardList, Info, CheckCircle2, XCircle, MinusCircle, Lock } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import { useRealtimeInvalidator } from "@/hooks/use-realtime-invalidator";
+import { useSearchParams } from "next/navigation";
 
 import { ShiftSwapDialog } from "@/components/shifts/swap-dialog";
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from "@/components/ui/dialog";
 
 export default function ManagerShiftsPage() {
     const queryClient = useQueryClient();
+    const searchParams = useSearchParams();
     const [swapDialogOpen, setSwapDialogOpen] = useState(false);
     const [selectedShift, setSelectedShift] = useState<any>(null);
+    const [selectedShiftDetails, setSelectedShiftDetails] = useState<any>(null);
     const [viewMode, setViewMode] = useState<"list" | "grid">("list");
     const [rosterPeriod, setRosterPeriod] = useState<"weekly" | "fortnightly" | "monthly">("weekly");
     const [weekOffset, setWeekOffset] = useState(0);
+    const [reasonPromptTask, setReasonPromptTask] = useState<any>(null);
+    const [reasonText, setReasonText] = useState("");
     const { user } = useAuth();
+    const { businessTimezone } = useBusinessTimezone();
 
     const { data: shifts = [], isLoading } = useQuery({
         queryKey: ["my-shifts"],
         queryFn: () => apiGet<any[]>("/shifts/me"),
+        refetchInterval: 60_000,
     });
+
+    const { data: attendanceData } = useQuery({
+        queryKey: ["my-attendance"],
+        queryFn: () => apiGet<any>("/attendance/me"),
+    });
+
+    const isClockedIn = ["CLOCK_IN", "BREAK_START", "BREAK_END"].includes(attendanceData?.current_status);
 
     // Memoized configs for real-time invalidator
     const realtimeConfigs = useMemo(() => [
@@ -91,18 +115,38 @@ export default function ManagerShiftsPage() {
         onError: (err: Error) => toast.error(err.message),
     });
 
-    const now = new Date();
-    const ongoing = shifts.filter((s: any) => {
-        const start = new Date(s.start_time);
-        const end = new Date(s.end_time);
-        return start <= now && end >= now;
-    });
+    const parseShiftTime = useMemo(() => {
+        return (isoStr: string): Date => {
+            if (!isoStr) return new Date(0);
+            if (isoStr.endsWith('Z') || /[+-]\d{2}:\d{2}$/.test(isoStr)) {
+                return new Date(isoStr);
+            }
+            const [datePart, timePart] = isoStr.split('T');
+            const hhmm = (timePart || '00:00').substring(0, 5);
+            const utcIso = createBusinessTimestamp(datePart, hhmm, businessTimezone);
+            return new Date(utcIso);
+        };
+    }, [businessTimezone]);
 
-    const upcoming = shifts.filter((s: any) => new Date(s.start_time) > now)
-        .sort((a: any, b: any) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
+    const { ongoing, upcoming, past } = useMemo(() => {
+        const now = new Date();
 
-    const past = shifts.filter((s: any) => new Date(s.end_time) < now)
-        .sort((a: any, b: any) => new Date(b.end_time).getTime() - new Date(a.end_time).getTime());
+        const ongoing = shifts.filter((s: any) => {
+            const start = parseShiftTime(s.start_time);
+            const end = parseShiftTime(s.end_time);
+            return start <= now && end >= now;
+        });
+
+        const upcoming = shifts
+            .filter((s: any) => parseShiftTime(s.start_time) > now)
+            .sort((a: any, b: any) => parseShiftTime(a.start_time).getTime() - parseShiftTime(b.start_time).getTime());
+
+        const past = shifts
+            .filter((s: any) => parseShiftTime(s.end_time) < now)
+            .sort((a: any, b: any) => parseShiftTime(b.end_time).getTime() - parseShiftTime(a.end_time).getTime());
+
+        return { ongoing, upcoming, past };
+    }, [shifts, parseShiftTime]);
 
     const pendingIncomingSwaps = swapRequests.filter((sr: any) =>
         sr.target_employee_id === user?.employee_id && sr.status === 'pending_acceptance'
@@ -112,12 +156,72 @@ export default function ManagerShiftsPage() {
         !sr.target_employee_id && sr.status === 'pending_acceptance' && sr.requester_id !== user?.employee_id
     );
 
+    const activeShift = useMemo(() => {
+        if (ongoing.length > 0) return ongoing[0];
+        if (isClockedIn && past.length > 0) {
+            const lastShift = past[0];
+            const end = parseShiftTime(lastShift.end_time);
+            if (new Date().getTime() - end.getTime() < 16 * 60 * 60 * 1000) {
+                return lastShift;
+            }
+        }
+        return upcoming[0];
+    }, [ongoing, upcoming, past, isClockedIn, parseShiftTime]);
+
+    const { data: detailsChecklist = [], isLoading: isLoadingDetailsChecklist } = useQuery({
+        queryKey: ["shift-checklist", selectedShiftDetails?.shift_id],
+        queryFn: () => apiGet<any[]>(`/shift/${selectedShiftDetails.shift_id}/checklist`),
+        enabled: !!selectedShiftDetails,
+    });
+
+    const toggleTaskMutation = useMutation({
+        mutationFn: ({ shiftId, id, status, reason }: { shiftId: string, id: string, status: string, reason?: string | null }) => 
+            apiPatch(`/shift/${shiftId}/checklist/${id}`, { status, reason }),
+        onSuccess: (data: any, variables: any) => {
+            queryClient.invalidateQueries({ queryKey: ["shift-checklist", variables.shiftId] });
+            toast.success("Task updated");
+        },
+        onError: (err: any) => toast.error(err.message),
+    });
+
     const formatToDateString = (date: Date) => {
         const y = date.getFullYear();
         const m = String(date.getMonth() + 1).padStart(2, '0');
         const d = String(date.getDate()).padStart(2, '0');
         return `${y}-${m}-${d}`;
     };
+
+    const getShiftStatus = (shift: any) => {
+        const now = new Date();
+        const start = parseShiftTime(shift.start_time);
+        const end = parseShiftTime(shift.end_time);
+
+        const activeRequest = (swapRequests || []).find((sr: any) =>
+            String(sr.shift_id) === String(shift.shift_id) &&
+            ['pending_acceptance', 'pending_approval'].includes(sr.status)
+        );
+
+        if (activeRequest) {
+            if (!activeRequest.target_employee_id) {
+                return activeRequest.manager_note === 'swap' ? "pooled_swap" : "pooled_transfer";
+            }
+            return activeRequest.target_shift_id ? "swap_pending" : "transfer_pending";
+        }
+
+        if (end < now) return "completed";
+        if (start <= now && end >= now) return "ongoing";
+        return "upcoming";
+    };
+
+    useEffect(() => {
+        const shiftId = searchParams.get("shiftId") || searchParams.get("shift_id");
+        if (shiftId && shifts.length > 0) {
+            const found = shifts.find((s: any) => String(s.shift_id) === String(shiftId));
+            if (found) {
+                setSelectedShiftDetails(found);
+            }
+        }
+    }, [searchParams, shifts]);
 
     const currentRosterDates = useMemo(() => {
         const d = new Date();
@@ -159,28 +263,6 @@ export default function ManagerShiftsPage() {
         }
         return days;
     }, [weekOffset, rosterPeriod]);
-
-    const getShiftStatus = (shift: any) => {
-        const now = new Date();
-        const start = new Date(shift.start_time);
-        const end = new Date(shift.end_time);
-
-        const activeRequest = (swapRequests || []).find((sr: any) =>
-            String(sr.shift_id) === String(shift.shift_id) &&
-            ['pending_acceptance', 'pending_approval'].includes(sr.status)
-        );
-
-        if (activeRequest) {
-            if (!activeRequest.target_employee_id) {
-                return activeRequest.manager_note === 'swap' ? "pooled_swap" : "pooled_transfer";
-            }
-            return activeRequest.target_shift_id ? "swap_pending" : "transfer_pending";
-        }
-
-        if (end < now) return "completed";
-        if (start <= now && end >= now) return "ongoing";
-        return "upcoming";
-    };
 
     return (
         <DashboardLayout
@@ -367,7 +449,7 @@ export default function ManagerShiftsPage() {
                                                 <div
                                                     key={s.shift_id}
                                                     className="bg-[hsl(var(--brand))] text-white p-2 rounded-lg text-[10px] font-medium leading-tight cursor-pointer hover:brightness-110 transition-all shadow-sm"
-                                                    onClick={() => { setSelectedShift(s); setSwapDialogOpen(true); }}
+                                                    onClick={() => setSelectedShiftDetails(s)}
                                                 >
                                                     <div className="flex items-center gap-1 opacity-90 mb-0.5 capitalize">
                                                         <Clock size={10} /> {s.shift_type}
@@ -426,7 +508,11 @@ export default function ManagerShiftsPage() {
                                                             </td>
                                                         </tr>
                                                     ) : data.map((shift: any) => (
-                                                        <tr key={shift.shift_id} className="hover:bg-[hsl(var(--muted))]/5 transition-colors group">
+                                                        <tr 
+                                                            key={shift.shift_id} 
+                                                            className="hover:bg-[hsl(var(--muted))]/5 transition-colors group cursor-pointer"
+                                                            onClick={() => setSelectedShiftDetails(shift)}
+                                                        >
                                                             <td className="px-4 py-4">
                                                                 <p className="font-semibold text-sm">
                                                                     {new Date(shift.start_time).toLocaleDateString("en-AU", { weekday: 'short', day: 'numeric', month: 'short' })}
@@ -470,7 +556,7 @@ export default function ManagerShiftsPage() {
                                                                             variant="outline"
                                                                             size="sm"
                                                                             className="h-8 text-[10px] gap-1 px-3 border-[hsl(var(--brand))]/20 text-[hsl(var(--brand))] hover:bg-[hsl(var(--brand-light))]"
-                                                                            onClick={() => { setSelectedShift(shift); setSwapDialogOpen(true); }}
+                                                                            onClick={(e) => { e.stopPropagation(); setSelectedShift(shift); setSwapDialogOpen(true); }}
                                                                             disabled={!!(swapRequests || []).find((sr: any) =>
                                                                                 String(sr.shift_id) === String(shift.shift_id) &&
                                                                                 ['pending_acceptance', 'pending_approval'].includes(sr.status)
@@ -489,7 +575,8 @@ export default function ManagerShiftsPage() {
                                                                                 variant="ghost"
                                                                                 size="sm"
                                                                                 className="h-8 text-[10px] text-[hsl(var(--danger))] bg-[hsl(var(--danger-light))]/5 hover:bg-[hsl(var(--danger-light))]/15 border border-[hsl(var(--danger))]/10"
-                                                                                onClick={() => {
+                                                                                onClick={(e) => {
+                                                                                    e.stopPropagation();
                                                                                     const req = (swapRequests || []).find((sr: any) => String(sr.shift_id) === String(shift.shift_id) && ['pending_acceptance', 'pending_approval'].includes(sr.status));
                                                                                     if (req) respondSwapMutation.mutate({ id: req.request_id, action: 'cancel' });
                                                                                 }}
@@ -518,6 +605,283 @@ export default function ManagerShiftsPage() {
                 shift={selectedShift}
                 role="manager"
             />
+
+            <Dialog open={!!selectedShiftDetails} onOpenChange={(open) => { if (!open) setSelectedShiftDetails(null); }}>
+                <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto rounded-2xl bg-white border-none shadow-2xl p-6">
+                    <DialogHeader className="pb-4 border-b border-slate-100">
+                        <DialogTitle className="text-xl font-bold flex items-center gap-2 text-slate-800">
+                            <CalendarDays className="text-[hsl(var(--brand))]" size={22} />
+                            Shift Details
+                        </DialogTitle>
+                        <DialogDescription className="text-xs font-medium text-slate-500 mt-1">
+                            Detailed schedule and checklist for this shift.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    {selectedShiftDetails && (
+                        <div className="space-y-6 py-4">
+                            {/* Shift Details Summary */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-50/50 p-4 rounded-xl border border-slate-100">
+                                <div>
+                                    <p className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">Shift Date & Type</p>
+                                    <p className="text-sm font-bold text-slate-800 mt-1">
+                                        {new Date(selectedShiftDetails.start_time).toLocaleDateString("en-AU", { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+                                    </p>
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-[hsl(var(--brand-light))] text-[hsl(var(--brand))] font-bold text-[10px] uppercase mt-2">
+                                        {selectedShiftDetails.shift_type}
+                                    </span>
+                                </div>
+                                <div>
+                                    <p className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">Shift Hours</p>
+                                    <p className="text-sm font-bold text-[hsl(var(--brand))] mt-1 flex items-center gap-1.5">
+                                        <Clock size={16} />
+                                        {selectedShiftDetails.start_time?.split('T')[1]?.substring(0, 5)}
+                                        {" – "}
+                                        {selectedShiftDetails.end_time?.split('T')[1]?.substring(0, 5)}
+                                    </p>
+                                    <div className="mt-2 flex items-center gap-2">
+                                        <span className="text-[10px] text-slate-400 font-medium">Status:</span>
+                                        <StatusBadge status={getShiftStatus(selectedShiftDetails)} />
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Shift Actions */}
+                            {getShiftStatus(selectedShiftDetails) === 'upcoming' && (
+                                <div className="flex justify-end border-b border-slate-100 pb-4">
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="text-[10px] gap-1 px-3 border-[hsl(var(--brand))]/20 text-[hsl(var(--brand))] hover:bg-[hsl(var(--brand-light))]"
+                                        onClick={() => {
+                                            const shift = selectedShiftDetails;
+                                            setSelectedShiftDetails(null);
+                                            setSelectedShift(shift);
+                                            setSwapDialogOpen(true);
+                                        }}
+                                        disabled={!!(swapRequests || []).find((sr: any) =>
+                                            String(sr.shift_id) === String(selectedShiftDetails.shift_id) &&
+                                            ['pending_acceptance', 'pending_approval'].includes(sr.status)
+                                        )}
+                                    >
+                                        <ArrowLeftRight size={12} /> Shift Actions / Swap Request
+                                    </Button>
+                                </div>
+                            )}
+
+                            {/* Checklist Section */}
+                            <div>
+                                <div className="flex items-center justify-between mb-3">
+                                    <h3 className="text-sm font-bold flex items-center gap-2 text-slate-800">
+                                        <ClipboardList size={18} className="text-[hsl(var(--brand))]" />
+                                        Shift Tasks
+                                    </h3>
+                                    {detailsChecklist.length > 0 && (
+                                        <div className="flex items-center gap-2 px-2.5 py-0.5 bg-white border border-slate-200 rounded-full shadow-sm">
+                                            <div className="w-16 h-1 bg-slate-100 rounded-full overflow-hidden">
+                                                <div 
+                                                    className="h-full bg-emerald-500 transition-all duration-500" 
+                                                    style={{ width: `${Math.round((detailsChecklist.filter((t: any) => t.status === 'done').length / detailsChecklist.length) * 100)}%` }}
+                                                />
+                                            </div>
+                                            <span className="text-[9px] font-black text-slate-500 tabular-nums">
+                                                {detailsChecklist.filter((t: any) => t.status === 'done').length}/{detailsChecklist.length}
+                                            </span>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {isLoadingDetailsChecklist ? (
+                                    <div className="py-8 text-center text-xs text-slate-400">Loading checklist...</div>
+                                ) : detailsChecklist.length === 0 ? (
+                                    <div className="py-8 text-center text-xs text-slate-400 italic bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                                        No tasks configured for this shift.
+                                    </div>
+                                ) : (
+                                    <div className="space-y-3">
+                                        {/* Alert lock warning */}
+                                        {(!isClockedIn || selectedShiftDetails.shift_id !== activeShift?.shift_id) && (
+                                            <div className="p-3 bg-amber-50/80 border border-amber-200/60 rounded-xl flex items-start gap-2.5 text-amber-800 shadow-sm animate-in fade-in duration-300">
+                                                <Lock size={16} className="shrink-0 mt-0.5 text-amber-500" />
+                                                <div className="text-[11px] font-semibold leading-relaxed">
+                                                    {selectedShiftDetails.shift_id !== activeShift?.shift_id
+                                                        ? "Tasks are locked because this is not your active shift."
+                                                        : "Tasks are locked because you are not actively clocked in."}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        <div className="border border-slate-100 rounded-xl overflow-hidden divide-y divide-slate-100 bg-white">
+                                            {detailsChecklist.map((task: any) => {
+                                                const isEditable = isClockedIn && selectedShiftDetails.shift_id === activeShift?.shift_id;
+                                                return (
+                                                    <div 
+                                                        key={task.checklist_item_id}
+                                                        className={cn(
+                                                            "flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 transition-all hover:bg-slate-50/50",
+                                                            task.status !== 'pending' && "bg-slate-50/20"
+                                                        )}
+                                                    >
+                                                        <div className="flex items-start gap-2.5 flex-1 min-w-0">
+                                                            <div className="shrink-0 mt-0.5">
+                                                                {task.status === 'done' && <CheckCircle2 className="w-4.5 h-4.5 text-emerald-500 animate-in zoom-in-50" />}
+                                                                {task.status === 'not_done' && <XCircle className="w-4.5 h-4.5 text-rose-500 animate-in zoom-in-50" />}
+                                                                {task.status === 'not_applicable' && <MinusCircle className="w-4.5 h-4.5 text-slate-400 animate-in zoom-in-50" />}
+                                                                {task.status === 'pending' && <ClipboardList className="w-4.5 h-4.5 text-slate-300" />}
+                                                            </div>
+                                                            
+                                                            <div className="flex-1 min-w-0">
+                                                                <div className="flex items-center gap-1.5 flex-wrap">
+                                                                    <p className={cn(
+                                                                        "text-xs font-bold transition-all",
+                                                                        task.status === 'done' ? "text-slate-400 line-through" : "text-slate-700"
+                                                                    )}>
+                                                                        {task.task_text}
+                                                                    </p>
+                                                                    {task.is_required && (
+                                                                        <span className="inline-flex items-center gap-0.5 text-[7px] font-black uppercase text-amber-500 bg-amber-50 px-1 py-0.5 rounded border border-amber-200">
+                                                                            Required
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                                {task.instructions && (
+                                                                    <p className="text-[9px] text-slate-400 mt-0.5">{task.instructions}</p>
+                                                                )}
+                                                                {task.status === 'not_done' && task.reason && (
+                                                                    <p className="text-[9px] text-rose-500 font-medium mt-1">
+                                                                        Reason: <span className="italic">"{task.reason}"</span>
+                                                                    </p>
+                                                                )}
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="flex items-center gap-1 shrink-0 self-end sm:self-center">
+                                                            <button
+                                                                className={cn(
+                                                                    "px-2 py-0.5 text-[9px] font-black uppercase tracking-wider rounded transition-all border",
+                                                                    task.status === 'done'
+                                                                        ? (isEditable
+                                                                            ? "bg-emerald-500 border-emerald-500 text-white shadow-sm font-black"
+                                                                            : "bg-emerald-500/60 border-emerald-500/10 text-white/80 shadow-sm font-black")
+                                                                        : (isEditable
+                                                                            ? "bg-white border-slate-200 text-slate-400 hover:text-slate-600 hover:bg-slate-50"
+                                                                            : "bg-white border-slate-200 text-slate-300"),
+                                                                    !isEditable && "cursor-not-allowed"
+                                                                )}
+                                                                disabled={!isEditable}
+                                                                onClick={() => {
+                                                                    toggleTaskMutation.mutate({ shiftId: selectedShiftDetails.shift_id, id: task.checklist_item_id, status: 'done', reason: null });
+                                                                }}
+                                                            >
+                                                                Done
+                                                            </button>
+                                                            
+                                                            <button
+                                                                className={cn(
+                                                                    "px-2 py-0.5 text-[9px] font-black uppercase tracking-wider rounded transition-all border",
+                                                                    task.status === 'not_done'
+                                                                        ? (isEditable
+                                                                            ? "bg-rose-500 border-rose-500 text-white shadow-sm font-black"
+                                                                            : "bg-rose-500/60 border-rose-500/10 text-white/80 shadow-sm font-black")
+                                                                        : (isEditable
+                                                                            ? "bg-white border-slate-200 text-slate-400 hover:text-slate-600 hover:bg-slate-50"
+                                                                            : "bg-white border-slate-200 text-slate-300"),
+                                                                    !isEditable && "cursor-not-allowed"
+                                                                )}
+                                                                disabled={!isEditable}
+                                                                onClick={() => {
+                                                                    if (task.is_required) {
+                                                                        setReasonPromptTask(task);
+                                                                        setReasonText(task.reason || "");
+                                                                    } else {
+                                                                        toggleTaskMutation.mutate({ shiftId: selectedShiftDetails.shift_id, id: task.checklist_item_id, status: 'not_done', reason: null });
+                                                                    }
+                                                                }}
+                                                            >
+                                                                Not Done
+                                                            </button>
+
+                                                            <button
+                                                                className={cn(
+                                                                    "px-2 py-0.5 text-[9px] font-black uppercase tracking-wider rounded transition-all border",
+                                                                    task.status === 'not_applicable'
+                                                                        ? (isEditable
+                                                                            ? "bg-slate-500 border-slate-500 text-white shadow-sm font-black"
+                                                                            : "bg-slate-500/60 border-slate-500/10 text-white/80 shadow-sm font-black")
+                                                                        : (isEditable
+                                                                            ? "bg-white border-slate-200 text-slate-400 hover:text-slate-600 hover:bg-slate-50"
+                                                                            : "bg-white border-slate-200 text-slate-300"),
+                                                                    !isEditable && "cursor-not-allowed"
+                                                                )}
+                                                                disabled={!isEditable}
+                                                                onClick={() => {
+                                                                    toggleTaskMutation.mutate({ shiftId: selectedShiftDetails.shift_id, id: task.checklist_item_id, status: 'not_applicable', reason: null });
+                                                                }}
+                                                            >
+                                                                N/A
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+                    <DialogFooter className="border-t border-slate-100 pt-4 flex justify-end">
+                        <Button className="h-10 rounded-xl animate-in fade-in" onClick={() => setSelectedShiftDetails(null)}>Close</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={!!reasonPromptTask} onOpenChange={(open) => { if (!open) setReasonPromptTask(null); }}>
+                <DialogContent className="max-w-md bg-white border-none shadow-2xl">
+                    <DialogHeader>
+                        <DialogTitle className="text-lg font-black text-slate-800">Reason Required</DialogTitle>
+                        <DialogDescription className="text-xs text-slate-500 font-medium">
+                            Please explain why the required task <strong className="text-slate-700">"{reasonPromptTask?.task_text}"</strong> cannot be completed.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="py-4">
+                        <textarea
+                            className="w-full min-h-[120px] p-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[hsl(var(--brand))] text-sm resize-none"
+                            placeholder="e.g. Stock runout, delivery cancelled, etc."
+                            value={reasonText}
+                            onChange={(e) => setReasonText(e.target.value)}
+                        />
+                    </div>
+                    <DialogFooter className="flex items-center justify-end gap-2">
+                        <Button 
+                            variant="ghost" 
+                            className="h-10 rounded-xl"
+                            onClick={() => {
+                                setReasonPromptTask(null);
+                                setReasonText("");
+                            }}
+                        >
+                            Cancel
+                        </Button>
+                        <Button 
+                            disabled={!reasonText.trim()}
+                            className="h-10 rounded-xl px-5"
+                            onClick={() => {
+                                toggleTaskMutation.mutate({
+                                    shiftId: selectedShiftDetails.shift_id,
+                                    id: reasonPromptTask.checklist_item_id,
+                                    status: 'not_done',
+                                    reason: reasonText
+                                });
+                                setReasonPromptTask(null);
+                                setReasonText("");
+                            }}
+                        >
+                            Submit Reason
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </DashboardLayout>
     );
 }
