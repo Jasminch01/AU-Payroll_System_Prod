@@ -89,16 +89,44 @@ export async function createNotification(params: CreateNotificationParams) {
             return { success: false, error: error.message };
         }
 
+        // Resolve role-specific URL for each recipient
+        const resolvePushUrl = async (recipientId: string): Promise<string> => {
+            try {
+                const { data: userRecord } = await supabase
+                    .from('User')
+                    .select('role')
+                    .eq('user_id', recipientId)
+                    .maybeSingle();
+                
+                const role = userRecord?.role || 'employee';
+                
+                if (link_url) {
+                    if (link_url.startsWith('/shifts')) {
+                        return `/${role}${link_url}`;
+                    }
+                    if (link_url.startsWith('/') && !link_url.startsWith(`/${role}`)) {
+                        return `/${role}${link_url}`;
+                    }
+                    return link_url;
+                }
+                return `/${role}/shifts`;
+            } catch (err) {
+                console.error('[Notify] Error resolving push url:', err);
+                return '/employee/shifts';
+            }
+        };
+
         // Trigger mobile push notifications asynchronously
         Promise.allSettled(
-            filteredUserIds.map(user_id =>
-                sendPushNotification(
+            filteredUserIds.map(async (user_id) => {
+                const targetUrl = await resolvePushUrl(user_id);
+                return sendPushNotification(
                     user_id,
                     title,
                     message,
-                    '/employee/shifts' // Default destination when notification is clicked
-                )
-            )
+                    targetUrl
+                );
+            })
         ).catch(err => console.error('Background push error:', err));
 
         return { success: true };

@@ -159,7 +159,8 @@ export async function POST(request: NextRequest) {
                             authUser.business_id,
                             'CLOCK_OUT_BLOCKED',
                             shift.shift_type,
-                            pendingCount
+                            pendingCount,
+                            shift.shift_id
                         ).catch(err => console.error('Failed to send checklist blocked notification:', err));
                     }
 
@@ -242,7 +243,8 @@ export async function POST(request: NextRequest) {
                                 authUser.business_id,
                                 'CLOCK_IN_REMINDER',
                                 shift.shift_type,
-                                total
+                                total,
+                                shift.shift_id
                             );
                         }
 

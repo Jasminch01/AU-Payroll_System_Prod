@@ -1,7 +1,8 @@
 import { NextRequest } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { requireRole } from '@/lib/auth';
+import { requireRole, getBusinessTimezone } from '@/lib/auth';
 import { successResponse, errorResponse } from '@/lib/api-helpers';
+import { getDateInTimezone, getTimeInTimezone } from '@/lib/timezone-utils';
 
 /**
  * PATCH /api/shift/[id]/checklist/[itemId]
@@ -30,6 +31,37 @@ export async function PATCH(
             .single();
 
         if (fetchError || !currentItem) return errorResponse('Item not found', 404);
+
+        // Check shift status and times
+        const { data: shift, error: shiftError } = await supabase
+            .from('Shift')
+            .select('shift_status, start_time, end_time, business_id')
+            .eq('shift_id', id)
+            .single();
+
+        if (shiftError || !shift) return errorResponse('Shift not found', 404);
+
+        const tz = await getBusinessTimezone(shift.business_id);
+        const nowStr = new Date().toISOString();
+        const nowBusinessDate = getDateInTimezone(nowStr, tz);
+        const nowBusinessTime = getTimeInTimezone(nowStr, tz);
+        const nowBusinessTimestamp = `${nowBusinessDate}T${nowBusinessTime}:00`;
+
+        if (nowBusinessTimestamp > shift.end_time) {
+            return errorResponse('Cannot update checklist tasks after the shift has completed.', 400);
+        }
+
+        if (shift.shift_status === 'published' && nowBusinessTimestamp >= shift.start_time) {
+            // Check if attempting structural edits (only status/reason are allowed after shift starts)
+            if (
+                body.task_text !== undefined ||
+                body.instructions !== undefined ||
+                body.is_required !== undefined ||
+                body.sort_order !== undefined
+            ) {
+                return errorResponse('Cannot edit task details on a published shift once it has started. Only status updates are allowed.', 400);
+            }
+        }
 
         // 2. Authorization & Validation
         const isManager = authUser.role === 'owner' || authUser.role === 'manager';
@@ -99,6 +131,29 @@ export async function DELETE(
 
         const { id, itemId } = await params;
         const supabase = await createClient();
+
+        // Check shift status and times
+        const { data: shift, error: shiftError } = await supabase
+            .from('Shift')
+            .select('shift_status, start_time, end_time, business_id')
+            .eq('shift_id', id)
+            .single();
+
+        if (shiftError || !shift) return errorResponse('Shift not found', 404);
+
+        const tz = await getBusinessTimezone(shift.business_id);
+        const nowStr = new Date().toISOString();
+        const nowBusinessDate = getDateInTimezone(nowStr, tz);
+        const nowBusinessTime = getTimeInTimezone(nowStr, tz);
+        const nowBusinessTimestamp = `${nowBusinessDate}T${nowBusinessTime}:00`;
+
+        if (nowBusinessTimestamp > shift.end_time) {
+            return errorResponse('Cannot modify checklist after the shift has completed.', 400);
+        }
+
+        if (shift.shift_status === 'published' && nowBusinessTimestamp >= shift.start_time) {
+            return errorResponse('Cannot remove tasks from a published shift once it has started.', 400);
+        }
 
         const { error } = await supabase
             .from('ShiftChecklistItem')

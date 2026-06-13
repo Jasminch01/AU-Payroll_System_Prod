@@ -58,7 +58,7 @@ export async function updateSession(request: NextRequest) {
     let resolvedRole = user?.user_metadata?.role;
     let businessId = user?.user_metadata?.business_id;
 
-    if (user && (!resolvedRole || !businessId)) {
+    if (user && (!resolvedRole || !businessId || !('employee_id' in (user.user_metadata || {})))) {
         // Fetch employee and user records safely (cache miss)
         const empPromise = supabase
             .from('Employee')
@@ -94,7 +94,7 @@ export async function updateSession(request: NextRequest) {
                 business_id: userRecord.business_id,
                 first_name: userRecord.first_name,
                 last_name: userRecord.last_name,
-                employee_id: employeeRecord?.employee_id,
+                employee_id: employeeRecord?.employee_id || 'none',
                 can_order_liquor: userRecord.can_order_liquor ?? false,
             };
         } else if (employeeRecord) {
