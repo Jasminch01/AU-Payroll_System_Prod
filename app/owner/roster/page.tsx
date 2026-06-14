@@ -574,6 +574,19 @@ export default function OwnerRosterPage() {
                     queryClient.invalidateQueries({ queryKey: ["rosters"] });
                 }
             )
+            .on(
+                'postgres_changes',
+                {
+                    event: '*',
+                    schema: 'public',
+                    table: 'ShiftChecklistItem'
+                },
+                () => {
+                    queryClient.invalidateQueries({ queryKey: ["shifts"] });
+                    queryClient.invalidateQueries({ queryKey: ["shift-checklist"] });
+                    queryClient.invalidateQueries({ queryKey: ["checklist-review"] });
+                }
+            )
             .subscribe();
 
         return () => {
@@ -806,6 +819,7 @@ export default function OwnerRosterPage() {
         onSuccess: () => {
             toast.success("Task added to shift");
             queryClient.invalidateQueries({ queryKey: ["shift-checklist", editingShiftId] });
+            queryClient.invalidateQueries({ queryKey: ["shifts"] });
             setIsAddTaskOpen(false);
             setAdHocTaskText("");
             setAdHocTaskInstructions("");
@@ -819,6 +833,7 @@ export default function OwnerRosterPage() {
             apiPatch(`/shift/${editingShiftId}/checklist/${itemId}`, data),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["shift-checklist", editingShiftId] });
+            queryClient.invalidateQueries({ queryKey: ["shifts"] });
         },
         onError: (err: any) => toast.error(err.message),
     });
@@ -828,6 +843,7 @@ export default function OwnerRosterPage() {
         onSuccess: () => {
             toast.success("Task removed");
             queryClient.invalidateQueries({ queryKey: ["shift-checklist", editingShiftId] });
+            queryClient.invalidateQueries({ queryKey: ["shifts"] });
         },
         onError: (err: any) => toast.error(err.message),
     });
@@ -841,6 +857,7 @@ export default function OwnerRosterPage() {
             console.log('[RosterPage] attachTemplateMutation onSuccess called');
             toast.success("Template tasks attached");
             queryClient.invalidateQueries({ queryKey: ["shift-checklist", editingShiftId] });
+            queryClient.invalidateQueries({ queryKey: ["shifts"] });
         },
         onError: (err: any) => {
             console.error('[RosterPage] attachTemplateMutation onError called:', err);
@@ -856,6 +873,7 @@ export default function OwnerRosterPage() {
         onSuccess: () => {
             toast.success("Template tasks removed");
             queryClient.invalidateQueries({ queryKey: ["shift-checklist", editingShiftId] });
+            queryClient.invalidateQueries({ queryKey: ["shifts"] });
         },
         onError: (err: any) => {
             console.error('[RosterPage] removeTemplateTasksMutation onError called:', err);

@@ -36,12 +36,14 @@ export async function DELETE(
         const nowBusinessTime = getTimeInTimezone(nowStr, tz);
         const nowBusinessTimestamp = `${nowBusinessDate}T${nowBusinessTime}:00`;
 
-        if (nowBusinessTimestamp > shift.end_time) {
-            return errorResponse('Cannot modify checklist after the shift has completed.', 400);
-        }
+        if (shift.shift_status === 'published') {
+            if (nowBusinessTimestamp > shift.end_time) {
+                return errorResponse('Cannot modify checklist after the shift has completed.', 400);
+            }
 
-        if (shift.shift_status === 'published' && nowBusinessTimestamp >= shift.start_time) {
-            return errorResponse('Cannot remove template tasks from a published shift once it has started.', 400);
+            if (nowBusinessTimestamp >= shift.start_time) {
+                return errorResponse('Cannot remove template tasks from a published shift once it has started.', 400);
+            }
         }
 
         const { error } = await supabase

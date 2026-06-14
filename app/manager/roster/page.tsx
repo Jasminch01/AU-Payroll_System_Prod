@@ -560,6 +560,19 @@ export default function ManagerRosterPage() {
                     queryClient.invalidateQueries({ queryKey: ["rosters"] });
                 }
             )
+            .on(
+                'postgres_changes',
+                {
+                    event: '*',
+                    schema: 'public',
+                    table: 'ShiftChecklistItem'
+                },
+                () => {
+                    queryClient.invalidateQueries({ queryKey: ["shifts"] });
+                    queryClient.invalidateQueries({ queryKey: ["shift-checklist"] });
+                    queryClient.invalidateQueries({ queryKey: ["checklist-review"] });
+                }
+            )
             .subscribe();
 
         return () => {

@@ -47,19 +47,21 @@ export async function PATCH(
         const nowBusinessTime = getTimeInTimezone(nowStr, tz);
         const nowBusinessTimestamp = `${nowBusinessDate}T${nowBusinessTime}:00`;
 
-        if (nowBusinessTimestamp > shift.end_time) {
-            return errorResponse('Cannot update checklist tasks after the shift has completed.', 400);
-        }
+        if (shift.shift_status === 'published') {
+            if (nowBusinessTimestamp > shift.end_time) {
+                return errorResponse('Cannot update checklist tasks after the shift has completed.', 400);
+            }
 
-        if (shift.shift_status === 'published' && nowBusinessTimestamp >= shift.start_time) {
-            // Check if attempting structural edits (only status/reason are allowed after shift starts)
-            if (
-                body.task_text !== undefined ||
-                body.instructions !== undefined ||
-                body.is_required !== undefined ||
-                body.sort_order !== undefined
-            ) {
-                return errorResponse('Cannot edit task details on a published shift once it has started. Only status updates are allowed.', 400);
+            if (nowBusinessTimestamp >= shift.start_time) {
+                // Check if attempting structural edits (only status/reason are allowed after shift starts)
+                if (
+                    body.task_text !== undefined ||
+                    body.instructions !== undefined ||
+                    body.is_required !== undefined ||
+                    body.sort_order !== undefined
+                ) {
+                    return errorResponse('Cannot edit task details on a published shift once it has started. Only status updates are allowed.', 400);
+                }
             }
         }
 
@@ -147,12 +149,14 @@ export async function DELETE(
         const nowBusinessTime = getTimeInTimezone(nowStr, tz);
         const nowBusinessTimestamp = `${nowBusinessDate}T${nowBusinessTime}:00`;
 
-        if (nowBusinessTimestamp > shift.end_time) {
-            return errorResponse('Cannot modify checklist after the shift has completed.', 400);
-        }
+        if (shift.shift_status === 'published') {
+            if (nowBusinessTimestamp > shift.end_time) {
+                return errorResponse('Cannot modify checklist after the shift has completed.', 400);
+            }
 
-        if (shift.shift_status === 'published' && nowBusinessTimestamp >= shift.start_time) {
-            return errorResponse('Cannot remove tasks from a published shift once it has started.', 400);
+            if (nowBusinessTimestamp >= shift.start_time) {
+                return errorResponse('Cannot remove tasks from a published shift once it has started.', 400);
+            }
         }
 
         const { error } = await supabase

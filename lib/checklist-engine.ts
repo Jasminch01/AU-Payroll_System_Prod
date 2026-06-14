@@ -2,6 +2,8 @@ import { SupabaseClient } from '@supabase/supabase-js';
 import { ChecklistTemplateItem, ShiftChecklistItemInsert, ShiftChecklistItemStatus } from '@/types/database';
 import { createNotification } from '@/lib/notifications';
 import { validateOrderCompletion } from './order-guide-engine';
+import { getBusinessTimezone } from '@/lib/auth';
+import { getDateInTimezone, getTimeInTimezone } from '@/lib/timezone-utils';
 
 /**
  * Core engine for the Shift Checklist System
@@ -217,4 +219,326 @@ export async function validateClockOutOrdering(
 ) {
     return validateOrderCompletion(businessId, date, shiftId, supabase);
 }
+
+/**
+ * Synchronize a new template task to all active/modifiable shifts that should have this template.
+ */
+export async function syncTemplateItemInsert(
+    itemId: string,
+    businessId: string,
+    supabase: SupabaseClient,
+    itemData?: ChecklistTemplateItem
+) {
+    try {
+        let item = itemData;
+        if (!item) {
+            const { data, error } = await supabase
+                .from('ChecklistTemplateItem')
+                .select('*')
+                .eq('item_id', itemId)
+                .single();
+            if (error || !data) {
+                console.error('[ChecklistEngine] Template item not found for sync insert:', itemId);
+                return;
+            }
+            item = data;
+        }
+
+        if (!item) return;
+        if (!item.is_active) return;
+
+        // Fetch modifiable shifts
+        const tz = await getBusinessTimezone(businessId);
+        const nowStr = new Date().toISOString();
+        const nowBusinessDate = getDateInTimezone(nowStr, tz);
+        const nowBusinessTime = getTimeInTimezone(nowStr, tz);
+        const nowBusinessTimestamp = `${nowBusinessDate}T${nowBusinessTime}:00`;
+
+        const { data: shifts, error: shiftsError } = await supabase
+            .from('Shift')
+            .select('shift_id, shift_status, start_time, end_time, shift_type')
+            .eq('business_id', businessId)
+            .or(`shift_status.eq.draft,end_time.gte.${nowBusinessTimestamp}`);
+
+        if (shiftsError || !shifts || shifts.length === 0) return;
+
+        const modifiableShifts = shifts.filter(s => {
+            if (s.shift_status === 'draft') return true;
+            if (s.shift_status === 'published' && nowBusinessTimestamp < s.start_time) return true;
+            return false;
+        });
+
+        if (modifiableShifts.length === 0) return;
+
+        const modifiableShiftIds = modifiableShifts.map(s => s.shift_id);
+
+        // Fetch default mapping for this template
+        const { data: defaultMappings } = await supabase
+            .from('ShiftTypeTemplateDefault')
+            .select('shift_type')
+            .eq('business_id', businessId)
+            .eq('template_id', item.template_id);
+
+        const defaultShiftTypes = new Set((defaultMappings || []).map(m => m.shift_type.toLowerCase()));
+
+        // Fetch manual attachments
+        const { data: manualShifts } = await supabase
+            .from('ShiftChecklistItem')
+            .select('shift_id')
+            .eq('source_template_id', item.template_id)
+            .in('shift_id', modifiableShiftIds);
+
+        const shiftsWithTemplate = new Set((manualShifts || []).map(ms => ms.shift_id));
+
+        const shiftsToInsert = modifiableShifts.filter(s => {
+            return defaultShiftTypes.has(s.shift_type.toLowerCase()) || shiftsWithTemplate.has(s.shift_id);
+        });
+
+        if (shiftsToInsert.length > 0) {
+            for (const shift of shiftsToInsert) {
+                // Double check to prevent duplicate key
+                const { data: exists } = await supabase
+                    .from('ShiftChecklistItem')
+                    .select('checklist_item_id')
+                    .eq('shift_id', shift.shift_id)
+                    .eq('source_item_id', item.item_id)
+                    .maybeSingle();
+
+                if (exists) continue;
+
+                const { data: lastItem } = await supabase
+                    .from('ShiftChecklistItem')
+                    .select('sort_order')
+                    .eq('shift_id', shift.shift_id)
+                    .order('sort_order', { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
+
+                const newSortOrder = (lastItem?.sort_order ?? -1) + 1;
+
+                await supabase
+                    .from('ShiftChecklistItem')
+                    .insert({
+                        shift_id: shift.shift_id,
+                        business_id: businessId,
+                        task_text: item.task_text,
+                        instructions: item.instructions,
+                        is_required: item.is_required,
+                        sort_order: newSortOrder,
+                        status: 'pending',
+                        source_template_id: item.template_id,
+                        source_item_id: item.item_id
+                    });
+            }
+        }
+    } catch (err) {
+        console.error('[ChecklistEngine] Error syncing template item insert:', err);
+    }
+}
+
+/**
+ * Synchronize template task updates/deactivation to active/modifiable shifts.
+ */
+export async function syncTemplateItemUpdate(
+    itemId: string,
+    businessId: string,
+    supabase: SupabaseClient,
+    itemData?: ChecklistTemplateItem
+) {
+    try {
+        let item = itemData;
+        if (!item) {
+            const { data, error } = await supabase
+                .from('ChecklistTemplateItem')
+                .select('*')
+                .eq('item_id', itemId)
+                .single();
+            if (error || !data) {
+                console.error('[ChecklistEngine] Template item not found for sync update:', itemId);
+                return;
+            }
+            item = data;
+        }
+
+        if (!item) return;
+
+        // Fetch modifiable shifts
+        const tz = await getBusinessTimezone(businessId);
+        const nowStr = new Date().toISOString();
+        const nowBusinessDate = getDateInTimezone(nowStr, tz);
+        const nowBusinessTime = getTimeInTimezone(nowStr, tz);
+        const nowBusinessTimestamp = `${nowBusinessDate}T${nowBusinessTime}:00`;
+
+        const { data: shifts, error: shiftsError } = await supabase
+            .from('Shift')
+            .select('shift_id, shift_status, start_time, end_time, shift_type')
+            .eq('business_id', businessId)
+            .or(`shift_status.eq.draft,end_time.gte.${nowBusinessTimestamp}`);
+
+        if (shiftsError || !shifts || shifts.length === 0) return;
+
+        const modifiableShifts = shifts.filter(s => {
+            if (s.shift_status === 'draft') return true;
+            if (s.shift_status === 'published' && nowBusinessTimestamp < s.start_time) return true;
+            return false;
+        });
+
+        if (modifiableShifts.length === 0) return;
+
+        const modifiableShiftIds = modifiableShifts.map(s => s.shift_id);
+
+        if (!item.is_active) {
+            // Delete from modifiable shifts if deactivated
+            await supabase
+                .from('ShiftChecklistItem')
+                .delete()
+                .eq('source_item_id', itemId)
+                .in('shift_id', modifiableShiftIds);
+        } else {
+            // Update existing checklist items in modifiable shifts
+            await supabase
+                .from('ShiftChecklistItem')
+                .update({
+                    task_text: item.task_text,
+                    instructions: item.instructions,
+                    is_required: item.is_required,
+                    sort_order: item.sort_order
+                })
+                .eq('source_item_id', itemId)
+                .in('shift_id', modifiableShiftIds);
+
+            // Reactivate/Add if shift should have template but does not have this item
+            const { data: existingItems } = await supabase
+                .from('ShiftChecklistItem')
+                .select('shift_id')
+                .eq('source_item_id', itemId)
+                .in('shift_id', modifiableShiftIds);
+
+            const shiftsWithItem = new Set((existingItems || []).map(ei => ei.shift_id));
+
+            // Fetch default mapping
+            const { data: defaultMappings } = await supabase
+                .from('ShiftTypeTemplateDefault')
+                .select('shift_type')
+                .eq('business_id', businessId)
+                .eq('template_id', item.template_id);
+
+            const defaultShiftTypes = new Set((defaultMappings || []).map(m => m.shift_type.toLowerCase()));
+
+            // Fetch manual attachments
+            const { data: manualShifts } = await supabase
+                .from('ShiftChecklistItem')
+                .select('shift_id')
+                .eq('source_template_id', item.template_id)
+                .in('shift_id', modifiableShiftIds);
+
+            const shiftsWithTemplate = new Set((manualShifts || []).map(ms => ms.shift_id));
+
+            const shiftsToInsert = modifiableShifts.filter(s => {
+                const isMappedDefault = defaultShiftTypes.has(s.shift_type.toLowerCase());
+                const isManuallyAttached = shiftsWithTemplate.has(s.shift_id);
+                const hasItemAlready = shiftsWithItem.has(s.shift_id);
+                return (isMappedDefault || isManuallyAttached) && !hasItemAlready;
+            });
+
+            if (shiftsToInsert.length > 0) {
+                for (const shift of shiftsToInsert) {
+                    const { data: lastItem } = await supabase
+                        .from('ShiftChecklistItem')
+                        .select('sort_order')
+                        .eq('shift_id', shift.shift_id)
+                        .order('sort_order', { ascending: false })
+                        .limit(1)
+                        .maybeSingle();
+
+                    const newSortOrder = (lastItem?.sort_order ?? -1) + 1;
+
+                    await supabase
+                        .from('ShiftChecklistItem')
+                        .insert({
+                            shift_id: shift.shift_id,
+                            business_id: businessId,
+                            task_text: item.task_text,
+                            instructions: item.instructions,
+                            is_required: item.is_required,
+                            sort_order: newSortOrder,
+                            status: 'pending',
+                            source_template_id: item.template_id,
+                            source_item_id: item.item_id
+                        });
+                }
+            }
+        }
+    } catch (err) {
+        console.error('[ChecklistEngine] Error syncing template item update:', err);
+    }
+}
+
+/**
+ * Delete a template item from modifiable shifts, and nullify references for history.
+ */
+export async function syncTemplateItemDelete(
+    itemId: string,
+    businessId: string,
+    supabase: SupabaseClient
+) {
+    try {
+        // Fetch modifiable shifts
+        const tz = await getBusinessTimezone(businessId);
+        const nowStr = new Date().toISOString();
+        const nowBusinessDate = getDateInTimezone(nowStr, tz);
+        const nowBusinessTime = getTimeInTimezone(nowStr, tz);
+        const nowBusinessTimestamp = `${nowBusinessDate}T${nowBusinessTime}:00`;
+
+        const { data: shifts, error: shiftsError } = await supabase
+            .from('Shift')
+            .select('shift_id, shift_status, start_time, end_time')
+            .eq('business_id', businessId)
+            .or(`shift_status.eq.draft,end_time.gte.${nowBusinessTimestamp}`);
+
+        if (shiftsError || !shifts) {
+            console.error('[ChecklistEngine] Failed to fetch shifts for delete sync:', shiftsError);
+            return;
+        }
+
+        const modifiableShifts = shifts.filter(s => {
+            if (s.shift_status === 'draft') return true;
+            if (s.shift_status === 'published' && nowBusinessTimestamp < s.start_time) return true;
+            return false;
+        });
+
+        const modifiableShiftIds = modifiableShifts.map(s => s.shift_id);
+
+        if (modifiableShiftIds.length > 0) {
+            // Delete from modifiable shifts
+            await supabase
+                .from('ShiftChecklistItem')
+                .delete()
+                .eq('source_item_id', itemId)
+                .in('shift_id', modifiableShiftIds);
+        }
+
+        // Set source_item_id to null for historical shifts to satisfy FK constraints when template item is deleted
+        await supabase
+                .from('ShiftChecklistItem')
+                .update({ source_item_id: null })
+                .eq('source_item_id', itemId);
+    } catch (err) {
+        console.error('[ChecklistEngine] Error syncing template item delete:', err);
+    }
+}
+
+/**
+ * Bulk synchronize template items to modifiable shifts.
+ */
+export async function syncTemplateItemsBulk(
+    items: ChecklistTemplateItem[],
+    businessId: string,
+    supabase: SupabaseClient
+) {
+    for (const item of items) {
+        await syncTemplateItemUpdate(item.item_id, businessId, supabase, item);
+    }
+}
+
 

@@ -602,7 +602,7 @@ export default function OwnerEmployeesPage() {
                 actions={
                     <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                            <Button className="fixed bottom-24 right-6 size-10 lg:h-9 lg:w-auto p-0 lg:px-4 lg:py-2 gap-2 shadow-2xl shadow-[hsl(var(--brand))]/40 lg:shadow-md hover:shadow-lg transition-all lg:ml-2 rounded-full lg:rounded-lg z-50 lg:static">
+                            <Button className="fixed bottom-24 right-6 size-10 lg:h-9 lg:w-auto p-0 lg:px-4 lg:py-2 gap-2 shadow-2xl shadow-[hsl(var(--brand))]/40 lg:shadow-md hover:shadow-lg transition-all lg:ml-2 rounded-full lg:rounded-lg z-40 lg:static">
                                 <Plus size={24} className="lg:w-4 lg:h-4" />
                                 <span className="hidden lg:inline">Add People</span>
                             </Button>
