@@ -180,6 +180,7 @@ export default function OwnerRosterPage() {
     const [targetOffset, setTargetOffset] = useState(1);
     const [isSavingDraft, setIsSavingDraft] = useState(false);
     const [isSavingPublish, setIsSavingPublish] = useState(false);
+    const [isSavingUpdate, setIsSavingUpdate] = useState(false);
 
     // Mobile specific state
     const isMobile = useIsMobile();
@@ -657,6 +658,7 @@ export default function OwnerRosterPage() {
         onSettled: () => {
             setIsSavingDraft(false);
             setIsSavingPublish(false);
+            setIsSavingUpdate(false);
             queryClient.invalidateQueries({ queryKey: ["shifts"] });
             queryClient.invalidateQueries({ queryKey: ["rosters"] });
         },
@@ -695,6 +697,7 @@ export default function OwnerRosterPage() {
         onSettled: () => {
             setIsSavingDraft(false);
             setIsSavingPublish(false);
+            setIsSavingUpdate(false);
             queryClient.invalidateQueries({ queryKey: ["shifts"] });
             queryClient.invalidateQueries({ queryKey: ["rosters"] });
         },
@@ -955,6 +958,8 @@ export default function OwnerRosterPage() {
 
         if (status === 'draft') {
             setIsSavingDraft(true);
+        } else if (status === 'published' && !notify) {
+            setIsSavingUpdate(true);
         } else {
             setIsSavingPublish(true);
         }
@@ -2424,20 +2429,20 @@ export default function OwnerRosterPage() {
                                     <div className="flex items-center gap-2">
                                         {!editingShiftId ? (
                                             <>
-                                                <Button variant="outline" onClick={() => setAddShiftOpen(false)} disabled={isSavingDraft || isSavingPublish}>Cancel</Button>
+                                                <Button variant="outline" onClick={() => setAddShiftOpen(false)} disabled={isSavingDraft || isSavingPublish || isSavingUpdate}>Cancel</Button>
                                                 <Button
                                                     variant="outline"
                                                     className="border-[hsl(var(--brand))]/30 text-[hsl(var(--brand))] hover:bg-[hsl(var(--brand))]/10"
                                                     onClick={() => handleAddShift(false, 'draft')}
                                                     loading={isSavingDraft}
-                                                    disabled={isSavingDraft || isSavingPublish}
+                                                    disabled={isSavingDraft || isSavingPublish || isSavingUpdate}
                                                 >
                                                     Save Draft
                                                 </Button>
                                                 <Button
                                                     onClick={() => handleAddShift(true, 'published')}
                                                     loading={isSavingPublish}
-                                                    disabled={isSavingDraft || isSavingPublish}
+                                                    disabled={isSavingDraft || isSavingPublish || isSavingUpdate}
                                                     className="bg-[hsl(var(--brand))] text-white hover:bg-[hsl(var(--brand-hover))]"
                                                 >
                                                     <Bell size={14} className="mr-2" /> Save & Publish
@@ -2452,14 +2457,14 @@ export default function OwnerRosterPage() {
                                                             className="border-[hsl(var(--brand))]/30 text-[hsl(var(--brand))] hover:bg-[hsl(var(--brand))]/10"
                                                             onClick={() => handleAddShift(false, 'draft')}
                                                             loading={isSavingDraft}
-                                                            disabled={!isDirty || isEditingShiftLocked || isSavingDraft || isSavingPublish}
+                                                            disabled={!isDirty || isEditingShiftLocked || isSavingDraft || isSavingPublish || isSavingUpdate}
                                                         >
                                                             Update
                                                         </Button>
                                                         <Button
                                                             onClick={() => handleAddShift(true, 'published')}
                                                             loading={isSavingPublish}
-                                                            disabled={isEditingShiftLocked || isSavingDraft || isSavingPublish}
+                                                            disabled={isEditingShiftLocked || isSavingDraft || isSavingPublish || isSavingUpdate}
                                                             className="bg-[hsl(var(--brand))] text-white hover:bg-[hsl(var(--brand-hover))]"
                                                         >
                                                             <Bell size={14} className="mr-2" /> Publish
@@ -2472,18 +2477,29 @@ export default function OwnerRosterPage() {
                                                             className="border-[hsl(var(--brand))]/30 text-[hsl(var(--brand))] hover:bg-[hsl(var(--brand))]/10"
                                                             onClick={() => handleAddShift(false, 'draft')}
                                                             loading={isSavingDraft}
-                                                            disabled={isEditingShiftLocked || isSavingDraft || isSavingPublish}
+                                                            disabled={isEditingShiftLocked || isSavingDraft || isSavingPublish || isSavingUpdate}
                                                         >
                                                             Save as Draft
                                                         </Button>
                                                         <Button
+                                                            variant="outline"
+                                                            className="border-[hsl(var(--brand))]/30 text-[hsl(var(--brand))] hover:bg-[hsl(var(--brand))]/10"
+                                                            onClick={() => handleAddShift(false, 'published')}
+                                                            loading={isSavingUpdate}
+                                                            disabled={!isDirty || isEditingShiftLocked || isSavingDraft || isSavingPublish || isSavingUpdate}
+                                                        >
+                                                            Update
+                                                        </Button>
+                                                        {isDirty && (
+                                                        <Button
                                                             onClick={() => handleAddShift(true, 'published')}
                                                             loading={isSavingPublish}
-                                                            disabled={!isDirty || isEditingShiftLocked || isSavingDraft || isSavingPublish}
+                                                            disabled={isEditingShiftLocked || isSavingDraft || isSavingPublish || isSavingUpdate}
                                                             className="bg-[hsl(var(--brand))] text-white hover:bg-[hsl(var(--brand-hover))]"
                                                         >
-                                                            <Bell size={14} className="mr-2" /> Publish
+                                                            <Bell size={14} className="mr-2" /> Publish Update
                                                         </Button>
+                                                        )}
                                                     </>
                                                 )}
                                             </>
