@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { requireRole } from '@/lib/auth';
 import { successResponse, errorResponse, validateRequiredFields } from '@/lib/api-helpers';
+import { syncTemplateItemInsert, syncTemplateItemsBulk } from '@/lib/checklist-engine';
 
 /**
  * GET /api/checklist-templates/[id]/items
@@ -83,6 +84,9 @@ export async function POST(
 
         if (error) return errorResponse(error.message, 400);
 
+        // Sync to active/modifiable shifts
+        await syncTemplateItemInsert(item.item_id, authUser.business_id, supabase, item);
+
         return successResponse(item, 'Item added successfully', 201);
     } catch (err) {
         console.error('Add template item error:', err);
@@ -130,6 +134,11 @@ export async function PUT(
             .select();
 
         if (error) return errorResponse(error.message, 400);
+
+        // Sync to active/modifiable shifts
+        if (updatedItems && updatedItems.length > 0) {
+            await syncTemplateItemsBulk(updatedItems, authUser.business_id, supabase);
+        }
 
         return successResponse(updatedItems, `Updated ${updatedItems.length} items`);
     } catch (err) {

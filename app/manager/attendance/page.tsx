@@ -878,6 +878,18 @@ export default function ManagerAttendancePage() {
 
                         {/* Sessions */}
                         <div className="flex-1 overflow-y-auto px-6 py-4 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+                            {detailRow.override_reason && (
+                                <div className="mb-4 p-3.5 rounded-xl border border-amber-200/50 bg-amber-50/40 text-xs text-amber-800 animate-in fade-in">
+                                    <div className="flex items-start gap-2">
+                                        <AlertCircle size={14} className="text-amber-600 shrink-0 mt-0.5" />
+                                        <div className="min-w-0">
+                                            <p className="font-bold text-amber-900 mb-0.5">Manual Entry / Override Reason</p>
+                                            <p className="italic">"{detailRow.override_reason}"</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
                             <p className="text-[10px] uppercase font-bold text-[hsl(var(--muted-foreground))] tracking-wider mb-3 flex items-center gap-1.5">
                                 <Layers size={12} />
                                 {detailRow.sessions.length} {detailRow.sessions.length === 1 ? "Session" : "Sessions"}

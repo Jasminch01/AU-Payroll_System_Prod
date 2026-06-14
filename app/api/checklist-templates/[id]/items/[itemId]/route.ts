@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { requireRole } from '@/lib/auth';
 import { successResponse, errorResponse } from '@/lib/api-helpers';
+import { syncTemplateItemUpdate, syncTemplateItemDelete } from '@/lib/checklist-engine';
 
 /**
  * PUT /api/checklist-templates/[id]/items/[itemId]
@@ -38,6 +39,9 @@ export async function PUT(
         if (error) return errorResponse(error.message, 400);
         if (!item) return errorResponse('Item not found', 404);
 
+        // Sync to active/modifiable shifts
+        await syncTemplateItemUpdate(itemId, authUser.business_id, supabase, item);
+
         return successResponse(item, 'Item updated successfully');
     } catch (err) {
         console.error('Update item error:', err);
@@ -62,16 +66,8 @@ export async function DELETE(
         const { itemId } = await params;
         const supabase = await createClient();
 
-        // Set source_item_id to null in ShiftChecklistItem for this specific item to prevent foreign key violation
-        const { error: resetError } = await supabase
-            .from('ShiftChecklistItem')
-            .update({ source_item_id: null })
-            .eq('source_item_id', itemId);
-
-        if (resetError) {
-            console.error('Failed to reset ShiftChecklistItem references:', resetError);
-            return errorResponse(resetError.message, 400);
-        }
+        // Sync to active/modifiable shifts (deletes from active shifts, nullifies history to satisfy FK)
+        await syncTemplateItemDelete(itemId, authUser.business_id, supabase);
 
         const { error } = await supabase
             .from('ChecklistTemplateItem')
