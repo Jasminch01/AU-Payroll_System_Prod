@@ -64,11 +64,22 @@ export default function EmployeeShiftsPage() {
 
     const isClockedIn = ["CLOCK_IN", "BREAK_START", "BREAK_END"].includes(attendanceData?.current_status);
 
+    const [now, setNow] = useState(new Date());
+
+    useEffect(() => {
+        const interval = setInterval(() => {
+            setNow(new Date());
+        }, 10000);
+        return () => clearInterval(interval);
+    }, []);
+
     // Memoized configs for real-time invalidator
     const realtimeConfigs = useMemo(() => [
         { table: 'Shift', queryKeys: [['my-shifts']] },
         { table: 'Roster', queryKeys: [['my-shifts']] },
-        { table: 'ShiftSwapRequest', queryKeys: [['my-shifts'], ['my-swap-requests']] }
+        { table: 'ShiftSwapRequest', queryKeys: [['my-shifts'], ['my-swap-requests']] },
+        { table: 'AttendanceLog', queryKeys: [['my-attendance'], ['my-shifts']] },
+        { table: 'ShiftChecklistItem', queryKeys: [['my-shifts']] }
     ], []);
 
     // Real-time invalidation
@@ -161,11 +172,9 @@ export default function EmployeeShiftsPage() {
         };
     }, [businessTimezone]);
 
-    // Re-evaluate now every time shifts data or timezone changes so a shift that started
-    // is immediately moved from "upcoming" to "ongoing".
+    // Re-evaluate now every time shifts data, timezone, or local time ticker changes
+    // so a shift is immediately moved between "upcoming", "ongoing", and "past" sections.
     const { ongoing, upcoming, past } = useMemo(() => {
-        const now = new Date();
-
         const ongoing = shifts.filter((s: any) => {
             const start = parseShiftTime(s.start_time);
             const end = parseShiftTime(s.end_time);
@@ -181,7 +190,7 @@ export default function EmployeeShiftsPage() {
             .sort((a: any, b: any) => parseShiftTime(b.end_time).getTime() - parseShiftTime(a.end_time).getTime());
 
         return { ongoing, upcoming, past };
-    }, [shifts, parseShiftTime]);
+    }, [shifts, parseShiftTime, now]);
 
     const pendingIncomingSwaps = swapRequests.filter((sr: any) =>
         sr.target_employee_id === user?.employee_id && sr.status === 'pending_acceptance'
@@ -300,8 +309,7 @@ export default function EmployeeShiftsPage() {
     return (
         <DashboardLayout
             role="employee"
-            pageTitle="My Shifts"
-            pageDescription={`${upcoming.length} upcoming shifts`}
+            pageTitle=""
             actions={
                 <div className="flex items-center gap-2">
                     {viewMode === "grid" && (
@@ -428,7 +436,7 @@ export default function EmployeeShiftsPage() {
             <div className="mb-8">
                 <div className="flex items-center justify-between mb-4">
                     <h2 className="text-lg font-semibold flex items-center gap-2">
-                        {viewMode === "list" ? "Upcoming Shifts" : `${rosterPeriod.charAt(0).toUpperCase() + rosterPeriod.slice(1)} Roster`}
+                        {viewMode === "list" ? "My Shifts" : `${rosterPeriod.charAt(0).toUpperCase() + rosterPeriod.slice(1)} Roster`}
                         {viewMode === "grid" && (
                             <span className="text-sm font-normal text-[hsl(var(--muted-foreground))] ml-2">
                                 {currentRosterDates[0].toLocaleDateString("en-AU", { day: 'numeric', month: 'short' })} - {currentRosterDates[currentRosterDates.length - 1].toLocaleDateString("en-AU", { day: 'numeric', month: 'short' })}
