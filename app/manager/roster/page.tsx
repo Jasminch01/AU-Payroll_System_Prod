@@ -158,6 +158,8 @@ const getDayName = (dateStr: string) => {
 export default function ManagerRosterPage() {
     const queryClient = useQueryClient();
     const [offset, setOffset] = useState(0);
+    const [isSavingDraft, setIsSavingDraft] = useState(false);
+    const [isSavingPublish, setIsSavingPublish] = useState(false);
     const [rosterPeriod, setRosterPeriod] = useState<RosterPeriod>("weekly");
     const [addShiftOpen, setAddShiftOpen] = useState(false);
     const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
@@ -382,6 +384,13 @@ export default function ManagerRosterPage() {
         // Published shifts are locked if they have already started
         return new Date() >= new Date(shift.start_time);
     }, [editingShiftId, shifts]);
+
+    const currentEditingShift = useMemo(() => {
+        if (!editingShiftId) return null;
+        return shifts.find((s: any) => s.shift_id === editingShiftId);
+    }, [editingShiftId, shifts]);
+
+    const isCurrentShiftDraft = currentEditingShift && currentEditingShift.shift_status !== 'published';
 
     // Get unique roles for filter
     const roles = useMemo(() => {
@@ -622,6 +631,8 @@ export default function ManagerRosterPage() {
             }
         },
         onSettled: () => {
+            setIsSavingDraft(false);
+            setIsSavingPublish(false);
             queryClient.invalidateQueries({ queryKey: ["shifts"] });
             queryClient.invalidateQueries({ queryKey: ["rosters"] });
         },
@@ -749,6 +760,8 @@ export default function ManagerRosterPage() {
             }
         },
         onSettled: () => {
+            setIsSavingDraft(false);
+            setIsSavingPublish(false);
             queryClient.invalidateQueries({ queryKey: ["shifts"] });
             queryClient.invalidateQueries({ queryKey: ["rosters"] });
         },
@@ -847,7 +860,7 @@ export default function ManagerRosterPage() {
         },
     });
 
-    const handleAddShift = (notify = false) => {
+    const handleAddShift = (notify = false, status?: 'draft' | 'published') => {
         if (!shiftEmployee || !selectedDate) {
             toast.error("Please select an employee and date");
             return;
@@ -893,6 +906,7 @@ export default function ManagerRosterPage() {
             roster_start: rangeStart,
             roster_end: rangeEnd,
             notify,
+            shift_status: status || (notify ? 'published' : undefined),
         };
 
 
@@ -918,6 +932,12 @@ export default function ManagerRosterPage() {
                 setExpansionOpen(true);
                 return;
             }
+        }
+
+        if (status === 'draft') {
+            setIsSavingDraft(true);
+        } else {
+            setIsSavingPublish(true);
         }
 
         if (editingShiftId) {
@@ -2389,46 +2409,72 @@ export default function ManagerRosterPage() {
                                     )}
                                 </div>
                                 <div className="flex items-center gap-2">
-                                    {editingShiftId && shifts.find((s: any) => s.shift_id === editingShiftId)?.shift_status === 'draft' && (
-                                        <Button
-                                            variant="outline"
-                                            className="border-[hsl(var(--brand))] text-[hsl(var(--brand))] hover:bg-[hsl(var(--brand))]/10"
-                                            onClick={() => notifyShiftMutation.mutate(editingShiftId)}
-                                            loading={notifyShiftMutation.isPending}
-                                            disabled={notifyShiftMutation.isPending}
-                                        >
-                                            Publish Shift
-                                        </Button>
-                                    )}
-                                    <Button variant="outline" onClick={() => setAddShiftOpen(false)}>Cancel</Button>
-
                                     {!editingShiftId ? (
-                                        <>
-                                            <Button
-                                                variant="outline"
-                                                className="border-[hsl(var(--brand))]/30 text-[hsl(var(--brand))] hover:bg-[hsl(var(--brand))]/10"
-                                                onClick={() => handleAddShift(false)}
-                                                loading={createShiftMutation.isPending}
-                                            >
-                                                Save Draft
-                                            </Button>
-                                            <Button
-                                                onClick={() => handleAddShift(true)}
-                                                loading={createShiftMutation.isPending}
-                                                className="bg-[hsl(var(--brand))] text-white hover:bg-[hsl(var(--brand-hover))]"
-                                            >
-                                                <Bell size={14} className="mr-2" /> Save & Notify
-                                            </Button>
-                                        </>
-                                    ) : (
-                                        <Button
-                                            onClick={() => handleAddShift(false)}
-                                            loading={updateShiftMutation.isPending}
-                                            disabled={!isDirty || isEditingShiftLocked}
-                                        >
-                                            Update Shift
-                                        </Button>
-                                    )}
+                                         <>
+                                             <Button variant="outline" onClick={() => setAddShiftOpen(false)} disabled={isSavingDraft || isSavingPublish}>Cancel</Button>
+                                             <Button
+                                                 variant="outline"
+                                                 className="border-[hsl(var(--brand))]/30 text-[hsl(var(--brand))] hover:bg-[hsl(var(--brand))]/10"
+                                                 onClick={() => handleAddShift(false, 'draft')}
+                                                 loading={isSavingDraft}
+                                                 disabled={isSavingDraft || isSavingPublish}
+                                             >
+                                                 Save Draft
+                                             </Button>
+                                             <Button
+                                                 onClick={() => handleAddShift(true, 'published')}
+                                                 loading={isSavingPublish}
+                                                 disabled={isSavingDraft || isSavingPublish}
+                                                 className="bg-[hsl(var(--brand))] text-white hover:bg-[hsl(var(--brand-hover))]"
+                                             >
+                                                 <Bell size={14} className="mr-2" /> Save & Publish
+                                             </Button>
+                                         </>
+                                     ) : (
+                                         <>
+                                             {isCurrentShiftDraft ? (
+                                                 <>
+                                                     <Button
+                                                         variant="outline"
+                                                         className="border-[hsl(var(--brand))]/30 text-[hsl(var(--brand))] hover:bg-[hsl(var(--brand))]/10"
+                                                         onClick={() => handleAddShift(false, 'draft')}
+                                                         loading={isSavingDraft}
+                                                         disabled={!isDirty || isEditingShiftLocked || isSavingDraft || isSavingPublish}
+                                                     >
+                                                         Update
+                                                     </Button>
+                                                     <Button
+                                                         onClick={() => handleAddShift(true, 'published')}
+                                                         loading={isSavingPublish}
+                                                         disabled={isEditingShiftLocked || isSavingDraft || isSavingPublish}
+                                                         className="bg-[hsl(var(--brand))] text-white hover:bg-[hsl(var(--brand-hover))]"
+                                                     >
+                                                         <Bell size={14} className="mr-2" /> Publish
+                                                     </Button>
+                                                 </>
+                                             ) : (
+                                                 <>
+                                                     <Button
+                                                         variant="outline"
+                                                         className="border-[hsl(var(--brand))]/30 text-[hsl(var(--brand))] hover:bg-[hsl(var(--brand))]/10"
+                                                         onClick={() => handleAddShift(false, 'draft')}
+                                                         loading={isSavingDraft}
+                                                         disabled={isEditingShiftLocked || isSavingDraft || isSavingPublish}
+                                                     >
+                                                         Save as Draft
+                                                     </Button>
+                                                     <Button
+                                                         onClick={() => handleAddShift(true, 'published')}
+                                                         loading={isSavingPublish}
+                                                         disabled={!isDirty || isEditingShiftLocked || isSavingDraft || isSavingPublish}
+                                                         className="bg-[hsl(var(--brand))] text-white hover:bg-[hsl(var(--brand-hover))]"
+                                                     >
+                                                         <Bell size={14} className="mr-2" /> Publish
+                                                     </Button>
+                                                 </>
+                                             )}
+                                         </>
+                                     )}
                                 </div>
                             </DialogFooter>
                         </TabsContent>

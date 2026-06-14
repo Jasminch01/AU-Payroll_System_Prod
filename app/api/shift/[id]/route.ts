@@ -89,6 +89,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
             'start_time',
             'end_time',
             'shift_type',
+            'shift_status',
         ];
 
         for (const field of allowedFields) {
@@ -251,6 +252,18 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
                 if (currentEmp) {
                     notifyShiftUpdated(id, existing.start_time, existing.end_time, currentEmp.business_id, currentEmp.user_id).catch((err: Error) =>
                         console.error(`[Notify] shift update email failed for ${id}:`, err)
+                    );
+                }
+            }
+        } else if (wasAlreadyPublished) {
+            // Reverted from published to draft (effectively cancelled)
+            const oldEmpId = existing.employee_id;
+            if (oldEmpId) {
+                const { data: oldEmp } = await supabase.from('Employee').select('email, first_name, user_id, business_id').eq('employee_id', oldEmpId).single();
+                if (oldEmp) {
+                    const shiftTime = `${existing.start_time.split('T')[1]?.substring(0, 5)} - ${existing.end_time.split('T')[1]?.substring(0, 5)}`;
+                    notifyShiftDeleted(oldEmp.email, oldEmp.first_name, existing.shift_date, shiftTime, oldEmp.business_id, oldEmp.user_id).catch(err =>
+                        console.error(`[Notify] shift cancellation email failed for ${id}:`, err)
                     );
                 }
             }
