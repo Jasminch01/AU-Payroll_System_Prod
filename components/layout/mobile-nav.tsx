@@ -26,7 +26,7 @@ import {
 } from "lucide-react";
 
 interface MobileNavProps {
-    role: "owner" | "manager" | "employee" | "supervisor";
+    role: "owner" | "manager" | "employee";
 }
 
 // Primary bottom-bar tabs (max 4, excluding "More")
@@ -48,12 +48,6 @@ const primaryNav = {
         { label: "Availability", href: "/employee/availability", icon: <CalendarDays size={20} /> },
         { label: "Timesheets", href: "/employee/timesheets", icon: <FileText size={20} /> },
         { label: "Leave", href: "/employee/leave", icon: <Palmtree size={20} /> },
-    ],
-    supervisor: [
-        { label: "Home", href: "/manager/dashboard", icon: <LayoutDashboard size={20} /> },
-        { label: "Roster", href: "/manager/roster", icon: <CalendarDays size={20} /> },
-        { label: "Attendance", href: "/manager/attendance", icon: <Clock size={20} /> },
-        { label: "Shifts", href: "/employee/shifts", icon: <CalendarDays size={20} /> },
     ],
 };
 
@@ -83,12 +77,6 @@ const moreNav = {
     employee: [
         { label: "Today's Orders", href: "/employee/orders", icon: <Package size={20} /> },
         { label: "Attendance", href: "/employee/attendance", icon: <Clock size={20} /> },
-    ],
-    supervisor: [
-        { label: "Today's Orders", href: "/employee/orders", icon: <Package size={20} /> },
-        { label: "Timesheets", href: "/employee/timesheets", icon: <FileText size={20} /> },
-        { label: "Leave", href: "/employee/leave", icon: <Palmtree size={20} /> },
-        { label: "Availability", href: "/employee/availability", icon: <CalendarDays size={20} /> },
     ],
 };
 

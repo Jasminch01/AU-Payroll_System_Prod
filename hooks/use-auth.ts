@@ -6,7 +6,7 @@ import { apiGet } from "@/lib/api-client";
 export interface AuthProfile {
     user_id: string;
     email: string;
-    role: "owner" | "manager" | "supervisor" | "employee";
+    role: "owner" | "manager" | "employee";
     first_name: string;
     last_name: string;
     business_id: string;

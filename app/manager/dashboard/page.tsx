@@ -3,7 +3,6 @@
 import React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { DashboardLayout } from "@/components/layout";
-import { useAuth } from "@/hooks/use-auth";
 import { MetricCard } from "@/components/ui/card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/badge";
@@ -20,7 +19,6 @@ import { formatDecimalHours } from "@/lib/utils";
 
 export default function ManagerDashboardPage() {
     const queryClient = useQueryClient();
-    const { user } = useAuth();
 
     const { data: summary, isLoading: isLoadingSummary } = useQuery({
         queryKey: ["analytics-summary"],
@@ -79,7 +77,7 @@ export default function ManagerDashboardPage() {
 
     return (
         <DashboardLayout
-            role={(user?.role as any) || "manager"}
+            role="manager"
             pageTitle="Dashboard"
             pageDescription="Manage your team and operations"
         >

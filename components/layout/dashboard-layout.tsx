@@ -12,7 +12,7 @@ import { usePathname } from "next/navigation";
 
 interface DashboardLayoutProps {
     children: React.ReactNode;
-    role: "owner" | "manager" | "employee" | "supervisor";
+    role: "owner" | "manager" | "employee";
     pageTitle: React.ReactNode;
     pageDescription?: string;
     businessName?: string;

@@ -16,7 +16,7 @@ import { successResponse, errorResponse, validateRequiredFields } from '@/lib/ap
  */
 export async function GET(request: NextRequest) {
     try {
-        const authUser = await requireRole('owner', 'manager', 'supervisor');
+        const authUser = await requireRole('owner', 'manager');
         if (!authUser) return errorResponse('Unauthorized', 401);
 
         const { searchParams } = new URL(request.url);

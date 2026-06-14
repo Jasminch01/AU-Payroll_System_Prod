@@ -579,7 +579,7 @@ export default function ManagerAttendancePage() {
 
     return (
         <DashboardLayout
-            role={(user?.role as any) || "manager"}
+            role="manager"
             pageTitle="Attendance"
             pageDescription="Review employee clock in/out records"
         >
